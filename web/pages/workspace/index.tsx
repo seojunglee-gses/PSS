@@ -370,7 +370,7 @@ export default function Workspace() {
               type="button"
               onClick={handleCompleteStep}
             >
-              단계 종료
+              Stage Complete
             </button>
           </div>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
