@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
+import { sendEvaluationResult } from "../../lib/firebase";
 
 const steps = [
   {
@@ -48,11 +49,28 @@ const stepSummaries: Record<string, string> = {
 };
 
 const storageKey = "ppss-workspace-summaries";
+const evaluationStorageKey = "ppss-evaluation-results";
+const evaluationImages = Array.from({ length: 7 }, (_, index) => ({
+  id: `concept-${index + 1}`,
+  label: `Concept ${index + 1}`,
+}));
+const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 
 export default function Workspace() {
   const [activeStep, setActiveStep] = useState(steps[0]);
   const [activeTab, setActiveTab] = useState("Process log");
   const [inputValue, setInputValue] = useState("");
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [rankings, setRankings] = useState<Record<string, number>>(() => {
+    const initialState: Record<string, number> = {};
+    evaluationImages.forEach((image, index) => {
+      initialState[image.id] = index + 1;
+    });
+    return initialState;
+  });
+  const [evaluationResults, setEvaluationResults] = useState<
+    Array<Record<string, number>>
+  >([]);
   const [messages, setMessages] = useState<Record<string, string[]>>(() => {
     const initialState: Record<string, string[]> = {};
     steps.forEach((step) => {
@@ -85,6 +103,20 @@ export default function Workspace() {
     window.localStorage.setItem(storageKey, JSON.stringify(savedSummaries));
   }, [savedSummaries]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem(evaluationStorageKey);
+    if (stored) {
+      try {
+        setEvaluationResults(JSON.parse(stored));
+      } catch {
+        setEvaluationResults([]);
+      }
+    }
+  }, []);
+
   const progressValue = useMemo(() => {
     const index = steps.findIndex((step) => step.id === activeStep.id);
     if (index === -1) {
@@ -111,6 +143,51 @@ export default function Workspace() {
       [activeStep.id]: stepSummaries[activeStep.id],
     }));
   };
+
+  const handleRankingChange = (imageId: string, value: string) => {
+    setRankings((prev) => ({
+      ...prev,
+      [imageId]: Number(value),
+    }));
+  };
+
+  const handleSubmitRankings = async () => {
+    const payload = { submittedAt: new Date().toISOString(), rankings };
+    setEvaluationResults((prev) => {
+      const updated = [...prev, rankings];
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          evaluationStorageKey,
+          JSON.stringify(updated)
+        );
+      }
+      return updated;
+    });
+    await sendEvaluationResult(payload);
+  };
+
+  const aggregatedResults = useMemo(() => {
+    if (!evaluationResults.length) {
+      return evaluationImages.map((image) => ({
+        id: image.id,
+        label: image.label,
+        average: 0,
+        topChoice: 0,
+      }));
+    }
+    return evaluationImages.map((image) => {
+      const scores = evaluationResults.map((result) => result[image.id] ?? 0);
+      const average =
+        scores.reduce((sum, value) => sum + value, 0) / scores.length;
+      const topChoice = scores.filter((value) => value === 1).length;
+      return {
+        id: image.id,
+        label: image.label,
+        average,
+        topChoice,
+      };
+    });
+  }, [evaluationResults]);
 
   const renderChatPanel = () => {
     const stepMessages = messages[activeStep.id] ?? [];
@@ -330,14 +407,48 @@ export default function Workspace() {
             <p className="mt-2 text-sm text-slate-500">
               Review multiple evidence images and confirm risks with the model.
             </p>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              {[1, 2, 3, 4].map((item) => (
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {evaluationImages.map((image) => (
                 <div
-                  key={item}
-                  className="h-28 rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-100 via-white to-slate-100"
-                />
+                  key={image.id}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                >
+                  <button
+                    className="h-28 w-full rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                    type="button"
+                    onClick={() => setSelectedImage(image.id)}
+                  />
+                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                    <span className="font-semibold text-slate-700">
+                      {image.label}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span>Rank</span>
+                      <select
+                        className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs"
+                        value={String(rankings[image.id])}
+                        onChange={(event) =>
+                          handleRankingChange(image.id, event.target.value)
+                        }
+                      >
+                        {rankingOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
+            <button
+              className="mt-6 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
+              type="button"
+              onClick={handleSubmitRankings}
+            >
+              Submit rankings
+            </button>
           </div>
           {renderChatPanel()}
         </section>
@@ -370,7 +481,7 @@ export default function Workspace() {
               type="button"
               onClick={handleCompleteStep}
             >
-              Stage Complete
+              단계 종료
             </button>
           </div>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
@@ -378,18 +489,92 @@ export default function Workspace() {
             <p className="mt-2 text-sm text-slate-500">
               Visual evidence and key metrics supporting the evaluation.
             </p>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <div className="h-28 rounded-2xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                Compliance score: 92% · Risk alerts: 2 open items
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                <p className="text-xs font-semibold uppercase text-slate-400">
+                  Ranking overview
+                </p>
+                <div className="mt-3 space-y-3">
+                  {aggregatedResults.map((result) => (
+                    <div key={result.id} className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span className="font-semibold text-slate-700">
+                          {result.label}
+                        </span>
+                        <span>
+                          Avg rank {result.average.toFixed(1)} · Top choice{" "}
+                          {result.topChoice}
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-200">
+                        <div
+                          className="h-full rounded-full bg-[var(--primary)]"
+                          style={{
+                            width: `${Math.max(
+                              10,
+                              100 - result.average * 10
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="h-28 rounded-2xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                Average review time: 3.8 days · Reviewer count: 5
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
+                <p className="text-xs font-semibold uppercase text-slate-400">
+                  Preference table
+                </p>
+                <table className="mt-3 w-full text-left text-xs">
+                  <thead className="text-slate-400">
+                    <tr>
+                      <th className="pb-2">Design</th>
+                      <th className="pb-2">Avg rank</th>
+                      <th className="pb-2">Top votes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-600">
+                    {aggregatedResults.map((result) => (
+                      <tr key={result.id} className="border-t border-slate-100">
+                        <td className="py-2">{result.label}</td>
+                        <td className="py-2">{result.average.toFixed(1)}</td>
+                        <td className="py-2">{result.topChoice}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
         </section>
+      )}
+      {selectedImage && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4">
+          <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
+                  Design preview
+                </p>
+                <h3 className="mt-2 text-xl font-semibold">
+                  {evaluationImages.find((image) => image.id === selectedImage)
+                    ?.label ?? "Design concept"}
+                </h3>
+              </div>
+              <button
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300"
+                type="button"
+                onClick={() => setSelectedImage(null)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-6 h-80 rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-100 via-white to-slate-100" />
+            <p className="mt-4 text-sm text-slate-500">
+              Inspect the design concept in detail before assigning a ranking.
+            </p>
+          </div>
+        </div>
       )}
     </AppShell>
   );
