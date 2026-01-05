@@ -1,6 +1,7 @@
 import { useRouter } from "next/router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppShell from "../components/AppShell";
+import { useAuth } from "../lib/auth";
 
 const roles = [
   {
@@ -26,14 +27,40 @@ const roles = [
 
 export default function Home() {
   const router = useRouter();
+  const { signIn, isConfigured, user } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [selectedRole, setSelectedRole] = useState<string>("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    if (user) {
+      router.push("/workspace");
+    }
+  }, [user, router]);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setShowLogin(false);
-    router.push("/workspace");
+    setErrorMessage("");
+    if (!selectedRole) {
+      setErrorMessage("Select a role before signing in.");
+      return;
+    }
+    try {
+      await signIn(email, password);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("ppss-role", selectedRole);
+      }
+      setShowLogin(false);
+      router.push("/workspace");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to sign in. Please try again."
+      );
+    }
   };
 
   return (
@@ -67,7 +94,10 @@ export default function Home() {
             <button
               className="mt-6 rounded-full bg-[var(--primary)] px-6 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
               type="button"
-              onClick={() => setShowLogin(true)}
+              onClick={() => {
+                setSelectedRole(role.title);
+                setShowLogin(true);
+              }}
             >
               Sign in
             </button>
@@ -86,6 +116,9 @@ export default function Home() {
                 <h3 className="mt-2 text-2xl font-semibold text-slate-900">
                   Sign in to Workspace
                 </h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  Role: <span className="font-semibold">{selectedRole}</span>
+                </p>
               </div>
               <button
                 className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300"
@@ -96,6 +129,12 @@ export default function Home() {
               </button>
             </div>
             <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+              {!isConfigured && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Firebase authentication is not configured. Provide
+                  NEXT_PUBLIC_FIREBASE_* environment variables to enable login.
+                </div>
+              )}
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500">
                   Email
@@ -122,9 +161,15 @@ export default function Home() {
                   required
                 />
               </div>
+              {errorMessage && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-600">
+                  {errorMessage}
+                </div>
+              )}
               <button
                 className="w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
                 type="submit"
+                disabled={!isConfigured}
               >
                 Continue to Workspace
               </button>

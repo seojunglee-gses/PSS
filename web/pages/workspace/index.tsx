@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { sendEvaluationResult } from "../../lib/firebase";
+import { useAuth } from "../../lib/auth";
+import { useRouter } from "next/router";
 
 const steps = [
   {
@@ -50,16 +52,44 @@ const stepSummaries: Record<string, string> = {
 
 const storageKey = "ppss-workspace-summaries";
 const evaluationStorageKey = "ppss-evaluation-results";
+const chatLogStorageKey = "ppss-chat-logs";
 const evaluationImages = Array.from({ length: 7 }, (_, index) => ({
   id: `concept-${index + 1}`,
   label: `Concept ${index + 1}`,
 }));
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 
+type ChatLog = {
+  stepId: string;
+  sender: "Planner" | "ChatGPT";
+  text: string;
+};
+
+const assistantReplies: Record<string, string> = {
+  problem: "Captured scope and constraints. Ready to outline objectives.",
+  data: "Analyzing historical metrics and highlighting key deviations.",
+  alternatives: "Generating alternative sequences with revised tooling.",
+  evaluation: "Reviewing evidence images and summarizing risks.",
+  report: "Drafting decision report highlights and compliance notes.",
+};
+
+const roleDescriptions: Record<string, string> = {
+  "The Public":
+    "Focus on community impact and public-facing outcomes during each stage.",
+  "Business Owners":
+    "Track feasibility, operational impact, and process readiness metrics.",
+  Planners: "Refine PPSS sequences, validate risks, and iterate promptly.",
+  Government:
+    "Review compliance, safety, and policy alignment across all steps.",
+};
+
 export default function Workspace() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
   const [activeStep, setActiveStep] = useState(steps[0]);
   const [activeTab, setActiveTab] = useState("Process log");
   const [inputValue, setInputValue] = useState("");
+  const [role, setRole] = useState("Guest");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [rankings, setRankings] = useState<Record<string, number>>(() => {
     const initialState: Record<string, number> = {};
@@ -71,6 +101,7 @@ export default function Workspace() {
   const [evaluationResults, setEvaluationResults] = useState<
     Array<Record<string, number>>
   >([]);
+  const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
   const [messages, setMessages] = useState<Record<string, string[]>>(() => {
     const initialState: Record<string, string[]> = {};
     steps.forEach((step) => {
@@ -81,6 +112,12 @@ export default function Workspace() {
   const [savedSummaries, setSavedSummaries] = useState<
     Record<string, string>
   >({});
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/");
+    }
+  }, [loading, user, router]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -117,6 +154,50 @@ export default function Workspace() {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedRole = window.localStorage.getItem("ppss-role");
+    if (storedRole) {
+      setRole(storedRole);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedLogs = window.localStorage.getItem(chatLogStorageKey);
+    if (storedLogs) {
+      try {
+        const parsed = JSON.parse(storedLogs) as ChatLog[];
+        setChatLogs(parsed);
+        const grouped = parsed.reduce<Record<string, string[]>>(
+          (acc, log) => {
+            acc[log.stepId] = acc[log.stepId] || [];
+            acc[log.stepId].push(log.text);
+            return acc;
+          },
+          {}
+        );
+        setMessages((prev) => ({
+          ...prev,
+          ...grouped,
+        }));
+      } catch {
+        setChatLogs([]);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(chatLogStorageKey, JSON.stringify(chatLogs));
+  }, [chatLogs]);
+
   const progressValue = useMemo(() => {
     const index = steps.findIndex((step) => step.id === activeStep.id);
     if (index === -1) {
@@ -130,10 +211,16 @@ export default function Workspace() {
       return;
     }
     const stepId = activeStep.id;
+    const reply = assistantReplies[stepId] ?? "Acknowledged. Processing...";
     setMessages((prev) => ({
       ...prev,
-      [stepId]: [...prev[stepId], inputValue.trim()],
+      [stepId]: [...prev[stepId], inputValue.trim(), reply],
     }));
+    setChatLogs((prev) => [
+      ...prev,
+      { stepId, sender: "Planner", text: inputValue.trim() },
+      { stepId, sender: "ChatGPT", text: reply },
+    ]);
     setInputValue("");
   };
 
@@ -197,6 +284,26 @@ export default function Workspace() {
     const best = [...ranked].sort((a, b) => a.average - b.average)[0];
     return evaluationImages.find((image) => image.id === best.id);
   }, [aggregatedResults]);
+
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="rounded-3xl border border-[var(--border)] bg-white p-6 text-sm text-slate-500">
+          Loading workspace...
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!user) {
+    return (
+      <AppShell>
+        <div className="rounded-3xl border border-[var(--border)] bg-white p-6 text-sm text-slate-500">
+          Authentication required. Redirecting to Home...
+        </div>
+      </AppShell>
+    );
+  }
 
   const renderChatPanel = () => {
     const stepMessages = messages[activeStep.id] ?? [];
@@ -273,8 +380,8 @@ export default function Workspace() {
         </p>
         <h2 className="text-3xl font-semibold">PPSS workflow dashboard</h2>
         <p className="max-w-3xl text-sm text-slate-500">
-          Navigate through the five-step planning workflow and monitor progress
-          with a live ChatGPT-powered conversation panel.
+          {roleDescriptions[role] ??
+            "Navigate through the five-step planning workflow and monitor progress with a live ChatGPT-powered conversation panel."}
         </p>
       </section>
 

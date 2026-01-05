@@ -9,41 +9,52 @@ const workflowSteps = [
   "Design/Plan Decision",
 ];
 
-const storageKey = "ppss-workspace-summaries";
+const chatLogStorageKey = "ppss-chat-logs";
+const stepIds = ["problem", "data", "alternatives", "evaluation", "report"];
+
+type ChatLog = {
+  stepId: string;
+  sender: "Planner" | "ChatGPT";
+  text: string;
+};
 
 export default function Report() {
   const [activeStep, setActiveStep] = useState(workflowSteps[0]);
-  const [summaries, setSummaries] = useState<Record<string, string>>({});
+  const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
-    const stored = window.localStorage.getItem(storageKey);
+    const stored = window.localStorage.getItem(chatLogStorageKey);
     if (stored) {
       try {
-        setSummaries(JSON.parse(stored));
+        setChatLogs(JSON.parse(stored));
       } catch {
-        setSummaries({});
+        setChatLogs([]);
       }
     }
   }, []);
 
   const summaryEntries = useMemo(
     () =>
-      workflowSteps.map((step, index) => ({
-        step,
-        summary:
-          summaries[
-            ["problem", "data", "alternatives", "evaluation", "report"][index]
-          ] ?? "No summary recorded yet. Complete the step to save a summary.",
-      })),
-    [summaries]
+      workflowSteps.map((step, index) => {
+        const stepId = stepIds[index];
+        const stepMessages = chatLogs
+          .filter((log) => log.stepId === stepId)
+          .map((log) => log.text)
+          .join(" ");
+        return {
+          step,
+          summary:
+            stepMessages ||
+            "No dialogue recorded yet. Continue the workspace chat to generate summaries.",
+        };
+      }),
+    [chatLogs]
   );
 
-  const combinedSummary = summaryEntries
-    .map((entry) => entry.summary)
-    .join(" ");
+  const combinedSummary = chatLogs.map((log) => log.text).join(" ");
 
   return (
     <AppShell>

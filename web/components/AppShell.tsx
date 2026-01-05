@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "../lib/auth";
 
 const navigation = [
   {
@@ -93,6 +95,26 @@ interface AppShellProps {
 
 export default function AppShell({ children }: AppShellProps) {
   const router = useRouter();
+  const { user, signOutUser } = useAuth();
+  const [role, setRole] = useState<string>("Guest");
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedRole = window.localStorage.getItem("ppss-role");
+    if (storedRole) {
+      setRole(storedRole);
+    }
+  }, []);
+
+  const handleLogout = async () => {
+    await signOutUser();
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("ppss-role");
+    }
+    router.push("/");
+  };
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -106,6 +128,10 @@ export default function AppShell({ children }: AppShellProps) {
               ChatGPT-assisted
               <span className="block text-blue-200">PPSS</span>
             </h1>
+            <div className="mt-4 rounded-2xl border border-white/20 bg-white/10 px-3 py-2 text-xs text-blue-100">
+              <p className="font-semibold text-white">Role</p>
+              <p className="mt-1">{role}</p>
+            </div>
           </div>
           <nav className="flex flex-col gap-2">
             {navigation.map((item) => {
@@ -135,8 +161,32 @@ export default function AppShell({ children }: AppShellProps) {
           </div>
         </aside>
         <main className="flex-1 px-8 py-10">
-          <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-white px-6 py-4 shadow-sm">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
+                  Signed in as
+                </p>
+                <p className="mt-1 text-lg font-semibold text-slate-800">
+                  {role}
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-slate-500">
+                <span>{user?.email ?? "Not authenticated"}</span>
+                {user && (
+                  <button
+                    className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                    type="button"
+                    onClick={handleLogout}
+                  >
+                    Log out
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex w-full flex-col gap-8">
             {children}
+            </div>
           </div>
         </main>
       </div>
