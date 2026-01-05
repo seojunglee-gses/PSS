@@ -58,9 +58,11 @@ const evaluationImages = Array.from({ length: 7 }, (_, index) => ({
   label: `Concept ${index + 1}`,
 }));
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
+const providerStorageKey = "ppss-active-provider";
 
 type ChatLog = {
   stepId: string;
+  provider: string;
   sender: "Planner" | "ChatGPT";
   text: string;
 };
@@ -90,6 +92,7 @@ export default function Workspace() {
   const [activeTab, setActiveTab] = useState("Process log");
   const [inputValue, setInputValue] = useState("");
   const [role, setRole] = useState("Guest");
+  const [activeProvider, setActiveProvider] = useState("ChatGPT");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [rankings, setRankings] = useState<Record<string, number>>(() => {
     const initialState: Record<string, number> = {};
@@ -162,6 +165,10 @@ export default function Workspace() {
     if (storedRole) {
       setRole(storedRole);
     }
+    const storedProvider = window.localStorage.getItem(providerStorageKey);
+    if (storedProvider) {
+      setActiveProvider(storedProvider);
+    }
   }, []);
 
   useEffect(() => {
@@ -218,8 +225,13 @@ export default function Workspace() {
     }));
     setChatLogs((prev) => [
       ...prev,
-      { stepId, sender: "Planner", text: inputValue.trim() },
-      { stepId, sender: "ChatGPT", text: reply },
+      {
+        stepId,
+        provider: activeProvider,
+        sender: "Planner",
+        text: inputValue.trim(),
+      },
+      { stepId, provider: activeProvider, sender: "ChatGPT", text: reply },
     ]);
     setInputValue("");
   };
@@ -312,7 +324,7 @@ export default function Workspace() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
-            ChatGPT
+            {activeProvider}
           </p>
           <h3 className="mt-2 text-lg font-semibold">API conversation</h3>
         </div>
@@ -383,6 +395,9 @@ export default function Workspace() {
           {roleDescriptions[role] ??
             "Navigate through the five-step planning workflow and monitor progress with a live ChatGPT-powered conversation panel."}
         </p>
+        <div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
+          Active AI provider: {activeProvider}
+        </div>
       </section>
 
       <section className="rounded-3xl border border-[var(--border)] bg-white px-6 py-6 shadow-sm">

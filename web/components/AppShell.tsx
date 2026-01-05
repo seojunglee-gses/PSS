@@ -128,10 +128,9 @@ export default function AppShell({ children }: AppShellProps) {
               ChatGPT-assisted
               <span className="block text-blue-200">PPSS</span>
             </h1>
-            <div className="mt-4 rounded-2xl border border-white/20 bg-white/10 px-3 py-2 text-xs text-blue-100">
-              <p className="font-semibold text-white">Role</p>
-              <p className="mt-1">{role}</p>
-            </div>
+            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-blue-100">
+              Role · {role}
+            </p>
           </div>
           <nav className="flex flex-col gap-2">
             {navigation.map((item) => {

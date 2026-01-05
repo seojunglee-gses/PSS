@@ -14,6 +14,7 @@ const stepIds = ["problem", "data", "alternatives", "evaluation", "report"];
 
 type ChatLog = {
   stepId: string;
+  provider: string;
   sender: "Planner" | "ChatGPT";
   text: string;
 };
