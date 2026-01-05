@@ -9,7 +9,7 @@ const navigation = [
     label: "Home",
     href: "/",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
         <path
           d="M4 11.5L12 5l8 6.5V20a1 1 0 0 1-1 1h-4.5v-5.5h-5V21H5a1 1 0 0 1-1-1z"
           fill="none"
@@ -24,7 +24,7 @@ const navigation = [
     label: "Workspace",
     href: "/workspace",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
         <rect
           x="4"
           y="5"
@@ -48,7 +48,7 @@ const navigation = [
     label: "Report",
     href: "/report",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
         <path
           d="M7 4h7l4 4v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"
           fill="none"
@@ -68,7 +68,7 @@ const navigation = [
     label: "Setting",
     href: "/setting",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
         <circle
           cx="12"
           cy="12"
@@ -119,7 +119,7 @@ export default function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="flex min-h-screen">
-        <aside className="flex w-64 flex-col gap-6 bg-[var(--primary)] px-6 py-8 text-white shadow-lg">
+        <aside className="flex w-72 flex-col gap-6 bg-[var(--primary)] px-6 py-8 text-white shadow-lg">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">
               PPSS Platform
@@ -145,7 +145,7 @@ export default function AppShell({ children }: AppShellProps) {
                       : "text-blue-100 hover:bg-white/10 hover:text-white"
                   }`}
                 >
-                  <span className="rounded-full bg-white/15 p-1 text-white">
+                  <span className="rounded-full bg-white/15 p-2 text-white">
                     {item.icon}
                   </span>
                   {item.label}
@@ -159,8 +159,8 @@ export default function AppShell({ children }: AppShellProps) {
             <p className="mt-1">Latency: 1.3s · Ready</p>
           </div>
         </aside>
-        <main className="flex-1 px-8 py-10">
-          <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+        <main className="flex-1 px-10 py-10">
+          <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-white px-6 py-4 shadow-sm">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">

@@ -7,21 +7,95 @@ const roles = [
   {
     title: "The Public",
     description: "Review shared PPSS updates and community impact summaries.",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
+        <circle
+          cx="12"
+          cy="8"
+          r="3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+        <path
+          d="M5 19c1.6-3 4.2-4.5 7-4.5s5.4 1.5 7 4.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      </svg>
+    ),
   },
   {
     title: "Business Owners",
     description:
       "Coordinate manufacturing objectives and monitor process plan progress.",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
+        <rect
+          x="5"
+          y="4"
+          width="14"
+          height="16"
+          rx="2"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+        <path
+          d="M9 9h6M9 13h6M9 17h4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      </svg>
+    ),
   },
   {
     title: "Planners",
     description:
       "Develop prompt-driven plans, assess safety checks, and validate outputs.",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
+        <path
+          d="M5 5h10l4 4v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+        <path
+          d="M15 5v4h4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+      </svg>
+    ),
   },
   {
     title: "Government",
     description:
       "Audit compliance, review reports, and manage policy-driven oversight.",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
+        <path
+          d="M4 10h16M6 10v8M10 10v8M14 10v8M18 10v8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+        <path
+          d="M12 4l7 4H5l7-4z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
   },
 ];
 
@@ -78,14 +152,14 @@ export default function Home() {
         </p>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-4">
+      <section className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
         {roles.map((role) => (
           <div
             key={role.title}
             className="rounded-3xl border border-slate-200 bg-white px-6 py-8 text-center shadow-sm"
           >
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-8 border-slate-100 text-3xl font-semibold text-[var(--primary)]">
-              {role.title.slice(0, 1)}
+            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-8 border-slate-100 text-[var(--primary)]">
+              {role.icon}
             </div>
             <h3 className="mt-6 text-lg font-semibold text-slate-900">
               {role.title}
