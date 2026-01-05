@@ -63,13 +63,13 @@ export default function Report() {
         <p className="mt-2 text-sm text-slate-500">
           Click any phase to preview the corresponding report content.
         </p>
-        <div className="mt-5 flex flex-wrap gap-3">
+        <div className="mt-5 grid grid-cols-5 gap-3">
           {workflowSteps.map((step) => {
             const isActive = step === activeStep;
             return (
               <button
                 key={step}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
                   isActive
                     ? "bg-[var(--primary)] text-white"
                     : "border border-slate-200 bg-slate-50 text-slate-600 hover:border-[var(--primary)]"

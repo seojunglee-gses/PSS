@@ -6,27 +6,27 @@ const steps = [
   {
     id: "problem",
     title: "Problem Definition",
-    icon: "①",
+    icon: "1",
   },
   {
     id: "data",
     title: "Data Analysis",
-    icon: "②",
+    icon: "2",
   },
   {
     id: "alternatives",
     title: "Design/Plan Alternatives",
-    icon: "③",
+    icon: "3",
   },
   {
     id: "evaluation",
     title: "Design/Plan Evaluation",
-    icon: "④",
+    icon: "4",
   },
   {
     id: "report",
     title: "Design/Plan Decision",
-    icon: "⑤",
+    icon: "5",
   },
 ];
 
@@ -189,6 +189,15 @@ export default function Workspace() {
     });
   }, [evaluationResults]);
 
+  const topPreference = useMemo(() => {
+    const ranked = aggregatedResults.filter((result) => result.average > 0);
+    if (!ranked.length) {
+      return evaluationImages[0];
+    }
+    const best = [...ranked].sort((a, b) => a.average - b.average)[0];
+    return evaluationImages.find((image) => image.id === best.id);
+  }, [aggregatedResults]);
+
   const renderChatPanel = () => {
     const stepMessages = messages[activeStep.id] ?? [];
     return (
@@ -270,13 +279,13 @@ export default function Workspace() {
       </section>
 
       <section className="rounded-3xl border border-[var(--border)] bg-white px-6 py-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="grid grid-cols-5 gap-3">
           {steps.map((step) => {
             const isActive = step.id === activeStep.id;
             return (
               <button
                 key={step.id}
-                className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition ${
+                className={`flex items-center gap-2 rounded-2xl px-3 py-2 text-left text-xs font-semibold transition ${
                   isActive
                     ? "bg-[var(--primary)] text-white shadow-md"
                     : "border border-slate-200 bg-slate-50 text-slate-600 hover:border-[var(--primary)]"
@@ -285,15 +294,15 @@ export default function Workspace() {
                 onClick={() => setActiveStep(step)}
               >
                 <span
-                  className={`flex h-9 w-9 items-center justify-center rounded-full text-base ${
+                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs ${
                     isActive
                       ? "bg-white/20 text-white"
-                      : "bg-white text-[var(--primary)]"
+                      : "border border-slate-200 bg-white text-[var(--primary)]"
                   }`}
                 >
                   {step.icon}
                 </span>
-                <span className="max-w-[140px]">{step.title}</span>
+                <span className="truncate">{step.title}</span>
               </button>
             );
           })}
@@ -490,6 +499,18 @@ export default function Workspace() {
               Visual evidence and key metrics supporting the evaluation.
             </p>
             <div className="mt-6 space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase text-slate-400">
+                  Top preference
+                </p>
+                <div className="mt-3 h-32 rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
+                <p className="mt-3 text-sm font-semibold text-slate-700">
+                  {topPreference?.label ?? "Top concept"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Highest-rated design based on submitted rankings.
+                </p>
+              </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <p className="text-xs font-semibold uppercase text-slate-400">
                   Ranking overview
@@ -520,29 +541,6 @@ export default function Workspace() {
                     </div>
                   ))}
                 </div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  Preference table
-                </p>
-                <table className="mt-3 w-full text-left text-xs">
-                  <thead className="text-slate-400">
-                    <tr>
-                      <th className="pb-2">Design</th>
-                      <th className="pb-2">Avg rank</th>
-                      <th className="pb-2">Top votes</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-slate-600">
-                    {aggregatedResults.map((result) => (
-                      <tr key={result.id} className="border-t border-slate-100">
-                        <td className="py-2">{result.label}</td>
-                        <td className="py-2">{result.average.toFixed(1)}</td>
-                        <td className="py-2">{result.topChoice}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
             </div>
           </div>
