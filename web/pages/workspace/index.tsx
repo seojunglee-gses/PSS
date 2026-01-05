@@ -53,10 +53,12 @@ const stepSummaries: Record<string, string> = {
 const storageKey = "ppss-workspace-summaries";
 const evaluationStorageKey = "ppss-evaluation-results";
 const chatLogStorageKey = "ppss-chat-logs";
-const evaluationImages = Array.from({ length: 7 }, (_, index) => ({
+const evaluationStorageImagesKey = "ppss-evaluation-images";
+const defaultEvaluationImages = Array.from({ length: 7 }, (_, index) => ({
   id: `concept-${index + 1}`,
   label: `Concept ${index + 1}`,
 }));
+const alternativeImageStorageKey = "ppss-alternative-images";
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 const providerStorageKey = "ppss-active-provider";
 
@@ -65,6 +67,12 @@ type ChatLog = {
   provider: string;
   sender: "Planner" | "ChatGPT";
   text: string;
+};
+
+type DesignImage = {
+  id: string;
+  label: string;
+  note: string;
 };
 
 const assistantReplies: Record<string, string> = {
@@ -94,9 +102,16 @@ export default function Workspace() {
   const [role, setRole] = useState("Guest");
   const [activeProvider, setActiveProvider] = useState("ChatGPT");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedAlternative, setSelectedAlternative] = useState<string | null>(
+    null
+  );
+  const [alternativeImages, setAlternativeImages] = useState<DesignImage[]>([]);
+  const [evaluationImages, setEvaluationImages] = useState<DesignImage[]>(
+    defaultEvaluationImages
+  );
   const [rankings, setRankings] = useState<Record<string, number>>(() => {
     const initialState: Record<string, number> = {};
-    evaluationImages.forEach((image, index) => {
+    defaultEvaluationImages.forEach((image, index) => {
       initialState[image.id] = index + 1;
     });
     return initialState;
@@ -202,8 +217,57 @@ export default function Workspace() {
     if (typeof window === "undefined") {
       return;
     }
+    const storedAlternatives = window.localStorage.getItem(
+      alternativeImageStorageKey
+    );
+    if (storedAlternatives) {
+      try {
+        setAlternativeImages(JSON.parse(storedAlternatives));
+      } catch {
+        setAlternativeImages([]);
+      }
+    }
+    const storedEvaluationImages = window.localStorage.getItem(
+      evaluationStorageImagesKey
+    );
+    if (storedEvaluationImages) {
+      try {
+        const parsed = JSON.parse(storedEvaluationImages) as DesignImage[];
+        if (parsed.length) {
+          setEvaluationImages(parsed);
+        }
+      } catch {
+        setEvaluationImages(defaultEvaluationImages);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
     window.localStorage.setItem(chatLogStorageKey, JSON.stringify(chatLogs));
   }, [chatLogs]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      alternativeImageStorageKey,
+      JSON.stringify(alternativeImages)
+    );
+  }, [alternativeImages]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      evaluationStorageImagesKey,
+      JSON.stringify(evaluationImages)
+    );
+  }, [evaluationImages]);
 
   const progressValue = useMemo(() => {
     const index = steps.findIndex((step) => step.id === activeStep.id);
@@ -234,6 +298,15 @@ export default function Workspace() {
       { stepId, provider: activeProvider, sender: "ChatGPT", text: reply },
     ]);
     setInputValue("");
+
+    if (stepId === "alternatives") {
+      const nextImage: DesignImage = {
+        id: `alt-${Date.now()}`,
+        label: `Generated Concept ${alternativeImages.length + 1}`,
+        note: "Generated from the latest feedback request.",
+      };
+      setAlternativeImages((prev) => [...prev, nextImage]);
+    }
   };
 
   const handleCompleteStep = () => {
@@ -248,6 +321,30 @@ export default function Workspace() {
       ...prev,
       [imageId]: Number(value),
     }));
+  };
+
+  const handleSubmitAlternative = () => {
+    if (!selectedAlternative) {
+      return;
+    }
+    const selected = alternativeImages.find(
+      (image) => image.id === selectedAlternative
+    );
+    if (!selected) {
+      return;
+    }
+    setEvaluationImages((prev) => {
+      const exists = prev.some((image) => image.id === selected.id);
+      if (exists) {
+        return prev;
+      }
+      return [...prev, selected];
+    });
+    setRankings((prev) => ({
+      ...prev,
+      [selected.id]: Object.keys(prev).length + 1,
+    }));
+    setSelectedAlternative(null);
   };
 
   const handleSubmitRankings = async () => {
@@ -287,6 +384,36 @@ export default function Workspace() {
       };
     });
   }, [evaluationResults]);
+
+  const combinedDialogueSummary = useMemo(
+    () => chatLogs.map((log) => log.text).join(" "),
+    [chatLogs]
+  );
+
+  useEffect(() => {
+    if (activeStep.id !== "alternatives") {
+      return;
+    }
+    if (alternativeImages.length > 0) {
+      return;
+    }
+    if (!combinedDialogueSummary) {
+      return;
+    }
+    const seeded = [
+      {
+        id: `alt-${Date.now()}-a`,
+        label: "Generated Concept A",
+        note: "Initial design based on the dialogue summary.",
+      },
+      {
+        id: `alt-${Date.now()}-b`,
+        label: "Generated Concept B",
+        note: "Alternative proposal reflecting stakeholder feedback.",
+      },
+    ];
+    setAlternativeImages(seeded);
+  }, [activeStep.id, alternativeImages.length, combinedDialogueSummary]);
 
   const topPreference = useMemo(() => {
     const ranked = aggregatedResults.filter((result) => result.average > 0);
@@ -333,6 +460,11 @@ export default function Workspace() {
         </span>
       </div>
       <div className="mt-4 flex-1 space-y-4 overflow-auto text-sm text-slate-600">
+        {activeStep.id === "alternatives" && (
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
+            Based on our conversation, I generated design images for review.
+          </div>
+        )}
         {stepMessages.map((message, index) => {
           const isAssistant = index % 2 === 1;
           return (
@@ -465,7 +597,7 @@ export default function Workspace() {
               Review historical metrics, inspection data, and resource inputs.
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
-              {["Process log", "Quality metrics", "Resource map"].map((tab) => {
+              {["Case study", "Quality metrics", "Resource map"].map((tab) => {
                 const isActive = tab === activeTab;
                 return (
                   <button
@@ -483,19 +615,35 @@ export default function Workspace() {
                 );
               })}
             </div>
-            <div className="mt-4 grid gap-3">
-              {[
-                "Cycle time distribution and bottleneck markers.",
-                "Inspection variance for critical dimensions.",
-                "Resource utilization across machine cells.",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"
-                >
-                  {item}
-                </div>
-              ))}
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="h-48 rounded-2xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
+              <div className="mt-4 space-y-2 text-sm text-slate-600">
+                {activeTab === "Case study" && (
+                  <>
+                    <p>
+                      Site profile imagery and baseline narrative for the
+                      reference case study.
+                    </p>
+                    <p>
+                      Highlights of usage patterns and stakeholder feedback.
+                    </p>
+                  </>
+                )}
+                {activeTab === "Quality metrics" && (
+                  <>
+                    <p>
+                      Control charts for critical dimensions and defect rates.
+                    </p>
+                    <p>Variance snapshots for tooling accuracy.</p>
+                  </>
+                )}
+                {activeTab === "Resource map" && (
+                  <>
+                    <p>Resource allocation visuals for tooling and staffing.</p>
+                    <p>Material flow and staging layout notes.</p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
           {renderChatPanel()}
@@ -511,20 +659,50 @@ export default function Workspace() {
               references for each plan.
             </p>
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              {["Alternative A", "Alternative B"].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                >
-                  <div className="h-32 rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
-                  <p className="mt-3 text-sm font-semibold text-slate-700">
-                    {item}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Generated PPSS path with updated tooling assumptions.
-                  </p>
+              {alternativeImages.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+                  Generated images will appear here after the first dialogue
+                  summary is used to draft alternatives.
                 </div>
-              ))}
+              ) : (
+                alternativeImages.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`rounded-2xl border p-4 ${
+                      selectedAlternative === item.id
+                        ? "border-[var(--primary)] bg-blue-50"
+                        : "border-slate-200 bg-slate-50"
+                    }`}
+                  >
+                    <button
+                      className="h-32 w-full rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                      type="button"
+                      onClick={() => {
+                        setSelectedImage(item.id);
+                        setSelectedAlternative(item.id);
+                      }}
+                    />
+                    <p className="mt-3 text-sm font-semibold text-slate-700">
+                      {item.label}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{item.note}</p>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
+                type="button"
+                onClick={handleSubmitAlternative}
+                disabled={!selectedAlternative}
+              >
+                Submit selected design
+              </button>
+              <p className="text-xs text-slate-500">
+                Selected designs will automatically move into the evaluation
+                candidate list.
+              </p>
             </div>
           </div>
           {renderChatPanel()}
@@ -677,8 +855,10 @@ export default function Workspace() {
                   Design preview
                 </p>
                 <h3 className="mt-2 text-xl font-semibold">
-                  {evaluationImages.find((image) => image.id === selectedImage)
-                    ?.label ?? "Design concept"}
+                  {(
+                    evaluationImages.find((image) => image.id === selectedImage) ||
+                    alternativeImages.find((image) => image.id === selectedImage)
+                  )?.label ?? "Design concept"}
                 </h3>
               </div>
               <button
