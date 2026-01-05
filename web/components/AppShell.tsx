@@ -19,14 +19,14 @@ export default function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="flex min-h-screen">
-        <aside className="flex w-64 flex-col gap-6 border-r border-[var(--border)] bg-white px-6 py-8">
+        <aside className="flex w-64 flex-col gap-6 bg-[var(--primary)] px-6 py-8 text-white shadow-lg">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">
               PPSS Platform
             </p>
             <h1 className="mt-2 text-2xl font-semibold leading-tight">
               ChatGPT-assisted
-              <span className="block text-[var(--primary)]">PPSS</span>
+              <span className="block text-blue-200">PPSS</span>
             </h1>
           </div>
           <nav className="flex flex-col gap-2">
@@ -38,8 +38,8 @@ export default function AppShell({ children }: AppShellProps) {
                   href={item.href}
                   className={`rounded-xl px-4 py-3 text-sm font-medium transition ${
                     isActive
-                      ? "bg-blue-50 text-[var(--primary)]"
-                      : "text-slate-600 hover:bg-slate-100"
+                      ? "bg-white/20 text-white"
+                      : "text-blue-100 hover:bg-white/10 hover:text-white"
                   }`}
                 >
                   {item.label}
@@ -47,8 +47,8 @@ export default function AppShell({ children }: AppShellProps) {
               );
             })}
           </nav>
-          <div className="mt-auto rounded-2xl border border-[var(--border)] bg-slate-50 p-4 text-xs text-slate-500">
-            <p className="font-semibold text-slate-700">System Status</p>
+          <div className="mt-auto rounded-2xl border border-white/20 bg-white/10 p-4 text-xs text-blue-100">
+            <p className="font-semibold text-white">System Status</p>
             <p className="mt-2">Model: GPT-supported workflow</p>
             <p className="mt-1">Latency: 1.3s · Ready</p>
           </div>
