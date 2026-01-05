@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 
 const steps = [
@@ -24,31 +24,97 @@ const steps = [
   },
   {
     id: "report",
-    title: "Design/Plan Evaluation",
+    title: "Design/Plan Decision",
     icon: "⑤",
   },
 ];
 
-const chatMessages = [
-  {
-    sender: "Planner",
-    text: "We need a PPSS plan for the gearbox housing with safety constraints.",
-  },
-  {
-    sender: "ChatGPT",
-    text: "Confirmed. I will generate a phased plan with validation checkpoints.",
-  },
-  {
-    sender: "Planner",
-    text: "Highlight fixture stability and tool access risks.",
-  },
+const initialMessages = [
+  "We need a PPSS plan for the gearbox housing with safety constraints.",
+  "Confirmed. I will generate a phased plan with validation checkpoints.",
+  "Highlight fixture stability and tool access risks.",
 ];
+
+const stepSummaries: Record<string, string> = {
+  problem:
+    "Defined scope, machining constraints, and primary safety risks before planning.",
+  data: "Reviewed historical quality metrics, cycle data, and resource inputs.",
+  alternatives:
+    "Compared alternative process plans with tooling and fixturing adjustments.",
+  evaluation:
+    "Validated evidence images and confirmed risk mitigation actions.",
+  report:
+    "Prepared final decision report and supporting evidence for approval.",
+};
+
+const storageKey = "ppss-workspace-summaries";
 
 export default function Workspace() {
   const [activeStep, setActiveStep] = useState(steps[0]);
   const [activeTab, setActiveTab] = useState("Process log");
+  const [inputValue, setInputValue] = useState("");
+  const [messages, setMessages] = useState<Record<string, string[]>>(() => {
+    const initialState: Record<string, string[]> = {};
+    steps.forEach((step) => {
+      initialState[step.id] = [...initialMessages];
+    });
+    return initialState;
+  });
+  const [savedSummaries, setSavedSummaries] = useState<
+    Record<string, string>
+  >({});
 
-  const renderChatPanel = () => (
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem(storageKey);
+    if (stored) {
+      try {
+        setSavedSummaries(JSON.parse(stored));
+      } catch {
+        setSavedSummaries({});
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(savedSummaries));
+  }, [savedSummaries]);
+
+  const progressValue = useMemo(() => {
+    const index = steps.findIndex((step) => step.id === activeStep.id);
+    if (index === -1) {
+      return 0;
+    }
+    return Math.round((index / (steps.length - 1)) * 100);
+  }, [activeStep.id]);
+
+  const handleSend = () => {
+    if (!inputValue.trim()) {
+      return;
+    }
+    const stepId = activeStep.id;
+    setMessages((prev) => ({
+      ...prev,
+      [stepId]: [...prev[stepId], inputValue.trim()],
+    }));
+    setInputValue("");
+  };
+
+  const handleCompleteStep = () => {
+    setSavedSummaries((prev) => ({
+      ...prev,
+      [activeStep.id]: stepSummaries[activeStep.id],
+    }));
+  };
+
+  const renderChatPanel = () => {
+    const stepMessages = messages[activeStep.id] ?? [];
+    return (
     <div className="flex h-full flex-col rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
@@ -62,33 +128,56 @@ export default function Workspace() {
         </span>
       </div>
       <div className="mt-4 flex-1 space-y-4 overflow-auto text-sm text-slate-600">
-        {chatMessages.map((message, index) => (
-          <div
-            key={`${message.sender}-${index}`}
-            className={`rounded-2xl border px-4 py-3 ${
-              message.sender === "ChatGPT"
-                ? "border-blue-100 bg-blue-50 text-slate-700"
-                : "border-slate-200 bg-white"
-            }`}
-          >
-            <p className="text-xs font-semibold uppercase text-slate-400">
-              {message.sender}
-            </p>
-            <p className="mt-2">{message.text}</p>
-          </div>
-        ))}
+        {stepMessages.map((message, index) => {
+          const isAssistant = index % 2 === 1;
+          return (
+            <div
+              key={`${activeStep.id}-${index}`}
+              className={`rounded-2xl border px-4 py-3 ${
+                isAssistant
+                  ? "border-blue-100 bg-blue-50 text-slate-700"
+                  : "border-slate-200 bg-white"
+              }`}
+            >
+              <p className="text-xs font-semibold uppercase text-slate-400">
+                {isAssistant ? "ChatGPT" : "Planner"}
+              </p>
+              <p className="mt-2">{message}</p>
+            </div>
+          );
+        })}
       </div>
       <div className="mt-4 flex items-center gap-2">
         <input
           className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:border-[var(--primary)] focus:outline-none"
           placeholder="Send a prompt to the PPSS assistant..."
+          value={inputValue}
+          onChange={(event) => setInputValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              handleSend();
+            }
+          }}
         />
-        <button className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]">
+        <button
+          className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
+          type="button"
+          onClick={handleSend}
+        >
           Send
         </button>
       </div>
+      <button
+        className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
+        type="button"
+        onClick={handleCompleteStep}
+      >
+        단계 종료
+      </button>
     </div>
   );
+  };
 
   return (
     <AppShell>
@@ -131,6 +220,12 @@ export default function Workspace() {
               </button>
             );
           })}
+        </div>
+        <div className="mt-5 h-2 w-full rounded-full bg-slate-100">
+          <div
+            className="h-full rounded-full bg-[var(--primary)] transition-all"
+            style={{ width: `${progressValue}%` }}
+          />
         </div>
       </section>
 
@@ -270,6 +365,13 @@ export default function Workspace() {
                 </div>
               ))}
             </div>
+            <button
+              className="mt-6 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
+              type="button"
+              onClick={handleCompleteStep}
+            >
+              Stage Complete
+            </button>
           </div>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">Evidence &amp; statistics</h3>
