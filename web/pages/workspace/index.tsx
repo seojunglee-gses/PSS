@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { sendEvaluationResult } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
@@ -104,12 +104,15 @@ export default function Workspace() {
   const [inputValue, setInputValue] = useState("");
   const [role, setRole] = useState("Guest");
   const [activeProvider, setActiveProvider] = useState("ChatGPT");
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedAlternative, setSelectedAlternative] = useState<string | null>(
     null
   );
   const [showSiteImageWarning, setShowSiteImageWarning] = useState(false);
   const [showSubmitNotice, setShowSubmitNotice] = useState<null | string>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
   const [alternativeImages, setAlternativeImages] = useState<DesignImage[]>([]);
   const [evaluationImages, setEvaluationImages] = useState<DesignImage[]>(
@@ -197,6 +200,27 @@ export default function Workspace() {
         setSiteImageConfigured(parsed.length > 0);
       } catch {
         setSiteImageConfigured(false);
+      }
+    }
+    const storedSettings = window.localStorage.getItem(
+      "ppss-provider-settings"
+    );
+    if (storedSettings) {
+      try {
+        const parsed = JSON.parse(storedSettings) as Record<
+          string,
+          { key?: string }
+        >;
+        const mappedKeys = Object.keys(parsed).reduce<Record<string, string>>(
+          (acc, provider) => {
+            acc[provider] = parsed[provider]?.key ?? "";
+            return acc;
+          },
+          {}
+        );
+        setProviderKeys(mappedKeys);
+      } catch {
+        setProviderKeys({});
       }
     }
   }, []);
@@ -317,6 +341,13 @@ export default function Workspace() {
       setShowSiteImageWarning(true);
       return;
     }
+    const providerKey = providerKeys[activeProvider];
+    if (!providerKey) {
+      setErrorMessage(
+        `${activeProvider} is not connected. Please add a valid API key in Settings.`
+      );
+      return;
+    }
     const stepId = activeStep.id;
     const reply = assistantReplies[stepId] ?? "Acknowledged. Processing...";
     setMessages((prev) => ({
@@ -413,6 +444,12 @@ export default function Workspace() {
     await sendEvaluationResult(payload);
     setShowSubmitNotice("Your rankings have been submitted.");
   };
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, activeStep.id]);
 
   const aggregatedResults = useMemo(() => {
     if (!evaluationResults.length) {
@@ -516,7 +553,7 @@ export default function Workspace() {
           <h3 className="mt-2 text-lg font-semibold">API conversation</h3>
         </div>
         <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[var(--primary)]">
-          Connected
+          Active AI provider: {activeProvider}
         </span>
       </div>
       <div className="mt-4 max-h-[420px] flex-1 space-y-4 overflow-auto text-sm text-slate-600">
@@ -549,6 +586,7 @@ export default function Workspace() {
             </div>
           );
         })}
+        <div ref={chatEndRef} />
       </div>
       <div className="mt-4 flex items-center gap-2">
         <input
@@ -571,6 +609,11 @@ export default function Workspace() {
           Send
         </button>
       </div>
+      {errorMessage && (
+        <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-600">
+          {errorMessage}
+        </div>
+      )}
       <button
         className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
         type="button"
