@@ -58,7 +58,7 @@ const evaluationStorageImagesKey = "ppss-shared-evaluation-images";
 const defaultEvaluationImages = Array.from({ length: 7 }, (_, index) => ({
   id: `concept-${index + 1}`,
   label: `Concept ${index + 1}`,
-  note:"",
+  note: "",
 }));
 const alternativeImageStorageKey = "ppss-alternative-images";
 const siteImageStorageKey = "ppss-site-image";
