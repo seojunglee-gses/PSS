@@ -42,7 +42,7 @@ export default async function handler(
             role: "system",
             content: [
               {
-                type: "text",
+                type: "input_text",
                 text:
                   "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.",
               },
@@ -52,7 +52,7 @@ export default async function handler(
             role: "user",
             content: [
               {
-                type: "text",
+                type: "input_text",
                 text: `Stage: ${stepId ?? "unknown"}\nUser: ${message}`,
               },
             ],
