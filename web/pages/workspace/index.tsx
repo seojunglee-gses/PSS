@@ -77,12 +77,19 @@ type DesignImage = {
   note: string;
 };
 
+const chatModel = "GPT-5 mini";
+const imageModel = "GPT-image-1-mini";
+
 const assistantReplies: Record<string, string> = {
-  problem: "Captured scope and constraints. Ready to outline objectives.",
-  data: "Analyzing historical metrics and highlighting key deviations.",
-  alternatives: "Generating alternative sequences with revised tooling.",
-  evaluation: "Reviewing evidence images and summarizing risks.",
-  report: "Drafting decision report highlights and compliance notes.",
+  problem:
+    "Thanks for the scope. I will translate the constraints into PPSS objectives and risks.",
+  data: "I am reviewing the data patterns and key variances for the workflow.",
+  alternatives:
+    "I am generating new alternatives based on your feedback and site context.",
+  evaluation:
+    "I am evaluating the evidence images and summarizing the risk signals.",
+  report:
+    "I am drafting the decision report highlights and compliance summary.",
 };
 
 const roleDescriptions: Record<string, string> = {
@@ -348,6 +355,7 @@ export default function Workspace() {
       );
       return;
     }
+    setErrorMessage(null);
     const stepId = activeStep.id;
     const reply = assistantReplies[stepId] ?? "Acknowledged. Processing...";
     setMessages((prev) => ({
@@ -370,7 +378,7 @@ export default function Workspace() {
       const nextImage: DesignImage = {
         id: `alt-${Date.now()}`,
         label: `Generated Concept ${alternativeImages.length + 1}`,
-        note: "Generated from the latest feedback request.",
+        note: `Generated with ${imageModel} from the latest feedback request.`,
       };
       setAlternativeImages((prev) => [...prev, nextImage]);
     }
@@ -551,6 +559,9 @@ export default function Workspace() {
             {activeProvider}
           </p>
           <h3 className="mt-2 text-lg font-semibold">API conversation</h3>
+          <p className="mt-2 text-xs text-slate-500">
+            Chat model: {chatModel} · Image model: {imageModel}
+          </p>
         </div>
         <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[var(--primary)]">
           Active AI provider: {activeProvider}
