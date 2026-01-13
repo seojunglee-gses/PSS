@@ -5,13 +5,13 @@ import { useAuth } from "../../lib/auth";
 const workflowSteps = [
   "Problem Definition",
   "Data Analysis",
-  "Design Alternatives",
-  "Design Evaluation",
-  "Decision",
+  "Design/Plan Alternatives",
+  "Design/Plan Evaluation",
+  "Design/Plan Decision",
 ];
 
-const stepIds = ["problem", "data", "alternatives", "evaluation", "report"];
 const chatLogStorageKey = "ppss-chat-logs";
+const stepIds = ["problem", "data", "alternatives", "evaluation", "report"];
 const sharedSummariesKey = "ppss-shared-summaries";
 
 type ChatLog = {
