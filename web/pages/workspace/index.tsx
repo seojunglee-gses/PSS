@@ -733,40 +733,31 @@ export default function Workspace() {
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
               <h3 className="text-lg font-semibold">Data Analysis</h3>
               <p className="mt-2 text-sm text-slate-500">
-                Review historical metrics, inspection data, and resource inputs.
+                Review reference cases with clear, horizontal tab navigation.
               </p>
-            </div>
-            <div className="flex gap-2 bg-[var(--primary)] px-6 py-3">
-              {[
-                { label: "Project Description", value: "Case study", index: 1 },
-                { label: "Data Analysis", value: "Quality metrics", index: 2 },
-                { label: "Resource Map", value: "Resource map", index: 3 },
-              ].map((tab) => {
-                const isActive = tab.value === activeTab;
-                return (
-                  <button
-                    key={tab.value}
-                    className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
-                      isActive
-                        ? "bg-white text-[var(--primary)]"
-                        : "bg-white/15 text-white"
-                    }`}
-                    type="button"
-                    onClick={() => setActiveTab(tab.value)}
-                  >
-                    <span
-                      className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] ${
+              <div className="mt-4 flex flex-wrap gap-2">
+                {[
+                  { label: "Case Study A", value: "Case study" },
+                  { label: "Case Study B", value: "Quality metrics" },
+                  { label: "Case Study C", value: "Resource map" },
+                ].map((tab) => {
+                  const isActive = tab.value === activeTab;
+                  return (
+                    <button
+                      key={tab.value}
+                      className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
                         isActive
                           ? "bg-[var(--primary)] text-white"
-                          : "bg-white text-[var(--primary)]"
+                          : "border border-slate-200 bg-white text-slate-600 hover:border-[var(--primary)]"
                       }`}
+                      type="button"
+                      onClick={() => setActiveTab(tab.value)}
                     >
-                      {tab.index}
-                    </span>
-                    {tab.label}
-                  </button>
-                );
-              })}
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div className="p-6">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
