@@ -1,34 +1,18 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-type ChatRequest = {
-  apiKey?: string;
-  provider?: string;
-  model?: string;
-  stepId?: string;
-  message?: string;
+export const config = {
+  runtime: "nodejs",
 };
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
-  }
-
-  const { apiKey, model, message, stepId } = req.body as ChatRequest;
-  if (!apiKey) {
-    res.status(400).json({ error: "API key is missing." });
-    return;
-  }
-
-  if (!message) {
-    res.status(400).json({ error: "Message is required." });
-    return;
-  }
-
   try {
+    const { apiKey, message } = req.body;
+
+    console.log("➡️ Sending request to OpenAI");
+
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -36,48 +20,27 @@ export default async function handler(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: model || "gpt-4.1-mini",
-        input: [
-          {
-            role: "system",
-            content:
-              "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.",
-          },
-          {
-            role: "user",
-            content: `Stage: ${stepId ?? "unknown"}\nUser: ${message}`,
-          },
-        ],
+        model: "gpt-4.1-mini",
+        input: "Reply with exactly: API IS WORKING",
       }),
     });
 
-  if (!response.ok) {
-    const text = await response.text();
-    console.error("OPENAI ERROR RAW:", text);
-  
-    res.status(500).json({
-      error: "OpenAI request failed",
-      detail: text,
-    });
-    return;
-  }
-  console.log("OPENAI RAW RESPONSE:", JSON.stringify(result, null, 2));
+    console.log("⬅️ OpenAI responded");
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("OPENAI ERROR:", text);
+      return res.status(500).json({ error: text });
+    }
 
     const result = await response.json();
-    const content = result.output_text;
-    if (!content) {
-      console.error("RAW RESULT:", JSON.stringify(result, null, 2));
-      res.status(500).json({ error: "No reply returned." });
-      return;
-}
+    console.log("OPENAI RESULT:", result);
 
-
-    res.status(200).json({ reply: content });
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Unexpected error.",
+    return res.status(200).json({
+      reply: result.output_text,
     });
+  } catch (e) {
+    console.error("SERVER ERROR:", e);
+    return res.status(500).json({ error: "Server crashed" });
   }
-
-
 }
