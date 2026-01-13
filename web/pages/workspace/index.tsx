@@ -59,6 +59,7 @@ const defaultEvaluationImages = Array.from({ length: 7 }, (_, index) => ({
   label: `Concept ${index + 1}`,
 }));
 const alternativeImageStorageKey = "ppss-alternative-images";
+const siteImageStorageKey = "ppss-site-image";
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 const providerStorageKey = "ppss-active-provider";
 
@@ -105,6 +106,8 @@ export default function Workspace() {
   const [selectedAlternative, setSelectedAlternative] = useState<string | null>(
     null
   );
+  const [showSiteImageWarning, setShowSiteImageWarning] = useState(false);
+  const [siteImageConfigured, setSiteImageConfigured] = useState(false);
   const [alternativeImages, setAlternativeImages] = useState<DesignImage[]>([]);
   const [evaluationImages, setEvaluationImages] = useState<DesignImage[]>(
     defaultEvaluationImages
@@ -183,6 +186,15 @@ export default function Workspace() {
     const storedProvider = window.localStorage.getItem(providerStorageKey);
     if (storedProvider) {
       setActiveProvider(storedProvider);
+    }
+    const storedSiteImages = window.localStorage.getItem(siteImageStorageKey);
+    if (storedSiteImages) {
+      try {
+        const parsed = JSON.parse(storedSiteImages) as Array<{ name: string }>;
+        setSiteImageConfigured(parsed.length > 0);
+      } catch {
+        setSiteImageConfigured(false);
+      }
     }
   }, []);
 
@@ -279,6 +291,10 @@ export default function Workspace() {
 
   const handleSend = () => {
     if (!inputValue.trim()) {
+      return;
+    }
+    if (!siteImageConfigured) {
+      setShowSiteImageWarning(true);
       return;
     }
     const stepId = activeStep.id;
@@ -398,6 +414,9 @@ export default function Workspace() {
       return;
     }
     if (!combinedDialogueSummary) {
+      return;
+    }
+    if (!siteImageConfigured) {
       return;
     }
     const seeded = [
@@ -873,6 +892,26 @@ export default function Workspace() {
             <p className="mt-4 text-sm text-slate-500">
               Inspect the design concept in detail before assigning a ranking.
             </p>
+          </div>
+        </div>
+      )}
+      {showSiteImageWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">
+              Site image not configured
+            </h3>
+            <p className="mt-3 text-sm text-slate-500">
+              The admin must upload the current site image in Settings before
+              the workspace chatbot can generate responses.
+            </p>
+            <button
+              className="mt-6 w-full rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
+              type="button"
+              onClick={() => setShowSiteImageWarning(false)}
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
