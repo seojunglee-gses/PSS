@@ -79,17 +79,7 @@ type DesignImage = {
 
 const imageModel = "GPT-image-1-mini";
 
-const assistantReplies: Record<string, string> = {
-  problem:
-    "Thanks for the scope. I will translate the constraints into PPSS objectives and risks.",
-  data: "I am reviewing the data patterns and key variances for the workflow.",
-  alternatives:
-    "I am generating new alternatives based on your feedback and site context.",
-  evaluation:
-    "I am evaluating the evidence images and summarizing the risk signals.",
-  report:
-    "I am drafting the decision report highlights and compliance summary.",
-};
+const chatModel = "gpt-5-mini";
 
 const roleDescriptions: Record<string, string> = {
   "The Public":
@@ -111,6 +101,7 @@ export default function Workspace() {
   const [role, setRole] = useState("Guest");
   const [activeProvider, setActiveProvider] = useState("ChatGPT");
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
+  const [isSending, setIsSending] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedAlternative, setSelectedAlternative] = useState<string | null>(
     null
@@ -360,7 +351,7 @@ export default function Workspace() {
     return Math.round((index / (steps.length - 1)) * 100);
   }, [activeStep.id]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputValue.trim()) {
       return;
     }
@@ -377,10 +368,11 @@ export default function Workspace() {
     }
     setErrorMessage(null);
     const stepId = activeStep.id;
-    const reply = assistantReplies[stepId] ?? "Acknowledged. Processing...";
+    const userMessage = inputValue.trim();
+    setIsSending(true);
     setMessages((prev) => ({
       ...prev,
-      [stepId]: [...prev[stepId], inputValue.trim(), reply],
+      [stepId]: [...prev[stepId], userMessage],
     }));
     setChatLogs((prev) => [
       ...prev,
@@ -388,19 +380,54 @@ export default function Workspace() {
         stepId,
         provider: activeProvider,
         sender: "Planner",
-        text: inputValue.trim(),
+        text: userMessage,
       },
-      { stepId, provider: activeProvider, sender: "ChatGPT", text: reply },
     ]);
     setInputValue("");
 
-    if (stepId === "alternatives") {
-      const nextImage: DesignImage = {
-        id: `alt-${Date.now()}`,
-        label: `Generated Concept ${alternativeImages.length + 1}`,
-        note: `Generated with ${imageModel} from the latest feedback request.`,
-      };
-      setAlternativeImages((prev) => [...prev, nextImage]);
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: providerKey,
+          provider: activeProvider,
+          model: chatModel,
+          stepId,
+          message: userMessage,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Chat request failed.");
+      }
+      const payload = (await response.json()) as { reply: string };
+      const reply = payload.reply;
+      setMessages((prev) => ({
+        ...prev,
+        [stepId]: [...prev[stepId], reply],
+      }));
+      setChatLogs((prev) => [
+        ...prev,
+        { stepId, provider: activeProvider, sender: "ChatGPT", text: reply },
+      ]);
+
+      if (stepId === "alternatives") {
+        const nextImage: DesignImage = {
+          id: `alt-${Date.now()}`,
+          label: `Generated Concept ${alternativeImages.length + 1}`,
+          note: `Generated with ${imageModel} from the latest feedback request.`,
+        };
+        setAlternativeImages((prev) => [...prev, nextImage]);
+      }
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to connect to the LLM API."
+      );
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -634,8 +661,9 @@ export default function Workspace() {
           className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
           type="button"
           onClick={handleSend}
+          disabled={isSending}
         >
-          Send
+          {isSending ? "Sending..." : "Send"}
         </button>
       </div>
       {errorMessage && (
