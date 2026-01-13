@@ -77,7 +77,6 @@ type DesignImage = {
   note: string;
 };
 
-const chatModel = "GPT-5 mini";
 const imageModel = "GPT-image-1-mini";
 
 const assistantReplies: Record<string, string> = {
@@ -147,6 +146,33 @@ export default function Workspace() {
     Record<string, string>
   >({});
 
+  const loadProviderKeys = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const storedSettings = window.localStorage.getItem(
+      "ppss-provider-settings"
+    );
+    if (storedSettings) {
+      try {
+        const parsed = JSON.parse(storedSettings) as Record<
+          string,
+          { key?: string }
+        >;
+        const mappedKeys = Object.keys(parsed).reduce<Record<string, string>>(
+          (acc, provider) => {
+            acc[provider] = parsed[provider]?.key ?? "";
+            return acc;
+          },
+          {}
+        );
+        setProviderKeys(mappedKeys);
+      } catch {
+        setProviderKeys({});
+      }
+    }
+  };
+
   useEffect(() => {
     if (!loading && !user) {
       router.push("/");
@@ -209,28 +235,22 @@ export default function Workspace() {
         setSiteImageConfigured(false);
       }
     }
-    const storedSettings = window.localStorage.getItem(
-      "ppss-provider-settings"
-    );
-    if (storedSettings) {
-      try {
-        const parsed = JSON.parse(storedSettings) as Record<
-          string,
-          { key?: string }
-        >;
-        const mappedKeys = Object.keys(parsed).reduce<Record<string, string>>(
-          (acc, provider) => {
-            acc[provider] = parsed[provider]?.key ?? "";
-            return acc;
-          },
-          {}
-        );
-        setProviderKeys(mappedKeys);
-      } catch {
-        setProviderKeys({});
-      }
-    }
+    loadProviderKeys();
   }, []);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === "ppss-provider-settings") {
+        loadProviderKeys();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
+  useEffect(() => {
+    loadProviderKeys();
+  }, [activeProvider]);
 
   useEffect(() => {
     if (!user) {
@@ -560,12 +580,9 @@ export default function Workspace() {
             {activeProvider}
           </p>
           <h3 className="mt-2 text-lg font-semibold">API conversation</h3>
-          <p className="mt-2 text-xs text-slate-500">
-            Chat model: {chatModel} · Image model: {imageModel}
-          </p>
         </div>
         <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[var(--primary)]">
-          Active AI provider: {activeProvider}
+          {activeProvider}
         </span>
       </div>
       <div className="mt-4 max-h-[420px] flex-1 space-y-4 overflow-auto text-sm text-slate-600">
