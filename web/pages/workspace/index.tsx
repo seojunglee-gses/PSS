@@ -629,11 +629,11 @@ export default function Workspace() {
           return (
             <div
               key={`${activeStep.id}-${index}`}
-              className={`rounded-2xl border px-4 py-3 ${
+              className={`max-w-[85%] rounded-2xl border px-4 py-3 ${
                 isAssistant
                   ? "border-blue-100 bg-blue-50 text-slate-700"
                   : "border-slate-200 bg-white"
-              }`}
+              } ${isAssistant ? "mr-auto" : "ml-auto"}`}
             >
               <p className="text-xs font-semibold uppercase text-slate-400">
                 {isAssistant ? "ChatGPT" : "Planner"}

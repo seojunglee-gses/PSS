@@ -18,8 +18,7 @@ export default async function handler(
   }
 
   const { apiKey, model, message, stepId } = req.body as ChatRequest;
-  const key = apiKey || process.env.OPENAI_API_KEY;
-  if (!key) {
+  if (!apiKey) {
     res.status(400).json({ error: "API key is missing." });
     return;
   }
@@ -34,7 +33,7 @@ export default async function handler(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: model || "gpt-5-mini",
@@ -42,7 +41,7 @@ export default async function handler(
           {
             role: "system",
             content:
-              "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage.",
+              "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.",
           },
           {
             role: "user",
