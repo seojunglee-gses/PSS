@@ -9,9 +9,12 @@ export default async function handler(
   res: NextApiResponse
 ) {
   try {
-    const { apiKey, message } = req.body;
+    console.log("🔥 CHAT API HIT 🔥");
 
-    console.log("➡️ Sending request to OpenAI");
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "Missing server API key" });
+    }
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -24,8 +27,6 @@ export default async function handler(
         input: "Reply with exactly: API IS WORKING",
       }),
     });
-
-    console.log("⬅️ OpenAI responded");
 
     if (!response.ok) {
       const text = await response.text();
