@@ -729,58 +729,78 @@ export default function Workspace() {
 
       {activeStep.id === "data" && (
         <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Data Analysis</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              Review historical metrics, inspection data, and resource inputs.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              {["Case study", "Quality metrics", "Resource map"].map((tab) => {
-                const isActive = tab === activeTab;
+          <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
+            <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
+              <h3 className="text-lg font-semibold">Data Analysis</h3>
+              <p className="mt-2 text-sm text-slate-500">
+                Review historical metrics, inspection data, and resource inputs.
+              </p>
+            </div>
+            <div className="flex gap-2 bg-[var(--primary)] px-6 py-3">
+              {[
+                { label: "Project Description", value: "Case study", index: 1 },
+                { label: "Data Analysis", value: "Quality metrics", index: 2 },
+                { label: "Resource Map", value: "Resource map", index: 3 },
+              ].map((tab) => {
+                const isActive = tab.value === activeTab;
                 return (
                   <button
-                    key={tab}
-                    className={`rounded-full px-4 py-2 text-xs font-semibold ${
+                    key={tab.value}
+                    className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
                       isActive
-                        ? "bg-[var(--primary)] text-white"
-                        : "border border-slate-200 bg-slate-50 text-slate-500"
+                        ? "bg-white text-[var(--primary)]"
+                        : "bg-white/15 text-white"
                     }`}
                     type="button"
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => setActiveTab(tab.value)}
                   >
-                    {tab}
+                    <span
+                      className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] ${
+                        isActive
+                          ? "bg-[var(--primary)] text-white"
+                          : "bg-white text-[var(--primary)]"
+                      }`}
+                    >
+                      {tab.index}
+                    </span>
+                    {tab.label}
                   </button>
                 );
               })}
             </div>
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="h-48 rounded-2xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
-              <div className="mt-4 space-y-2 text-sm text-slate-600">
-                {activeTab === "Case study" && (
-                  <>
-                    <p>
-                      Site profile imagery and baseline narrative for the
-                      reference case study.
-                    </p>
-                    <p>
-                      Highlights of usage patterns and stakeholder feedback.
-                    </p>
-                  </>
-                )}
-                {activeTab === "Quality metrics" && (
-                  <>
-                    <p>
-                      Control charts for critical dimensions and defect rates.
-                    </p>
-                    <p>Variance snapshots for tooling accuracy.</p>
-                  </>
-                )}
-                {activeTab === "Resource map" && (
-                  <>
-                    <p>Resource allocation visuals for tooling and staffing.</p>
-                    <p>Material flow and staging layout notes.</p>
-                  </>
-                )}
+            <div className="p-6">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="h-48 rounded-2xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
+                <div className="mt-4 space-y-2 text-sm text-slate-600">
+                  {activeTab === "Case study" && (
+                    <>
+                      <p>
+                        Site profile imagery and baseline narrative for the
+                        reference case study.
+                      </p>
+                      <p>
+                        Highlights of usage patterns and stakeholder feedback.
+                      </p>
+                    </>
+                  )}
+                  {activeTab === "Quality metrics" && (
+                    <>
+                      <p>
+                        Control charts for critical dimensions and defect
+                        rates.
+                      </p>
+                      <p>Variance snapshots for tooling accuracy.</p>
+                    </>
+                  )}
+                  {activeTab === "Resource map" && (
+                    <>
+                      <p>
+                        Resource allocation visuals for tooling and staffing.
+                      </p>
+                      <p>Material flow and staging layout notes.</p>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>
