@@ -53,13 +53,14 @@ const stepSummaries: Record<string, string> = {
 const storageKey = "ppss-workspace-summaries";
 const evaluationStorageKey = "ppss-evaluation-results";
 const chatLogStorageKey = "ppss-chat-logs";
-const evaluationStorageImagesKey = "ppss-evaluation-images";
+const evaluationStorageImagesKey = "ppss-shared-evaluation-images";
 const defaultEvaluationImages = Array.from({ length: 7 }, (_, index) => ({
   id: `concept-${index + 1}`,
   label: `Concept ${index + 1}`,
 }));
 const alternativeImageStorageKey = "ppss-alternative-images";
 const siteImageStorageKey = "ppss-site-image";
+const sharedSummariesKey = "ppss-shared-summaries";
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 const providerStorageKey = "ppss-active-provider";
 
@@ -97,6 +98,7 @@ const roleDescriptions: Record<string, string> = {
 export default function Workspace() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const userKey = user?.uid ?? "anonymous";
   const [activeStep, setActiveStep] = useState(steps[0]);
   const [activeTab, setActiveTab] = useState("Process log");
   const [inputValue, setInputValue] = useState("");
@@ -199,10 +201,15 @@ export default function Workspace() {
   }, []);
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
     if (typeof window === "undefined") {
       return;
     }
-    const storedLogs = window.localStorage.getItem(chatLogStorageKey);
+    const storedLogs = window.localStorage.getItem(
+      `${chatLogStorageKey}-${userKey}`
+    );
     if (storedLogs) {
       try {
         const parsed = JSON.parse(storedLogs) as ChatLog[];
@@ -223,14 +230,17 @@ export default function Workspace() {
         setChatLogs([]);
       }
     }
-  }, []);
+  }, [user, userKey]);
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
     if (typeof window === "undefined") {
       return;
     }
     const storedAlternatives = window.localStorage.getItem(
-      alternativeImageStorageKey
+      `${alternativeImageStorageKey}-${userKey}`
     );
     if (storedAlternatives) {
       try {
@@ -252,24 +262,33 @@ export default function Workspace() {
         setEvaluationImages(defaultEvaluationImages);
       }
     }
-  }, []);
+  }, [user, userKey]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (!user) {
       return;
     }
-    window.localStorage.setItem(chatLogStorageKey, JSON.stringify(chatLogs));
-  }, [chatLogs]);
-
-  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
     window.localStorage.setItem(
-      alternativeImageStorageKey,
+      `${chatLogStorageKey}-${userKey}`,
+      JSON.stringify(chatLogs)
+    );
+  }, [chatLogs, user, userKey]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      `${alternativeImageStorageKey}-${userKey}`,
       JSON.stringify(alternativeImages)
     );
-  }, [alternativeImages]);
+  }, [alternativeImages, user, userKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -330,6 +349,20 @@ export default function Workspace() {
       ...prev,
       [activeStep.id]: stepSummaries[activeStep.id],
     }));
+    if (typeof window !== "undefined") {
+      const entry = {
+        stepId: activeStep.id,
+        summary: stepSummaries[activeStep.id],
+        userId: userKey,
+        submittedAt: new Date().toISOString(),
+      };
+      const stored = window.localStorage.getItem(sharedSummariesKey);
+      const parsed = stored ? (JSON.parse(stored) as typeof entry[]) : [];
+      window.localStorage.setItem(
+        sharedSummariesKey,
+        JSON.stringify([...parsed, entry])
+      );
+    }
   };
 
   const handleRankingChange = (imageId: string, value: string) => {
@@ -432,7 +465,12 @@ export default function Workspace() {
       },
     ];
     setAlternativeImages(seeded);
-  }, [activeStep.id, alternativeImages.length, combinedDialogueSummary]);
+  }, [
+    activeStep.id,
+    alternativeImages.length,
+    combinedDialogueSummary,
+    siteImageConfigured,
+  ]);
 
   const topPreference = useMemo(() => {
     const ranked = aggregatedResults.filter((result) => result.average > 0);

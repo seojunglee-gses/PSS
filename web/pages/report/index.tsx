@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
+import { useAuth } from "../../lib/auth";
 
 const workflowSteps = [
   "Problem Definition",
@@ -11,6 +12,7 @@ const workflowSteps = [
 
 const chatLogStorageKey = "ppss-chat-logs";
 const stepIds = ["problem", "data", "alternatives", "evaluation", "report"];
+const sharedSummariesKey = "ppss-shared-summaries";
 
 type ChatLog = {
   stepId: string;
@@ -19,15 +21,30 @@ type ChatLog = {
   text: string;
 };
 
+type SharedSummary = {
+  stepId: string;
+  summary: string;
+  userId: string;
+  submittedAt: string;
+};
+
 export default function Report() {
+  const { user } = useAuth();
+  const userKey = user?.uid ?? "anonymous";
   const [activeStep, setActiveStep] = useState(workflowSteps[0]);
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
+  const [sharedSummaries, setSharedSummaries] = useState<SharedSummary[]>([]);
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
     if (typeof window === "undefined") {
       return;
     }
-    const stored = window.localStorage.getItem(chatLogStorageKey);
+    const stored = window.localStorage.getItem(
+      `${chatLogStorageKey}-${userKey}`
+    );
     if (stored) {
       try {
         setChatLogs(JSON.parse(stored));
@@ -35,7 +52,15 @@ export default function Report() {
         setChatLogs([]);
       }
     }
-  }, []);
+    const shared = window.localStorage.getItem(sharedSummariesKey);
+    if (shared) {
+      try {
+        setSharedSummaries(JSON.parse(shared));
+      } catch {
+        setSharedSummaries([]);
+      }
+    }
+  }, [user, userKey]);
 
   const summaryEntries = useMemo(
     () =>
@@ -56,6 +81,10 @@ export default function Report() {
   );
 
   const combinedSummary = chatLogs.map((log) => log.text).join(" ");
+
+  const combinedSharedSummary = sharedSummaries
+    .map((entry) => entry.summary)
+    .join(" ");
 
   return (
     <AppShell>
@@ -123,12 +152,11 @@ export default function Report() {
       <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
         <h3 className="text-lg font-semibold">Workspace Dialogue Summaries</h3>
         <p className="mt-2 text-sm text-slate-500">
-          Consolidated narrative derived from the ChatGPT conversations across
-          all workflow steps.
+          Consolidated narrative derived from your workspace conversations.
         </p>
         <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-slate-700">
           <p className="text-xs font-semibold uppercase text-blue-400">
-            Overall summary
+            Your overall summary
           </p>
           <p className="mt-3">
             {combinedSummary.trim()
@@ -148,6 +176,16 @@ export default function Report() {
               <p className="mt-2 text-sm text-slate-600">{entry.summary}</p>
             </div>
           ))}
+        </div>
+        <div className="mt-8 rounded-2xl border border-slate-200 bg-white px-5 py-4">
+          <p className="text-xs font-semibold uppercase text-slate-400">
+            Shared report summary
+          </p>
+          <p className="mt-3 text-sm text-slate-600">
+            {combinedSharedSummary.trim()
+              ? combinedSharedSummary
+              : "No shared summaries have been submitted yet."}
+          </p>
         </div>
       </section>
     </AppShell>
