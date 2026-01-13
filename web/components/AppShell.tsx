@@ -125,7 +125,7 @@ export default function AppShell({ children }: AppShellProps) {
               PPSS Platform
             </p>
             <h1 className="mt-2 text-2xl font-semibold leading-tight">
-              ChatGPT-assisted
+              AI-assisted
               <span className="block text-blue-200">PPSS</span>
             </h1>
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-blue-100">
