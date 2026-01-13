@@ -2,7 +2,9 @@ import {
   type User,
   getAuth,
   onAuthStateChanged,
+  signInWithPopup,
   signInWithEmailAndPassword,
+  GoogleAuthProvider,
   signOut,
 } from "firebase/auth";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
@@ -41,6 +43,7 @@ interface AuthContextValue {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOutUser: () => Promise<void>;
   isConfigured: boolean;
 }
@@ -75,6 +78,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           throw new Error("Firebase is not configured.");
         }
         await signInWithEmailAndPassword(auth, email, password);
+      },
+      signInWithGoogle: async () => {
+        const auth = getFirebaseAuth();
+        if (!auth) {
+          throw new Error("Firebase is not configured.");
+        }
+        const provider = new GoogleAuthProvider();
+        await signInWithPopup(auth, provider);
       },
       signOutUser: async () => {
         const auth = getFirebaseAuth();

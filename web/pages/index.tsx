@@ -101,7 +101,7 @@ const roles = [
 
 export default function Home() {
   const router = useRouter();
-  const { signIn, isConfigured, user } = useAuth();
+  const { signIn, signInWithGoogle, isConfigured, user } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -133,6 +133,28 @@ export default function Home() {
         error instanceof Error
           ? error.message
           : "Unable to sign in. Please try again."
+      );
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    setErrorMessage("");
+    if (!selectedRole) {
+      setErrorMessage("Select a role before signing up.");
+      return;
+    }
+    try {
+      await signInWithGoogle();
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("ppss-role", selectedRole);
+      }
+      setShowLogin(false);
+      router.push("/workspace");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Google sign up failed. Please try again."
       );
     }
   };
@@ -246,6 +268,15 @@ export default function Home() {
                 disabled={!isConfigured}
               >
                 Continue to Workspace
+              </button>
+              <div className="text-center text-xs text-slate-400">or</div>
+              <button
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                type="button"
+                onClick={handleGoogleSignUp}
+                disabled={!isConfigured}
+              >
+                Sign up with Google
               </button>
             </form>
           </div>
