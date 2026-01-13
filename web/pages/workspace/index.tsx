@@ -579,6 +579,8 @@ export default function Workspace() {
         )}
         {stepMessages.map((message, index) => {
           const isAssistant = index % 2 === 1;
+          const assistantLabel = `${activeProvider} Assistant`;
+          const userLabel = role;
           return (
             <div
               key={`${activeStep.id}-${index}`}
@@ -589,7 +591,7 @@ export default function Workspace() {
               } ${isAssistant ? "mr-auto" : "ml-auto"}`}
             >
               <p className="text-xs font-semibold uppercase text-slate-400">
-                {isAssistant ? "ChatGPT" : "Planner"}
+                {isAssistant ? assistantLabel : userLabel}
               </p>
               <p className="mt-2">{message}</p>
             </div>
