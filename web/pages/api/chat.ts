@@ -36,7 +36,7 @@ export default async function handler(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: model || "gpt-5-mini",
+        model: model || "gpt-4.1-mini",
         input: [
           {
             role: "system",
@@ -60,11 +60,13 @@ export default async function handler(
     }
 
     const result = await response.json();
-    const content = result?.output?.[0]?.content?.[0]?.text;
+    const content = result.output_text;
     if (!content) {
+      console.error("RAW RESULT:", JSON.stringify(result, null, 2));
       res.status(500).json({ error: "No reply returned." });
       return;
-    }
+}
+
 
     res.status(200).json({ reply: content });
   } catch (error) {
@@ -72,4 +74,6 @@ export default async function handler(
       error: error instanceof Error ? error.message : "Unexpected error.",
     });
   }
+  console.log("OPENAI RAW RESPONSE:", JSON.stringify(result, null, 2));
+
 }
