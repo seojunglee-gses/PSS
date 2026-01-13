@@ -6,14 +6,13 @@ const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
 type Provider = (typeof providers)[number];
 
 type ApiState = {
-  key: string;
   files: Array<{ name: string }>;
 };
 
 const defaultState: Record<Provider, ApiState> = {
-  ChatGPT: { key: "", files: [] },
-  Gemini: { key: "", files: [] },
-  DeepSeek: { key: "", files: [] },
+  ChatGPT: { files: [] },
+  Gemini: { files: [] },
+  DeepSeek: { files: [] },
 };
 
 const settingsStorageKey = "ppss-provider-settings";
@@ -77,16 +76,6 @@ export default function Setting() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(providerStorageKey, provider);
     }
-  };
-
-  const handleKeyChange = (provider: Provider, value: string) => {
-    setSettings((prev) => ({
-      ...prev,
-      [provider]: {
-        ...prev[provider],
-        key: value,
-      },
-    }));
   };
 
   const handleFilesChange = (provider: Provider, files: FileList | null) => {
@@ -228,27 +217,17 @@ export default function Setting() {
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1fr]">
-          <div>
-            <label className="text-xs font-semibold uppercase text-slate-500">
-              {activeProvider} API Key
-            </label>
-            <input
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
-              placeholder="sk-..."
-              type="password"
-              value={settings[activeProvider].key}
-              onChange={(event) =>
-                handleKeyChange(activeProvider, event.target.value)
-              }
-            />
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+            <p className="text-xs font-semibold uppercase text-slate-500">
+              Active provider
+            </p>
+            <p className="mt-3 text-sm font-semibold text-slate-700">
+              {activeProvider}
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              The server will use the stored API credentials for this provider.
+            </p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <button
-                className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--primary-dark)]"
-                type="button"
-                onClick={handleSave}
-              >
-                Save key
-              </button>
               <button
                 className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
                 type="button"

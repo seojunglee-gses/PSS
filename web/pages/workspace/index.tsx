@@ -100,7 +100,6 @@ export default function Workspace() {
   const [inputValue, setInputValue] = useState("");
   const [role, setRole] = useState("Guest");
   const [activeProvider, setActiveProvider] = useState("ChatGPT");
-  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({});
   const [isSending, setIsSending] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedAlternative, setSelectedAlternative] = useState<string | null>(
@@ -136,33 +135,6 @@ export default function Workspace() {
   const [savedSummaries, setSavedSummaries] = useState<
     Record<string, string>
   >({});
-
-  const loadProviderKeys = () => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const storedSettings = window.localStorage.getItem(
-      "ppss-provider-settings"
-    );
-    if (storedSettings) {
-      try {
-        const parsed = JSON.parse(storedSettings) as Record<
-          string,
-          { key?: string }
-        >;
-        const mappedKeys = Object.keys(parsed).reduce<Record<string, string>>(
-          (acc, provider) => {
-            acc[provider] = parsed[provider]?.key ?? "";
-            return acc;
-          },
-          {}
-        );
-        setProviderKeys(mappedKeys);
-      } catch {
-        setProviderKeys({});
-      }
-    }
-  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -226,22 +198,7 @@ export default function Workspace() {
         setSiteImageConfigured(false);
       }
     }
-    loadProviderKeys();
   }, []);
-
-  useEffect(() => {
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === "ppss-provider-settings") {
-        loadProviderKeys();
-      }
-    };
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, []);
-
-  useEffect(() => {
-    loadProviderKeys();
-  }, [activeProvider]);
 
   useEffect(() => {
     if (!user) {
@@ -359,13 +316,6 @@ export default function Workspace() {
       setShowSiteImageWarning(true);
       return;
     }
-    const providerKey = providerKeys[activeProvider];
-    if (!providerKey) {
-      setErrorMessage(
-        `${activeProvider} is not connected. Please add a valid API key in Settings.`
-      );
-      return;
-    }
     setErrorMessage(null);
     const stepId = activeStep.id;
     const userMessage = inputValue.trim();
@@ -390,7 +340,6 @@ export default function Workspace() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          apiKey: providerKey,
           provider: activeProvider,
           model: chatModel,
           stepId,

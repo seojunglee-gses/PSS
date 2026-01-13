@@ -1,21 +1,35 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-export const config = {
-  runtime: "nodejs",
+type ChatRequest = {
+  apiKey?: string;
+  provider?: string;
+  model?: string;
+  stepId?: string;
+  message?: string;
 };
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Method not allowed" });
+    return;
+  }
+
+  const { model, message, stepId } = req.body as ChatRequest;
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
+    return;
+  }
+
+  if (!message) {
+    res.status(400).json({ error: "Message is required." });
+    return;
+  }
+
   try {
-    console.log("🔥 CHAT API HIT 🔥");
-
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "Missing server API key" });
-    }
-
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -23,25 +37,40 @@ export default async function handler(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        input: "Reply with exactly: API IS WORKING",
+        model: model || "gpt-5-mini",
+        input: [
+          {
+            role: "system",
+            content:
+              "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.",
+          },
+          {
+            role: "user",
+            content: `Stage: ${stepId ?? "unknown"}\nUser: ${message}`,
+          },
+        ],
       }),
     });
 
     if (!response.ok) {
-      const text = await response.text();
-      console.error("OPENAI ERROR:", text);
-      return res.status(500).json({ error: text });
+      const errorPayload = await response.json().catch(() => ({}));
+      res.status(500).json({
+        error: errorPayload?.error?.message ?? "LLM request failed.",
+      });
+      return;
     }
 
     const result = await response.json();
-    console.log("OPENAI RESULT:", result);
+    const content = result?.output?.[0]?.content?.[0]?.text;
+    if (!content) {
+      res.status(500).json({ error: "No reply returned." });
+      return;
+    }
 
-    return res.status(200).json({
-      reply: result.output_text,
+    res.status(200).json({ reply: content });
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Unexpected error.",
     });
-  } catch (e) {
-    console.error("SERVER ERROR:", e);
-    return res.status(500).json({ error: "Server crashed" });
   }
 }
