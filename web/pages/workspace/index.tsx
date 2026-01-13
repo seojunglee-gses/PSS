@@ -4,6 +4,7 @@ import { sendEvaluationResult } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
 
+
 const steps = [
   {
     id: "problem",
@@ -57,6 +58,7 @@ const evaluationStorageImagesKey = "ppss-shared-evaluation-images";
 const defaultEvaluationImages = Array.from({ length: 7 }, (_, index) => ({
   id: `concept-${index + 1}`,
   label: `Concept ${index + 1}`,
+  note:"",
 }));
 const alternativeImageStorageKey = "ppss-alternative-images";
 const siteImageStorageKey = "ppss-site-image";
@@ -625,7 +627,7 @@ export default function Workspace() {
         type="button"
         onClick={handleCompleteStep}
       >
-        단계 종료
+        Finish Stage
       </button>
     </div>
   );
@@ -916,7 +918,7 @@ export default function Workspace() {
               type="button"
               onClick={handleCompleteStep}
             >
-              단계 종료
+              Finish Stage
             </button>
           </div>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
