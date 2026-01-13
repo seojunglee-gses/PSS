@@ -109,6 +109,7 @@ export default function Workspace() {
     null
   );
   const [showSiteImageWarning, setShowSiteImageWarning] = useState(false);
+  const [showSubmitNotice, setShowSubmitNotice] = useState<null | string>(null);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
   const [alternativeImages, setAlternativeImages] = useState<DesignImage[]>([]);
   const [evaluationImages, setEvaluationImages] = useState<DesignImage[]>(
@@ -394,6 +395,7 @@ export default function Workspace() {
       [selected.id]: Object.keys(prev).length + 1,
     }));
     setSelectedAlternative(null);
+    setShowSubmitNotice("Your selected design has been submitted.");
   };
 
   const handleSubmitRankings = async () => {
@@ -409,6 +411,7 @@ export default function Workspace() {
       return updated;
     });
     await sendEvaluationResult(payload);
+    setShowSubmitNotice("Your rankings have been submitted.");
   };
 
   const aggregatedResults = useMemo(() => {
@@ -947,6 +950,23 @@ export default function Workspace() {
               className="mt-6 w-full rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
               type="button"
               onClick={() => setShowSiteImageWarning(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+      {showSubmitNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">
+              Submission received
+            </h3>
+            <p className="mt-3 text-sm text-slate-500">{showSubmitNotice}</p>
+            <button
+              className="mt-6 w-full rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
+              type="button"
+              onClick={() => setShowSubmitNotice(null)}
             >
               Close
             </button>
