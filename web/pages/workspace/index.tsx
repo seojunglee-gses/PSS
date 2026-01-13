@@ -394,6 +394,7 @@ export default function Workspace() {
         stepId: activeStep.id,
         summary: stepSummaries[activeStep.id],
         userId: userKey,
+        role,
         submittedAt: new Date().toISOString(),
       };
       const stored = window.localStorage.getItem(sharedSummariesKey);

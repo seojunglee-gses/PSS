@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
 
@@ -25,7 +25,25 @@ type SharedSummary = {
   stepId: string;
   summary: string;
   userId: string;
+  role: string;
   submittedAt: string;
+};
+
+type ExecutiveSummary = {
+  keywords: string[];
+  currentStage: string;
+  stageSummaries: {
+    problemDefinition: string;
+    dataAnalysis: string;
+    designAlternatives: string;
+    designEvaluation: string;
+    decision: string;
+  };
+};
+
+type WorkspaceSummary = {
+  stageSummaries: Record<string, string>;
+  overallSummary: string;
 };
 
 export default function Report() {
@@ -34,6 +52,71 @@ export default function Report() {
   const [activeStep, setActiveStep] = useState(workflowSteps[0]);
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
   const [sharedSummaries, setSharedSummaries] = useState<SharedSummary[]>([]);
+  const [executiveSummary, setExecutiveSummary] =
+    useState<ExecutiveSummary | null>(null);
+  const [workspaceSummary, setWorkspaceSummary] =
+    useState<WorkspaceSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const groupedSharedSummaries = useMemo(() => {
+    return sharedSummaries.reduce<Record<string, Record<string, string[]>>>(
+      (acc, entry) => {
+        acc[entry.stepId] = acc[entry.stepId] || {};
+        acc[entry.stepId][entry.role] =
+          acc[entry.stepId][entry.role] || [];
+        acc[entry.stepId][entry.role].push(entry.summary);
+        return acc;
+      },
+      {}
+    );
+  }, [sharedSummaries]);
+
+  const groupedUserLogs = useMemo(() => {
+    return stepIds.reduce<Record<string, string[]>>((acc, stepId) => {
+      acc[stepId] = chatLogs
+        .filter((log) => log.stepId === stepId)
+        .map((log) => log.text);
+      return acc;
+    }, {});
+  }, [chatLogs]);
+
+  const refreshSummaries = useCallback(async () => {
+    if (!user) {
+      return;
+    }
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      const response = await fetch("/api/summaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentStage: activeStep,
+          executiveInput: groupedSharedSummaries,
+          workspaceInput: groupedUserLogs,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Summary generation failed.");
+      }
+      const payload = (await response.json()) as {
+        executiveSummary: ExecutiveSummary;
+        workspaceSummary: WorkspaceSummary;
+      };
+      setExecutiveSummary(payload.executiveSummary);
+      setWorkspaceSummary(payload.workspaceSummary);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to refresh summaries. Check API connectivity."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [user, activeStep, groupedSharedSummaries, groupedUserLogs]);
 
   useEffect(() => {
     if (!user) {
@@ -62,29 +145,11 @@ export default function Report() {
     }
   }, [user, userKey]);
 
-  const summaryEntries = useMemo(
-    () =>
-      workflowSteps.map((step, index) => {
-        const stepId = stepIds[index];
-        const stepMessages = chatLogs
-          .filter((log) => log.stepId === stepId)
-          .map((log) => log.text)
-          .join(" ");
-        return {
-          step,
-          summary:
-            stepMessages ||
-            "No dialogue recorded yet. Continue the workspace chat to generate summaries.",
-        };
-      }),
-    [chatLogs]
-  );
-
-  const combinedSummary = chatLogs.map((log) => log.text).join(" ");
-
-  const combinedSharedSummary = sharedSummaries
-    .map((entry) => entry.summary)
-    .join(" ");
+  useEffect(() => {
+    if (user) {
+      refreshSummaries();
+    }
+  }, [refreshSummaries, user]);
 
   return (
     <AppShell>
@@ -94,57 +159,114 @@ export default function Report() {
         </p>
         <h2 className="text-3xl font-semibold">PPSS compliance report</h2>
         <p className="max-w-3xl text-sm text-slate-500">
-          Review dialogue summaries, validate workflow outcomes, and export the
-          PPSS report with full traceability.
+          Executive summaries are generated from all users’ dialogues, while
+          workspace summaries reflect the currently logged-in user.
         </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--primary-dark)]"
+            type="button"
+            onClick={refreshSummaries}
+            disabled={loading}
+          >
+            {loading ? "Refreshing..." : "Refresh summaries"}
+          </button>
+          {errorMessage && (
+            <span className="text-xs text-rose-600">{errorMessage}</span>
+          )}
+        </div>
       </section>
 
       <section className="rounded-3xl border border-[var(--border)] bg-white px-6 py-6 shadow-sm">
-        <h3 className="text-lg font-semibold">Workflow view</h3>
+        <h3 className="text-lg font-semibold">Executive Summary</h3>
         <p className="mt-2 text-sm text-slate-500">
-          Click any phase to preview the corresponding report content.
+          Global insight generated from all stakeholder dialogues.
         </p>
-        <div className="mt-5 grid grid-cols-5 gap-3">
-          {workflowSteps.map((step) => {
-            const isActive = step === activeStep;
-            return (
-              <button
-                key={step}
-                className={`rounded-full px-3 py-2 text-xs font-semibold transition ${
-                  isActive
-                    ? "bg-[var(--primary)] text-white"
-                    : "border border-slate-200 bg-slate-50 text-slate-600 hover:border-[var(--primary)]"
-                }`}
-                type="button"
-                onClick={() => setActiveStep(step)}
-              >
-                {step}
-              </button>
-            );
-          })}
-        </div>
+
         <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
             <p className="text-xs font-semibold uppercase text-slate-400">
-              Selected phase
+              Project key keywords
             </p>
-            <p className="mt-3 text-lg font-semibold text-slate-800">
-              {activeStep}
-            </p>
-            <p className="mt-2 text-sm text-slate-600">
-              Review model-driven reasoning, stakeholder notes, and verification
-              outcomes associated with this phase.
-            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(executiveSummary?.keywords ?? []).length > 0 ? (
+                executiveSummary?.keywords.map((keyword) => (
+                  <span
+                    key={keyword}
+                    className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+                  >
+                    {keyword}
+                  </span>
+                ))
+              ) : (
+                <span className="text-xs text-slate-400">
+                  Keywords will appear after refresh.
+                </span>
+              )}
+            </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
             <p className="text-xs font-semibold uppercase text-slate-400">
-              Report highlights
+              Current workflow view
             </p>
-            <ul className="mt-3 space-y-2 text-sm text-slate-600">
-              <li>Consensus score updated for {activeStep.toLowerCase()}.</li>
-              <li>Compliance checkpoints cleared by review team.</li>
-              <li>Evidence package stored in audit trail.</li>
-            </ul>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {workflowSteps.map((step) => {
+                const isActive =
+                  executiveSummary?.currentStage === step ||
+                  (!executiveSummary && step === activeStep);
+                return (
+                  <span
+                    key={step}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      isActive
+                        ? "bg-[var(--primary)] text-white"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {step}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+            <p className="text-sm font-semibold text-slate-700">
+              Problem Definition
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              {executiveSummary?.stageSummaries.problemDefinition ??
+                "Refresh to generate stakeholder comparisons."}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+            <p className="text-sm font-semibold text-slate-700">
+              Data Analysis
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              {executiveSummary?.stageSummaries.dataAnalysis ??
+                "Refresh to generate lessons learned."}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+            <p className="text-sm font-semibold text-slate-700">
+              Design Alternatives
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              {executiveSummary?.stageSummaries.designAlternatives ??
+                "Refresh to generate design intent keywords."}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+            <p className="text-sm font-semibold text-slate-700">
+              Design Evaluation
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              {executiveSummary?.stageSummaries.designEvaluation ??
+                "Refresh to generate evaluation feedback."}
+            </p>
           </div>
         </div>
       </section>
@@ -152,40 +274,30 @@ export default function Report() {
       <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
         <h3 className="text-lg font-semibold">Workspace Dialogue Summaries</h3>
         <p className="mt-2 text-sm text-slate-500">
-          Consolidated narrative derived from your workspace conversations.
+          Personalized summaries generated from your dialogue history.
         </p>
         <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-slate-700">
           <p className="text-xs font-semibold uppercase text-blue-400">
-            Your overall summary
+            Overall summary
           </p>
           <p className="mt-3">
-            {combinedSummary.trim()
-              ? combinedSummary
-              : "No dialogue summaries have been saved yet."}
+            {workspaceSummary?.overallSummary ??
+              "Refresh to generate your overall summary."}
           </p>
         </div>
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          {summaryEntries.map((entry) => (
+          {workflowSteps.map((step, index) => (
             <div
-              key={entry.step}
+              key={step}
               className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4"
             >
-              <p className="text-sm font-semibold text-slate-700">
-                {entry.step}
+              <p className="text-sm font-semibold text-slate-700">{step}</p>
+              <p className="mt-2 text-sm text-slate-600">
+                {workspaceSummary?.stageSummaries[stepIds[index]] ??
+                  "Refresh to generate your stage summary."}
               </p>
-              <p className="mt-2 text-sm text-slate-600">{entry.summary}</p>
             </div>
           ))}
-        </div>
-        <div className="mt-8 rounded-2xl border border-slate-200 bg-white px-5 py-4">
-          <p className="text-xs font-semibold uppercase text-slate-400">
-            Shared report summary
-          </p>
-          <p className="mt-3 text-sm text-slate-600">
-            {combinedSharedSummary.trim()
-              ? combinedSharedSummary
-              : "No shared summaries have been submitted yet."}
-          </p>
         </div>
       </section>
     </AppShell>
