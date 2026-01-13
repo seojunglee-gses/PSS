@@ -29,6 +29,12 @@ export default function Setting() {
   const [adminInput, setAdminInput] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [siteImages, setSiteImages] = useState<Array<{ name: string }>>([]);
+  const [siteImagePreviews, setSiteImagePreviews] = useState<string[]>([]);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [backgroundSaveMessage, setBackgroundSaveMessage] = useState<
+    string | null
+  >(null);
+  const [siteSaveMessage, setSiteSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -59,6 +65,12 @@ export default function Setting() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    return () => {
+      siteImagePreviews.forEach((src) => URL.revokeObjectURL(src));
+    };
+  }, [siteImagePreviews]);
 
   const handleProviderChange = (provider: Provider) => {
     setActiveProvider(provider);
@@ -95,6 +107,7 @@ export default function Setting() {
       return;
     }
     window.localStorage.setItem(settingsStorageKey, JSON.stringify(settings));
+    setSaveMessage("Settings saved successfully.");
   };
 
   const handleUseInWorkspace = () => {
@@ -118,13 +131,28 @@ export default function Setting() {
     const fileList = files
       ? Array.from(files).map((file) => ({ name: file.name }))
       : [];
+    const previews = files ? Array.from(files).map((file) => URL.createObjectURL(file)) : [];
     setSiteImages(fileList);
+    setSiteImagePreviews(previews);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(
         siteImageStorageKey,
         JSON.stringify(fileList)
       );
     }
+  };
+
+  const handleBackgroundSave = () => {
+    handleSave();
+    setBackgroundSaveMessage("Background knowledge saved.");
+  };
+
+  const handleSiteImageSave = () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(siteImageStorageKey, JSON.stringify(siteImages));
+    setSiteSaveMessage("Current site images saved.");
   };
 
   return (
@@ -255,8 +283,27 @@ export default function Setting() {
                 </ul>
               )}
             </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                type="button"
+                onClick={handleBackgroundSave}
+              >
+                Save background knowledge
+              </button>
+              {backgroundSaveMessage && (
+                <span className="text-xs text-emerald-600">
+                  {backgroundSaveMessage}
+                </span>
+              )}
+            </div>
           </div>
         </div>
+        {saveMessage && (
+          <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {saveMessage}
+          </div>
+        )}
         <div className="mt-8 border-t border-slate-200 pt-6">
           <h4 className="text-sm font-semibold">Current site image</h4>
           <p className="mt-2 text-sm text-slate-500">
@@ -280,6 +327,30 @@ export default function Setting() {
                   <li key={file.name}>{file.name}</li>
                 ))}
               </ul>
+            )}
+            {siteImagePreviews.length > 0 && (
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                {siteImagePreviews.map((src) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt="Site preview"
+                    className="h-20 w-full rounded-lg object-cover"
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+              type="button"
+              onClick={handleSiteImageSave}
+            >
+              Save site images
+            </button>
+            {siteSaveMessage && (
+              <span className="text-xs text-emerald-600">{siteSaveMessage}</span>
             )}
           </div>
         </div>
