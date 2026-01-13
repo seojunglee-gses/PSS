@@ -37,7 +37,7 @@ export default async function handler(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: model || "gpt-5-mini",
+        model: model || "gpt-4.1-mini",
         input: [
           {
             role: "system",
