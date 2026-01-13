@@ -519,8 +519,14 @@ export default function Workspace() {
           Connected
         </span>
       </div>
-      <div className="mt-4 flex-1 space-y-4 overflow-auto text-sm text-slate-600">
-        {activeStep.id === "alternatives" && (
+      <div className="mt-4 max-h-[420px] flex-1 space-y-4 overflow-auto text-sm text-slate-600">
+        {stepMessages.length === 0 && (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
+            Start a conversation here to discuss the project and planning
+            needs.
+          </div>
+        )}
+        {activeStep.id === "alternatives" && stepMessages.length > 0 && (
           <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
             Based on our conversation, I generated design images for review.
           </div>
