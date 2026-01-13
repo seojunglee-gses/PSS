@@ -51,13 +51,17 @@ export default async function handler(
       }),
     });
 
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => ({}));
-      res.status(500).json({
-        error: errorPayload?.error?.message ?? "LLM request failed.",
-      });
-      return;
-    }
+  if (!response.ok) {
+    const text = await response.text();
+    console.error("OPENAI ERROR RAW:", text);
+  
+    res.status(500).json({
+      error: "OpenAI request failed",
+      detail: text,
+    });
+    return;
+  }
+  console.log("OPENAI RAW RESPONSE:", JSON.stringify(result, null, 2));
 
     const result = await response.json();
     const content = result.output_text;
@@ -74,6 +78,6 @@ export default async function handler(
       error: error instanceof Error ? error.message : "Unexpected error.",
     });
   }
-  console.log("OPENAI RAW RESPONSE:", JSON.stringify(result, null, 2));
+
 
 }
