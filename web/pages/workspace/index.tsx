@@ -55,11 +55,13 @@ const storageKey = "ppss-workspace-summaries";
 const evaluationStorageKey = "ppss-evaluation-results";
 const chatLogStorageKey = "ppss-chat-logs";
 const evaluationStorageImagesKey = "ppss-shared-evaluation-images";
-const defaultEvaluationImages = Array.from({ length: 7 }, (_, index) => ({
-  id: `concept-${index + 1}`,
-  label: `Concept ${index + 1}`,
-  note: "",
-}));
+const defaultEvaluationImages: DesignImage[] = Array.from(
+  { length: 7 },
+  (_, index) => ({
+    id: `concept-${index + 1}`,
+    label: `Concept ${index + 1}`,
+    note: "",
+  }));
 const alternativeImageStorageKey = "ppss-alternative-images";
 const siteImageStorageKey = "ppss-site-image";
 const sharedSummariesKey = "ppss-shared-summaries";
