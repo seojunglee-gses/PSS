@@ -82,7 +82,7 @@ export default function Report() {
     }, {});
   }, [chatLogs]);
 
-  const refreshSummaries = useCallback(async () => {
+  const refreshSummaries = useCallback(async (stage = activeStep) => {
     if (!user) {
       return;
     }
@@ -93,7 +93,7 @@ export default function Report() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          currentStage: activeStep,
+          currentStage: stage,
           executiveInput: groupedSharedSummaries,
           workspaceInput: groupedUserLogs,
         }),
@@ -163,19 +163,6 @@ export default function Report() {
           Executive summaries are generated from all users’ dialogues, while
           workspace summaries reflect the currently logged-in user.
         </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--primary-dark)]"
-            type="button"
-            onClick={refreshSummaries}
-            disabled={loading}
-          >
-            {loading ? "Refreshing..." : "Refresh summaries"}
-          </button>
-          {errorMessage && (
-            <span className="text-xs text-rose-600">{errorMessage}</span>
-          )}
-        </div>
       </section>
 
       <section className="rounded-3xl border border-[var(--border)] bg-white px-6 py-6 shadow-sm">
@@ -273,10 +260,29 @@ export default function Report() {
       </section>
 
       <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-semibold">Workspace Dialogue Summaries</h3>
-        <p className="mt-2 text-sm text-slate-500">
-          Personalized summaries generated from your dialogue history.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold">
+              Workspace Dialogue Summaries
+            </h3>
+            <p className="mt-2 text-sm text-slate-500">
+              Personalized summaries generated from your dialogue history.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--primary-dark)]"
+              type="button"
+              onClick={() => refreshSummaries()}
+              disabled={loading}
+            >
+              {loading ? "Refreshing..." : "Refresh summaries"}
+            </button>
+            {errorMessage && (
+              <span className="text-xs text-rose-600">{errorMessage}</span>
+            )}
+          </div>
+        </div>
         <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-slate-700">
           <p className="text-xs font-semibold uppercase text-blue-400">
             Overall summary
@@ -292,7 +298,33 @@ export default function Report() {
               key={step}
               className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4"
             >
-              <p className="text-sm font-semibold text-slate-700">{step}</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-700">{step}</p>
+                <button
+                  className="rounded-full border border-slate-200 bg-white p-2 text-slate-500 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                  type="button"
+                  onClick={() => {
+                    setActiveStep(step);
+                    refreshSummaries(step);
+                  }}
+                  aria-label={`Refresh ${step} summary`}
+                  disabled={loading}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    aria-hidden="true"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                    <path d="M20 4v6h-6" />
+                  </svg>
+                </button>
+              </div>
               <p className="mt-2 text-sm text-slate-600">
                 {workspaceSummary?.stageSummaries[stepIds[index]] ??
                   "Refresh to generate your stage summary."}

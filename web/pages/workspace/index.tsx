@@ -67,7 +67,7 @@ type ChatLog = {
   provider: string;
   sender: "user" | "assistant";
   text: string;
-  label: string; 
+  label: string;
 };
 
 
@@ -116,6 +116,7 @@ export default function Workspace() {
   );
   const [showSiteImageWarning, setShowSiteImageWarning] = useState(false);
   const [showSubmitNotice, setShowSubmitNotice] = useState<null | string>(null);
+  const [finishNotice, setFinishNotice] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
@@ -318,6 +319,16 @@ export default function Workspace() {
     );
   }, [evaluationImages]);
 
+  useEffect(() => {
+    if (!finishNotice) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      setFinishNotice(null);
+    }, 3000);
+    return () => window.clearTimeout(timeout);
+  }, [finishNotice]);
+
   const progressValue = useMemo(() => {
     const index = steps.findIndex((step) => step.id === activeStep.id);
     if (index === -1) {
@@ -417,6 +428,7 @@ export default function Workspace() {
         JSON.stringify([...parsed, entry])
       );
     }
+    setFinishNotice("Chat log sent to Report.");
   };
 
   const handleRankingChange = (imageId: string, value: string) => {
@@ -648,6 +660,11 @@ export default function Workspace() {
       {errorMessage && (
         <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-600">
           {errorMessage}
+        </div>
+      )}
+      {finishNotice && (
+        <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
+          {finishNotice}
         </div>
       )}
       <button
