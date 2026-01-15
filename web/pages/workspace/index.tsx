@@ -71,6 +71,7 @@ type ChatLog = {
   label: string;
 };
 
+
 type DesignImage = {
   id: string;
   label: string;
@@ -224,26 +225,27 @@ export default function Workspace() {
         const normalized = parsed
           .map((log) => {
             const sender =
-              log.sender === "Planner"
-                ? "user"
+              log.sender === "assistant" || log.sender === "user"
+                ? log.sender
                 : log.sender === "ChatGPT"
                 ? "assistant"
-                : log.sender;
+                : "user";
             if (!sender || !log.stepId || !log.text || !log.provider) {
               return null;
-            }
-            const label =
-              log.label ??
-              (sender === "assistant" ? log.provider : role);
+            }          
             return {
               stepId: log.stepId,
               provider: log.provider,
               sender,
               text: log.text,
-              label,
+              label:
+                sender === "assistant"
+                  ? log.provider      // LLM 이름
+                  : role,             // 로그인 role
             } as ChatLog;
           })
           .filter((log): log is ChatLog => Boolean(log));
+           
         setChatLogs(normalized);
       } catch {
         setChatLogs([]);

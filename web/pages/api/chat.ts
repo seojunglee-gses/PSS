@@ -1,8 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
 type ChatRequest = {
-  apiKey?: string;
-  provider?: string;
   model?: string;
   stepId?: string;
   message?: string;
@@ -19,6 +17,7 @@ export default async function handler(
 
   const { model, message, stepId } = req.body as ChatRequest;
   const apiKey = process.env.OPENAI_API_KEY;
+
   if (!apiKey) {
     res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
     return;
@@ -37,16 +36,26 @@ export default async function handler(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: model || "gpt-5-mini",
+        model: model || "gpt-4.1-mini",
         input: [
           {
             role: "system",
-            content:
-              "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.",
+            content: [
+              {
+                type: "input_text",
+                text:
+                  "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.",
+              },
+            ],
           },
           {
             role: "user",
-            content: `Stage: ${stepId ?? "unknown"}\nUser: ${message}`,
+            content: [
+              {
+                type: "input_text",
+                text: `Stage: ${stepId ?? "unknown"}\nUser: ${message}`,
+              },
+            ],
           },
         ],
       }),
@@ -61,7 +70,12 @@ export default async function handler(
     }
 
     const result = await response.json();
-    const content = result?.output?.[0]?.content?.[0]?.text;
+
+    const content = result.output
+      ?.find((item: any) => item.type === "message")
+      ?.content?.find((c: any) => c.type === "output_text")
+      ?.text;
+    
     if (!content) {
       res.status(500).json({ error: "No reply returned." });
       return;

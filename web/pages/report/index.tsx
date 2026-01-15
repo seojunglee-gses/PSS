@@ -313,7 +313,33 @@ export default function Report() {
               key={step}
               className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4"
             >
-              <p className="text-sm font-semibold text-slate-700">{step}</p>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-700">{step}</p>
+                <button
+                  className="rounded-full border border-slate-200 bg-white p-2 text-slate-500 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                  type="button"
+                  onClick={() => {
+                    setActiveStep(step);
+                    refreshSummaries(step);
+                  }}
+                  aria-label={`Refresh ${step} summary`}
+                  disabled={loading}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    aria-hidden="true"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+                    <path d="M20 4v6h-6" />
+                  </svg>
+                </button>
+              </div>
               <p className="mt-2 text-sm text-slate-600">
                 {workspaceSummary?.stageSummaries[stepIds[index]] ??
                   "Refresh to generate your stage summary."}
