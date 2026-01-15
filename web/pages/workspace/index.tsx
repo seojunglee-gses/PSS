@@ -59,6 +59,7 @@ const defaultEvaluationImages: DesignImage[] = Array.from(
 const alternativeImageStorageKey = "ppss-alternative-images";
 const siteImageStorageKey = "ppss-site-image";
 const sharedSummariesKey = "ppss-shared-summaries";
+const workspaceSummaryStorageKey = "ppss-workspace-summary";
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 const providerStorageKey = "ppss-active-provider";
 
@@ -117,6 +118,7 @@ export default function Workspace() {
   const [showSiteImageWarning, setShowSiteImageWarning] = useState(false);
   const [showSubmitNotice, setShowSubmitNotice] = useState<null | string>(null);
   const [finishNotice, setFinishNotice] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
@@ -337,6 +339,15 @@ export default function Workspace() {
     return Math.round((index / (steps.length - 1)) * 100);
   }, [activeStep.id]);
 
+  const buildWorkspaceInput = () => {
+    return steps.reduce<Record<string, string[]>>((acc, step) => {
+      acc[step.id] = chatLogs
+        .filter((log) => log.stepId === step.id)
+        .map((log) => log.text);
+      return acc;
+    }, {});
+  };
+
   const handleSend = async () => {
     if (!inputValue.trim()) {
       return;
@@ -408,7 +419,7 @@ export default function Workspace() {
     }
   };
 
-  const handleCompleteStep = () => {
+  const handleCompleteStep = async () => {
     setSavedSummaries((prev) => ({
       ...prev,
       [activeStep.id]: stepSummaries[activeStep.id],
@@ -428,7 +439,41 @@ export default function Workspace() {
         JSON.stringify([...parsed, entry])
       );
     }
-    setFinishNotice("Chat log sent to Report.");
+    setFinishNotice("Chat log sent to Report. Updating summaries...");
+    setIsSummarizing(true);
+    try {
+      const response = await fetch("/api/summaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentStage: activeStep.title,
+          executiveInput: {},
+          workspaceInput: buildWorkspaceInput(),
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Summary generation failed.");
+      }
+      const payload = (await response.json()) as {
+        workspaceSummary: { stageSummaries: Record<string, string>; overallSummary: string };
+      };
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          workspaceSummaryStorageKey,
+          JSON.stringify(payload.workspaceSummary)
+        );
+      }
+      setFinishNotice("Chat log sent to Report.");
+    } catch (error) {
+      setFinishNotice(
+        error instanceof Error
+          ? `Chat log sent, summary update failed: ${error.message}`
+          : "Chat log sent, summary update failed."
+      );
+    } finally {
+      setIsSummarizing(false);
+    }
   };
 
   const handleRankingChange = (imageId: string, value: string) => {
@@ -671,8 +716,9 @@ export default function Workspace() {
         className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
         type="button"
         onClick={handleCompleteStep}
+        disabled={isSummarizing}
       >
-        Finish Stage
+        {isSummarizing ? "Updating..." : "Finish Stage"}
       </button>
     </div>
   );
