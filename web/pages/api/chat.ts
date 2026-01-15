@@ -71,10 +71,11 @@ export default async function handler(
 
     const result = await response.json();
 
-    console.log("RAW OPENAI RESPONSE:", JSON.stringify(result, null, 2));
-
-    const content = result.output_text;
-
+    const content = result.output
+      ?.find((item: any) => item.type === "message")
+      ?.content?.find((c: any) => c.type === "output_text")
+      ?.text;
+    
     if (!content) {
       res.status(500).json({ error: "No reply returned." });
       return;
