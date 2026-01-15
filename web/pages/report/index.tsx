@@ -17,8 +17,9 @@ const sharedSummariesKey = "ppss-shared-summaries";
 type ChatLog = {
   stepId: string;
   provider: string;
-  sender: "Planner" | "ChatGPT";
+  sender: "Planner" | "ChatGPT" | "user" | "assistant";
   text: string;
+  label?: string;
 };
 
 type SharedSummary = {
