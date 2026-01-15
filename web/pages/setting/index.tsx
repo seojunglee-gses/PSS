@@ -157,38 +157,11 @@ export default function Setting() {
         </p>
       </section>
 
-      {!isAdmin ? (
-        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">Administrator access</h3>
-          <p className="mt-2 text-sm text-slate-500">
-            Enter the administrator code to access platform settings.
-          </p>
-          <div className="mt-6 grid gap-4 max-w-md">
-            <label className="text-xs font-semibold uppercase text-slate-500">
-              Admin code
-            </label>
-            <input
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
-              placeholder="0000"
-              type="password"
-              value={adminInput}
-              onChange={(event) => setAdminInput(event.target.value)}
-            />
-            <button
-              className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--primary-dark)]"
-              type="button"
-              onClick={handleAdminUnlock}
-            >
-              Enter admin mode
-            </button>
-          </div>
-        </section>
-      ) : (
       <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-semibold">API Key Access</h3>
+        <h3 className="text-lg font-semibold">LLM provider</h3>
         <p className="mt-2 text-sm text-slate-500">
-          Add API keys for each provider and upload background knowledge so the
-          workspace can respond using your selected context.
+          Choose the LLM provider for the workspace without entering admin
+          mode.
         </p>
         <p className="mt-4 text-xs text-slate-500">
           Current workspace provider:{" "}
@@ -237,103 +210,144 @@ export default function Setting() {
               </button>
             </div>
           </div>
-          <div>
-            <label className="text-xs font-semibold uppercase text-slate-500">
-              Background knowledge
-            </label>
-            <div className="mt-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-              <input
-                className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-full file:border-0 file:bg-[var(--primary)] file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white file:hover:bg-[var(--primary-dark)]"
-                type="file"
-                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
-                multiple
-                onChange={(event) =>
-                  handleFilesChange(activeProvider, event.target.files)
-                }
-              />
-              <p className="mt-3 text-xs text-slate-500">
-                Upload Word, PDF, or image files to seed the workspace context.
-              </p>
-              {settings[activeProvider].files.length > 0 && (
-                <ul className="mt-3 space-y-1 text-xs text-slate-600">
-                  {settings[activeProvider].files.map((file) => (
-                    <li key={file.name}>{file.name}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button
-                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
-                type="button"
-                onClick={handleBackgroundSave}
-              >
-                Save background knowledge
-              </button>
-              {backgroundSaveMessage && (
-                <span className="text-xs text-emerald-600">
-                  {backgroundSaveMessage}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        {saveMessage && (
-          <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {saveMessage}
-          </div>
-        )}
-        <div className="mt-8 border-t border-slate-200 pt-6">
-          <h4 className="text-sm font-semibold">Current site image</h4>
-          <p className="mt-2 text-sm text-slate-500">
-            Upload the base site imagery used to generate design alternatives
-            in the workspace.
-          </p>
-          <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-            <input
-              className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-full file:border-0 file:bg-[var(--primary)] file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white file:hover:bg-[var(--primary-dark)]"
-              type="file"
-              accept=".png,.jpg,.jpeg"
-              multiple
-              onChange={(event) => handleSiteImagesChange(event.target.files)}
-            />
-            <p className="mt-3 text-xs text-slate-500">
-              Upload one or more site images to enable workspace generation.
-            </p>
-            {siteImages.length > 0 && (
-              <ul className="mt-3 space-y-1 text-xs text-slate-600">
-                {siteImages.map((file) => (
-                  <li key={file.name}>{file.name}</li>
-                ))}
-              </ul>
-            )}
-            {siteImagePreviews.length > 0 && (
-              <div className="mt-4 grid grid-cols-3 gap-3">
-                {siteImagePreviews.map((src) => (
-                  <img
-                    key={src}
-                    src={src}
-                    alt="Site preview"
-                    className="h-20 w-full rounded-lg object-cover"
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button
-              className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
-              type="button"
-              onClick={handleSiteImageSave}
-            >
-              Save site images
-            </button>
-            {siteSaveMessage && (
-              <span className="text-xs text-emerald-600">{siteSaveMessage}</span>
-            )}
-          </div>
         </div>
       </section>
+      {!isAdmin ? (
+        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold">Administrator access</h3>
+          <p className="mt-2 text-sm text-slate-500">
+            Enter the administrator code to manage background knowledge and
+            site images.
+          </p>
+          <div className="mt-6 grid gap-4 max-w-md">
+            <label className="text-xs font-semibold uppercase text-slate-500">
+              Admin code
+            </label>
+            <input
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
+              placeholder="0000"
+              type="password"
+              value={adminInput}
+              onChange={(event) => setAdminInput(event.target.value)}
+            />
+            <button
+              className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--primary-dark)]"
+              type="button"
+              onClick={handleAdminUnlock}
+            >
+              Enter admin mode
+            </button>
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold">Administrator settings</h3>
+          <p className="mt-2 text-sm text-slate-500">
+            Manage background knowledge and upload the current site image for
+            workspace generation.
+          </p>
+          <div className="mt-6 grid gap-6">
+            <div>
+              <label className="text-xs font-semibold uppercase text-slate-500">
+                Background knowledge
+              </label>
+              <div className="mt-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                <input
+                  className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-full file:border-0 file:bg-[var(--primary)] file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white file:hover:bg-[var(--primary-dark)]"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+                  multiple
+                  onChange={(event) =>
+                    handleFilesChange(activeProvider, event.target.files)
+                  }
+                />
+                <p className="mt-3 text-xs text-slate-500">
+                  Upload Word, PDF, or image files to seed the workspace
+                  context.
+                </p>
+                {settings[activeProvider].files.length > 0 && (
+                  <ul className="mt-3 space-y-1 text-xs text-slate-600">
+                    {settings[activeProvider].files.map((file) => (
+                      <li key={file.name}>{file.name}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                  type="button"
+                  onClick={handleBackgroundSave}
+                >
+                  Save background knowledge
+                </button>
+                {backgroundSaveMessage && (
+                  <span className="text-xs text-emerald-600">
+                    {backgroundSaveMessage}
+                  </span>
+                )}
+              </div>
+            </div>
+            {saveMessage && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {saveMessage}
+              </div>
+            )}
+            <div className="border-t border-slate-200 pt-6">
+              <h4 className="text-sm font-semibold">Current site image</h4>
+              <p className="mt-2 text-sm text-slate-500">
+                Upload the base site imagery used to generate design
+                alternatives in the workspace.
+              </p>
+              <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                <input
+                  className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-full file:border-0 file:bg-[var(--primary)] file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white file:hover:bg-[var(--primary-dark)]"
+                  type="file"
+                  accept=".png,.jpg,.jpeg"
+                  multiple
+                  onChange={(event) => handleSiteImagesChange(event.target.files)}
+                />
+                <p className="mt-3 text-xs text-slate-500">
+                  Upload one or more site images to enable workspace
+                  generation.
+                </p>
+                {siteImages.length > 0 && (
+                  <ul className="mt-3 space-y-1 text-xs text-slate-600">
+                    {siteImages.map((file) => (
+                      <li key={file.name}>{file.name}</li>
+                    ))}
+                  </ul>
+                )}
+                {siteImagePreviews.length > 0 && (
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    {siteImagePreviews.map((src) => (
+                      <img
+                        key={src}
+                        src={src}
+                        alt="Site preview"
+                        className="h-20 w-full rounded-lg object-cover"
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                  type="button"
+                  onClick={handleSiteImageSave}
+                >
+                  Save site images
+                </button>
+                {siteSaveMessage && (
+                  <span className="text-xs text-emerald-600">
+                    {siteSaveMessage}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
       )}
     </AppShell>
   );

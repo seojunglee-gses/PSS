@@ -166,7 +166,7 @@ export default function Home() {
           Home
         </p>
         <h2 className="text-3xl font-semibold text-slate-900">
-          ChatGPT-assisted PPSS portal
+          AI-assisted PPSS portal
         </h2>
         <p className="max-w-3xl text-sm text-slate-500">
           Select your role to sign in and access the PPSS platform, matching the
