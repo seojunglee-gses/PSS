@@ -33,12 +33,6 @@ const steps = [
   },
 ];
 
-const initialMessages = [
-  "We need a PPSS plan for the gearbox housing with safety constraints.",
-  "Confirmed. I will generate a phased plan with validation checkpoints.",
-  "Highlight fixture stability and tool access risks.",
-];
-
 const stepSummaries: Record<string, string> = {
   problem:
     "Defined scope, machining constraints, and primary safety risks before planning.",
@@ -71,8 +65,9 @@ const providerStorageKey = "ppss-active-provider";
 type ChatLog = {
   stepId: string;
   provider: string;
-  sender: "Planner" | "ChatGPT";
+  sender: "user" | "assistant";
   text: string;
+  label: string;
 };
 
 type DesignImage = {
@@ -93,6 +88,15 @@ const roleDescriptions: Record<string, string> = {
   Planners: "Refine PPSS sequences, validate risks, and iterate promptly.",
   Government:
     "Review compliance, safety, and policy alignment across all steps.",
+};
+
+const basePromptsByStep: Record<string, string> = {
+  data: "What stands out to you in this data?",
+  alternatives:
+    "Based on our talks, I generated images you might like. How do you think?",
+  evaluation: "Which design seems interesting and why?",
+  report:
+    "From your perspective, what is the most important issue in this project?",
 };
 
 export default function Workspace() {
@@ -129,13 +133,6 @@ export default function Workspace() {
     Array<Record<string, number>>
   >([]);
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
-  const [messages, setMessages] = useState<Record<string, string[]>>(() => {
-    const initialState: Record<string, string[]> = {};
-    steps.forEach((step) => {
-      initialState[step.id] = [...initialMessages];
-    });
-    return initialState;
-  });
   const [savedSummaries, setSavedSummaries] = useState<
     Record<string, string>
   >({});
@@ -216,25 +213,40 @@ export default function Workspace() {
     );
     if (storedLogs) {
       try {
-        const parsed = JSON.parse(storedLogs) as ChatLog[];
-        setChatLogs(parsed);
-        const grouped = parsed.reduce<Record<string, string[]>>(
-          (acc, log) => {
-            acc[log.stepId] = acc[log.stepId] || [];
-            acc[log.stepId].push(log.text);
-            return acc;
-          },
-          {}
-        );
-        setMessages((prev) => ({
-          ...prev,
-          ...grouped,
-        }));
+        const parsed = JSON.parse(storedLogs) as Array<
+          Partial<ChatLog> & {
+            sender?: "Planner" | "ChatGPT" | "user" | "assistant";
+          }
+        >;
+        const normalized = parsed
+          .map((log) => {
+            const sender =
+              log.sender === "Planner"
+                ? "user"
+                : log.sender === "ChatGPT"
+                ? "assistant"
+                : log.sender;
+            if (!sender || !log.stepId || !log.text || !log.provider) {
+              return null;
+            }
+            const label =
+              log.label ??
+              (sender === "assistant" ? log.provider : role);
+            return {
+              stepId: log.stepId,
+              provider: log.provider,
+              sender,
+              text: log.text,
+              label,
+            } as ChatLog;
+          })
+          .filter((log): log is ChatLog => Boolean(log));
+        setChatLogs(normalized);
       } catch {
         setChatLogs([]);
       }
     }
-  }, [user, userKey]);
+  }, [user, userKey, role]);
 
   useEffect(() => {
     if (!user) {
@@ -324,17 +336,14 @@ export default function Workspace() {
     const stepId = activeStep.id;
     const userMessage = inputValue.trim();
     setIsSending(true);
-    setMessages((prev) => ({
-      ...prev,
-      [stepId]: [...prev[stepId], userMessage],
-    }));
     setChatLogs((prev) => [
       ...prev,
       {
         stepId,
         provider: activeProvider,
-        sender: "Planner",
+        sender: "user",
         text: userMessage,
+        label: role,
       },
     ]);
     setInputValue("");
@@ -356,13 +365,15 @@ export default function Workspace() {
       }
       const payload = (await response.json()) as { reply: string };
       const reply = payload.reply;
-      setMessages((prev) => ({
-        ...prev,
-        [stepId]: [...prev[stepId], reply],
-      }));
       setChatLogs((prev) => [
         ...prev,
-        { stepId, provider: activeProvider, sender: "ChatGPT", text: reply },
+        {
+          stepId,
+          provider: activeProvider,
+          sender: "assistant",
+          text: reply,
+          label: activeProvider,
+        },
       ]);
 
       if (stepId === "alternatives") {
@@ -458,7 +469,7 @@ export default function Workspace() {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, activeStep.id]);
+  }, [chatLogs, activeStep.id]);
 
   const aggregatedResults = useMemo(() => {
     if (!evaluationResults.length) {
@@ -551,7 +562,20 @@ export default function Workspace() {
   }
 
   const renderChatPanel = () => {
-    const stepMessages = messages[activeStep.id] ?? [];
+    const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
+    const basePrompt = basePromptsByStep[activeStep.id];
+    const displayedMessages = [
+      ...(basePrompt
+        ? [
+            {
+              text: basePrompt,
+              sender: "assistant" as const,
+              label: activeProvider,
+            },
+          ]
+        : []),
+      ...stepLogs,
+    ];
     return (
     <div className="flex h-full flex-col rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
@@ -566,21 +590,19 @@ export default function Workspace() {
         </span>
       </div>
       <div className="mt-4 max-h-[420px] flex-1 space-y-4 overflow-auto text-sm text-slate-600">
-        {stepMessages.length === 0 && (
+        {displayedMessages.length === 0 && (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
             Start a conversation here to discuss the project and planning
             needs.
           </div>
         )}
-        {activeStep.id === "alternatives" && stepMessages.length > 0 && (
+        {activeStep.id === "alternatives" && stepLogs.length > 0 && (
           <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
             Based on our conversation, I generated design images for review.
           </div>
         )}
-        {stepMessages.map((message, index) => {
-          const isAssistant = index % 2 === 1;
-          const assistantLabel = `${activeProvider} Assistant`;
-          const userLabel = role;
+        {displayedMessages.map((message, index) => {
+          const isAssistant = message.sender === "assistant";
           return (
             <div
               key={`${activeStep.id}-${index}`}
@@ -591,9 +613,9 @@ export default function Workspace() {
               } ${isAssistant ? "mr-auto" : "ml-auto"}`}
             >
               <p className="text-xs font-semibold uppercase text-slate-400">
-                {isAssistant ? assistantLabel : userLabel}
+                {message.label}
               </p>
-              <p className="mt-2">{message}</p>
+              <p className="mt-2">{message.text}</p>
             </div>
           );
         })}
