@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 
 const systemPrompt =
   "You are an analyst creating structured summaries for a PPSS workflow report based on the Chat log. Return ONLY valid JSON that matches the schema. No extra keys.";
-
+const buildPrompt = (payload: unknown) => `...`;
 
 export default async function handler(
   req: NextApiRequest,
