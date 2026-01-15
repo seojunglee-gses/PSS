@@ -1,172 +1,287 @@
+import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import AppShell from "../components/AppShell";
+import { useAuth } from "../lib/auth";
 
-type Step =
-  | "PlanDecision"
-  | "DataAnalysis"
-  | "DesignAlternatives"
-  | "DesignEvaluation";
+const roles = [
+  {
+    title: "The Public",
+    description: "Review shared PPSS updates and community impact summaries.",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
+        <circle
+          cx="12"
+          cy="8"
+          r="3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+        <path
+          d="M5 19c1.6-3 4.2-4.5 7-4.5s5.4 1.5 7 4.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      </svg>
+    ),
+  },
+  {
+    title: "Business Owners",
+    description:
+      "Coordinate manufacturing objectives and monitor process plan progress.",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
+        <rect
+          x="5"
+          y="4"
+          width="14"
+          height="16"
+          rx="2"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+        <path
+          d="M9 9h6M9 13h6M9 17h4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      </svg>
+    ),
+  },
+  {
+    title: "Planners",
+    description:
+      "Develop prompt-driven plans, assess safety checks, and validate outputs.",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
+        <path
+          d="M5 5h10l4 4v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+        <path
+          d="M15 5v4h4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+      </svg>
+    ),
+  },
+  {
+    title: "Government",
+    description:
+      "Audit compliance, review reports, and manage policy-driven oversight.",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
+        <path
+          d="M4 10h16M6 10v8M10 10v8M14 10v8M18 10v8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+        <path
+          d="M12 4l7 4H5l7-4z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
+  },
+];
 
-type ChatLog = {
-  id: string;
-  role: "user" | "assistant"; // UI 정렬 기준
-  label: string;             // 화면에 보이는 이름
-  message: string;
-  step: Step;
-};
+export default function Home() {
+  const router = useRouter();
+  const { signIn, signInWithGoogle, isConfigured, user } = useAuth();
+  const [showLogin, setShowLogin] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [selectedRole, setSelectedRole] = useState<string>("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-const STEP_LABELS: Record<Step, string> = {
-  PlanDecision: "Plan Decision",
-  DataAnalysis: "Data Analysis",
-  DesignAlternatives: "Design / Plan Alternatives",
-  DesignEvaluation: "Design / Plan Evaluation",
-};
-
-const DEFAULT_PROMPTS: Record<Step, string> = {
-  PlanDecision:
-    "From your perspective, what is the most important issue in this project?",
-  DataAnalysis:
-    "What stands out to you in this data?",
-  DesignAlternatives:
-    "Based on our talks, I generated images you might like. How do you think?",
-  DesignEvaluation:
-    "Which design seems interesting and why?",
-};
-
-export default function Workspace() {
-  const [currentStep, setCurrentStep] = useState<Step>("PlanDecision");
-  const [logs, setLogs] = useState<ChatLog[]>([]);
-  const [input, setInput] = useState("");
-
-  const userLabel =
-    typeof window !== "undefined"
-      ? localStorage.getItem("ppss-role") ?? "User"
-      : "User";
-
-  const llmLabel = "GPT-4.1-mini";
-
-  /** 초기 진입 시 기본 질문 생성 */
   useEffect(() => {
-    setLogs([
-      {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        label: llmLabel,
-        message: DEFAULT_PROMPTS[currentStep],
-        step: currentStep,
-      },
-    ]);
-  }, [currentStep]);
+    if (user) {
+      router.push("/workspace");
+    }
+  }, [user, router]);
 
-  /** 사용자 메시지 추가 */
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setErrorMessage("");
+    if (!selectedRole) {
+      setErrorMessage("Select a role before signing in.");
+      return;
+    }
+    try {
+      await signIn(email, password);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("ppss-role", selectedRole);
+      }
+      setShowLogin(false);
+      router.push("/workspace");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to sign in. Please try again."
+      );
+    }
+  };
 
-    const userMessage: ChatLog = {
-      id: crypto.randomUUID(),
-      role: "user",
-      label: userLabel,
-      message: input,
-      step: currentStep,
-    };
-
-    setLogs((prev) => [...prev, userMessage]);
-    setInput("");
-
-    // 🔗 API 호출
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: input,
-        stepId: currentStep,
-        model: llmLabel,
-      }),
-    });
-
-    const data = await res.json();
-
-    const assistantMessage: ChatLog = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      label: llmLabel,
-      message: data.reply ?? "No response.",
-      step: currentStep,
-    };
-
-    setLogs((prev) => [...prev, assistantMessage]);
+  const handleGoogleSignUp = async () => {
+    setErrorMessage("");
+    if (!selectedRole) {
+      setErrorMessage("Select a role before signing up.");
+      return;
+    }
+    try {
+      await signInWithGoogle();
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("ppss-role", selectedRole);
+      }
+      setShowLogin(false);
+      router.push("/workspace");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Google sign up failed. Please try again."
+      );
+    }
   };
 
   return (
     <AppShell>
-      {/* 헤더 */}
-      <section className="mb-6">
-        <h2 className="text-2xl font-semibold text-slate-900">
-          Workspace
+      <section className="flex flex-col gap-3">
+        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
+          Home
+        </p>
+        <h2 className="text-3xl font-semibold text-slate-900">
+          AI-assisted PPSS portal
         </h2>
-        <p className="text-sm text-slate-500">
-          {STEP_LABELS[currentStep]}
+        <p className="max-w-3xl text-sm text-slate-500">
+          Select your role to sign in and access the PPSS platform, matching the
+          stakeholder flow presented in the study.
         </p>
       </section>
 
-      {/* 단계 선택 */}
-      <div className="mb-4 flex gap-2">
-        {(Object.keys(STEP_LABELS) as Step[]).map((step) => (
-          <button
-            key={step}
-            onClick={() => setCurrentStep(step)}
-            className={`rounded-full px-4 py-1 text-sm font-semibold ${
-              currentStep === step
-                ? "bg-[var(--primary)] text-white"
-                : "bg-slate-100 text-slate-600"
-            }`}
-          >
-            {STEP_LABELS[step]}
-          </button>
-        ))}
-      </div>
-
-      {/* 채팅 로그 */}
-      <div className="flex h-[60vh] flex-col gap-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4">
-        {logs.map((log) => (
+      <section className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
+        {roles.map((role) => (
           <div
-            key={log.id}
-            className={`flex ${
-              log.role === "user" ? "justify-end" : "justify-start"
-            }`}
+            key={role.title}
+            className="rounded-3xl border border-slate-200 bg-white px-6 py-8 text-center shadow-sm"
           >
-            <div
-              className={`max-w-[70%] rounded-2xl px-4 py-3 text-sm shadow ${
-                log.role === "user"
-                  ? "bg-[var(--primary)] text-white"
-                  : "bg-slate-100 text-slate-900"
-              }`}
-            >
-              <div className="mb-1 text-xs font-semibold opacity-70">
-                {log.label}
-              </div>
-              <div>{log.message}</div>
+            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-8 border-slate-100 text-[var(--primary)]">
+              {role.icon}
             </div>
+            <h3 className="mt-6 text-lg font-semibold text-slate-900">
+              {role.title}
+            </h3>
+            <p className="mt-2 text-sm text-slate-500">{role.description}</p>
+            <button
+              className="mt-6 rounded-full bg-[var(--primary)] px-6 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
+              type="button"
+              onClick={() => {
+                setSelectedRole(role.title);
+                setShowLogin(true);
+              }}
+            >
+              Sign in
+            </button>
           </div>
         ))}
-      </div>
+      </section>
 
-      {/* 입력창 */}
-      <div className="mt-4 flex gap-2">
-        <input
-          className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
-          placeholder="Type your response…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-        />
-        <button
-          onClick={sendMessage}
-          className="rounded-xl bg-[var(--primary)] px-6 py-3 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
-        >
-          Send
-        </button>
-      </div>
+      {showLogin && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
+                  Secure access
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold text-slate-900">
+                  Sign in to Workspace
+                </h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  Role: <span className="font-semibold">{selectedRole}</span>
+                </p>
+              </div>
+              <button
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300"
+                type="button"
+                onClick={() => setShowLogin(false)}
+              >
+                Close
+              </button>
+            </div>
+            <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+              {!isConfigured && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Firebase authentication is not configured. Provide
+                  NEXT_PUBLIC_FIREBASE_* environment variables to enable login.
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold uppercase text-slate-500">
+                  Email
+                </label>
+                <input
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
+                  placeholder="analyst@ppss-lab.com"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase text-slate-500">
+                  Password
+                </label>
+                <input
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
+                  placeholder="••••••••"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                />
+              </div>
+              {errorMessage && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-600">
+                  {errorMessage}
+                </div>
+              )}
+              <button
+                className="w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
+                type="submit"
+                disabled={!isConfigured}
+              >
+                Continue to Workspace
+              </button>
+              <div className="text-center text-xs text-slate-400">or</div>
+              <button
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                type="button"
+                onClick={handleGoogleSignUp}
+                disabled={!isConfigured}
+              >
+                Sign up with Google
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
