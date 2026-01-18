@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
-import { sendEvaluationResult } from "../../lib/firebase";
+import {
+  loadChatLogsFromStorage,
+  saveChatLogsToStorage,
+  saveWorkspaceSummary,
+  sendEvaluationResult,
+} from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
 
@@ -47,7 +52,6 @@ const stepSummaries: Record<string, string> = {
 
 const storageKey = "ppss-workspace-summaries";
 const evaluationStorageKey = "ppss-evaluation-results";
-const chatLogStorageKey = "ppss-chat-logs";
 const evaluationStorageImagesKey = "ppss-shared-evaluation-images";
 const defaultEvaluationImages: DesignImage[] = Array.from(
   { length: 7 },
@@ -58,8 +62,6 @@ const defaultEvaluationImages: DesignImage[] = Array.from(
   }));
 const alternativeImageStorageKey = "ppss-alternative-images";
 const siteImageStorageKey = "ppss-site-image";
-const sharedSummariesKey = "ppss-shared-summaries";
-const workspaceSummaryStorageKey = "ppss-workspace-summary";
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 const providerStorageKey = "ppss-active-provider";
 
@@ -69,6 +71,7 @@ type ChatLog = {
   sender: "user" | "assistant";
   text: string;
   label: string;
+  createdAt: string;
 };
 
 
@@ -209,48 +212,42 @@ export default function Workspace() {
     if (!user) {
       return;
     }
-    if (typeof window === "undefined") {
-      return;
-    }
-    const storedLogs = window.localStorage.getItem(
-      `${chatLogStorageKey}-${userKey}`
-    );
-    if (storedLogs) {
-      try {
-        const parsed = JSON.parse(storedLogs) as Array<
-          Partial<ChatLog> & {
-            sender?: "Planner" | "ChatGPT" | "user" | "assistant";
-          }
-        >;
-        const normalized = parsed
-          .map((log) => {
-            const sender =
-              log.sender === "assistant" || log.sender === "user"
-                ? log.sender
-                : log.sender === "ChatGPT"
-                ? "assistant"
-                : "user";
-            if (!sender || !log.stepId || !log.text || !log.provider) {
-              return null;
-            }          
-            return {
-              stepId: log.stepId,
-              provider: log.provider,
-              sender,
-              text: log.text,
-              label:
-                sender === "assistant"
-                  ? log.provider      // LLM 이름
-                  : role,             // 로그인 role
-            } as ChatLog;
-          })
-          .filter((log): log is ChatLog => Boolean(log));
-           
-        setChatLogs(normalized);
-      } catch {
-        setChatLogs([]);
+    const loadLogs = async () => {
+      const storedLogs = await loadChatLogsFromStorage<
+        Array<Partial<ChatLog> & { sender?: "Planner" | "ChatGPT" | "user" | "assistant" }>
+      >(userKey);
+      if (!storedLogs) {
+        return;
       }
-    }
+      const normalized = storedLogs
+        .map((log, index) => {
+          const sender =
+            log.sender === "Planner"
+              ? "user"
+              : log.sender === "ChatGPT"
+              ? "assistant"
+              : log.sender;
+          if (!sender || !log.stepId || !log.text || !log.provider) {
+            return null;
+          }
+          const label =
+            log.label ?? (sender === "assistant" ? log.provider : role);
+          const createdAt =
+            log.createdAt ?? new Date(Date.now() + index).toISOString();
+          return {
+            stepId: log.stepId,
+            provider: log.provider,
+            sender,
+            text: log.text,
+            label,
+            createdAt,
+          } as ChatLog;
+        })
+        .filter((log): log is ChatLog => Boolean(log))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      setChatLogs(normalized);
+    };
+    loadLogs();
   }, [user, userKey, role]);
 
   useEffect(() => {
@@ -289,13 +286,7 @@ export default function Workspace() {
     if (!user) {
       return;
     }
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(
-      `${chatLogStorageKey}-${userKey}`,
-      JSON.stringify(chatLogs)
-    );
+    saveChatLogsToStorage(userKey, chatLogs);
   }, [chatLogs, user, userKey]);
 
   useEffect(() => {
@@ -343,6 +334,7 @@ export default function Workspace() {
     return steps.reduce<Record<string, string[]>>((acc, step) => {
       acc[step.id] = chatLogs
         .filter((log) => log.stepId === step.id)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
         .map((log) => log.text);
       return acc;
     }, {});
@@ -368,6 +360,7 @@ export default function Workspace() {
         sender: "user",
         text: userMessage,
         label: role,
+        createdAt: new Date().toISOString(),
       },
     ]);
     setInputValue("");
@@ -397,6 +390,7 @@ export default function Workspace() {
           sender: "assistant",
           text: reply,
           label: activeProvider,
+          createdAt: new Date().toISOString(),
         },
       ]);
 
@@ -424,20 +418,37 @@ export default function Workspace() {
       ...prev,
       [activeStep.id]: stepSummaries[activeStep.id],
     }));
-    if (typeof window !== "undefined") {
-      const entry = {
-        stepId: activeStep.id,
-        summary: stepSummaries[activeStep.id],
-        userId: userKey,
-        role,
-        submittedAt: new Date().toISOString(),
+    setFinishNotice("Chat log sent to Report. Updating summaries...");
+    setIsSummarizing(true);
+    try {
+      const response = await fetch("/api/workspace-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentStage: activeStep.title,
+          workspaceInput: buildWorkspaceInput(),
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Summary generation failed.");
+      }
+      const payload = (await response.json()) as {
+        workspaceSummary: {
+          stageSummaries: Record<string, string>;
+          overallSummary: string;
+        };
       };
-      const stored = window.localStorage.getItem(sharedSummariesKey);
-      const parsed = stored ? (JSON.parse(stored) as typeof entry[]) : [];
-      window.localStorage.setItem(
-        sharedSummariesKey,
-        JSON.stringify([...parsed, entry])
+      await saveWorkspaceSummary(userKey, payload.workspaceSummary);
+      setFinishNotice("Chat log sent to Report.");
+    } catch (error) {
+      setFinishNotice(
+        error instanceof Error
+          ? `Chat log sent, summary update failed: ${error.message}`
+          : "Chat log sent, summary update failed."
       );
+    } finally {
+      setIsSummarizing(false);
     }
     setFinishNotice("Chat log sent to Report. Updating summaries...");
     setIsSummarizing(true);

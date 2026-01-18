@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
+import {
+  loadChatLogsFromStorage,
+  loadLatestExecutiveSummary,
+  loadWorkspaceSummary,
+  saveWorkspaceSummary,
+} from "../../lib/firebase";
 
 const workflowSteps = [
   "Problem Definition",
@@ -10,10 +16,7 @@ const workflowSteps = [
   "Design/Plan Decision",
 ];
 
-const chatLogStorageKey = "ppss-chat-logs";
 const stepIds = ["problem", "data", "alternatives", "evaluation", "report"];
-const sharedSummariesKey = "ppss-shared-summaries";
-const workspaceSummaryStorageKey = "ppss-workspace-summary";
 
 type ChatLog = {
   stepId: string;
@@ -21,15 +24,9 @@ type ChatLog = {
   sender: "Planner" | "ChatGPT" | "user" | "assistant";
   text: string;
   label?: string;
+  createdAt?: string;
 };
 
-type SharedSummary = {
-  stepId: string;
-  summary: string;
-  userId: string;
-  role: string;
-  submittedAt: string;
-};
 
 type ExecutiveSummary = {
   keywords: string[];
@@ -53,7 +50,6 @@ export default function Report() {
   const userKey = user?.uid ?? "anonymous";
   const [activeStep, setActiveStep] = useState(workflowSteps[0]);
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
-  const [sharedSummaries, setSharedSummaries] = useState<SharedSummary[]>([]);
   const [executiveSummary, setExecutiveSummary] =
     useState<ExecutiveSummary | null>(null);
   const [workspaceSummary, setWorkspaceSummary] =
@@ -61,23 +57,13 @@ export default function Report() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const groupedSharedSummaries = useMemo(() => {
-    return sharedSummaries.reduce<Record<string, Record<string, string[]>>>(
-      (acc, entry) => {
-        acc[entry.stepId] = acc[entry.stepId] || {};
-        acc[entry.stepId][entry.role] =
-          acc[entry.stepId][entry.role] || [];
-        acc[entry.stepId][entry.role].push(entry.summary);
-        return acc;
-      },
-      {}
-    );
-  }, [sharedSummaries]);
-
   const groupedUserLogs = useMemo(() => {
     return stepIds.reduce<Record<string, string[]>>((acc, stepId) => {
       acc[stepId] = chatLogs
         .filter((log) => log.stepId === stepId)
+        .sort((a, b) =>
+          (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
+        )
         .map((log) => log.text);
       return acc;
     }, {});
@@ -90,12 +76,11 @@ export default function Report() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const response = await fetch("/api/summaries", {
+      const response = await fetch("/api/workspace-summary", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          currentStage: stage,
-          executiveInput: groupedSharedSummaries,
+          currentStage: activeStep,
           workspaceInput: groupedUserLogs,
         }),
       });
@@ -104,17 +89,10 @@ export default function Report() {
         throw new Error(payload?.error ?? "Summary generation failed.");
       }
       const payload = (await response.json()) as {
-        executiveSummary: ExecutiveSummary;
         workspaceSummary: WorkspaceSummary;
       };
-      setExecutiveSummary(payload.executiveSummary);
       setWorkspaceSummary(payload.workspaceSummary);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          workspaceSummaryStorageKey,
-          JSON.stringify(payload.workspaceSummary)
-        );
-      }
+      await saveWorkspaceSummary(userKey, payload.workspaceSummary);
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -124,7 +102,7 @@ export default function Report() {
     } finally {
       setLoading(false);
     }
-  }, [user, activeStep, groupedSharedSummaries, groupedUserLogs]);
+  }, [user, activeStep, groupedUserLogs, userKey]);
 
   useEffect(() => {
     if (!user) {
@@ -133,41 +111,23 @@ export default function Report() {
     if (typeof window === "undefined") {
       return;
     }
-    const stored = window.localStorage.getItem(
-      `${chatLogStorageKey}-${userKey}`
-    );
-    if (stored) {
-      try {
-        setChatLogs(JSON.parse(stored));
-      } catch {
-        setChatLogs([]);
+    const loadData = async () => {
+      const logs = await loadChatLogsFromStorage<ChatLog[]>(userKey);
+      if (logs) {
+        setChatLogs(logs);
       }
-    }
-    const shared = window.localStorage.getItem(sharedSummariesKey);
-    if (shared) {
-      try {
-        setSharedSummaries(JSON.parse(shared));
-      } catch {
-        setSharedSummaries([]);
+      const summary = await loadWorkspaceSummary(userKey);
+      if (summary) {
+        setWorkspaceSummary(summary);
       }
-    }
-    const storedWorkspaceSummary = window.localStorage.getItem(
-      workspaceSummaryStorageKey
-    );
-    if (storedWorkspaceSummary) {
-      try {
-        setWorkspaceSummary(JSON.parse(storedWorkspaceSummary));
-      } catch {
-        setWorkspaceSummary(null);
+      const executive = await loadLatestExecutiveSummary();
+      if (executive) {
+        setExecutiveSummary(executive);
       }
-    }
+    };
+    loadData();
   }, [user, userKey]);
 
-  useEffect(() => {
-    if (user) {
-      refreshSummaries();
-    }
-  }, [refreshSummaries, user]);
 
   return (
     <AppShell>
