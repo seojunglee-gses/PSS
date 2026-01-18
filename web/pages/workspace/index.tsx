@@ -74,6 +74,14 @@ type ChatLog = {
   createdAt: string;
 };
 
+function normalizeSender(
+  sender?: string
+): "user" | "assistant" | undefined {
+  if (sender === "Planner") return "user";
+  if (sender === "ChatGPT") return "assistant";
+  if (sender === "user" || sender === "assistant") return sender;
+  return undefined;
+}
 
 type DesignImage = {
   id: string;
@@ -221,12 +229,8 @@ export default function Workspace() {
       }
       const normalized = storedLogs
         .map((log, index) => {
-          const sender =
-            log.sender === "Planner"
-              ? "user"
-              : log.sender === "ChatGPT"
-              ? "assistant"
-              : log.sender;
+          const sender = normalizeSender(log.sender);
+
           if (!sender || !log.stepId || !log.text || !log.provider) {
             return null;
           }
