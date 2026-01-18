@@ -473,12 +473,6 @@ export default function Workspace() {
       const payload = (await response.json()) as {
         workspaceSummary: { stageSummaries: Record<string, string>; overallSummary: string };
       };
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          workspaceSummaryStorageKey,
-          JSON.stringify(payload.workspaceSummary)
-        );
-      }
       setFinishNotice("Chat log sent to Report.");
     } catch (error) {
       setFinishNotice(
