@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
-import { sendEvaluationResult } from "../../lib/firebase";
+import {
+  loadChatLogsFromStorage,
+  saveChatLogsToStorage,
+  saveWorkspaceSummary,
+  sendEvaluationResult,
+} from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
 
@@ -33,12 +38,6 @@ const steps = [
   },
 ];
 
-const initialMessages = [
-  "We need a PPSS plan for the gearbox housing with safety constraints.",
-  "Confirmed. I will generate a phased plan with validation checkpoints.",
-  "Highlight fixture stability and tool access risks.",
-];
-
 const stepSummaries: Record<string, string> = {
   problem:
     "Defined scope, machining constraints, and primary safety risks before planning.",
@@ -53,7 +52,6 @@ const stepSummaries: Record<string, string> = {
 
 const storageKey = "ppss-workspace-summaries";
 const evaluationStorageKey = "ppss-evaluation-results";
-const chatLogStorageKey = "ppss-chat-logs";
 const evaluationStorageImagesKey = "ppss-shared-evaluation-images";
 const defaultEvaluationImages: DesignImage[] = Array.from(
   { length: 7 },
@@ -64,15 +62,16 @@ const defaultEvaluationImages: DesignImage[] = Array.from(
   }));
 const alternativeImageStorageKey = "ppss-alternative-images";
 const siteImageStorageKey = "ppss-site-image";
-const sharedSummariesKey = "ppss-shared-summaries";
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 const providerStorageKey = "ppss-active-provider";
 
 type ChatLog = {
   stepId: string;
   provider: string;
-  sender: "Planner" | "ChatGPT";
+  sender: "user" | "assistant";
   text: string;
+  label: string;
+  createdAt: string;
 };
 
 type DesignImage = {
@@ -95,6 +94,15 @@ const roleDescriptions: Record<string, string> = {
     "Review compliance, safety, and policy alignment across all steps.",
 };
 
+const basePromptsByStep: Record<string, string> = {
+  data: "What stands out to you in this data?",
+  alternatives:
+    "Based on our talks, I generated images you might like. How do you think?",
+  evaluation: "Which design seems interesting and why?",
+  report:
+    "From your perspective, what is the most important issue in this project?",
+};
+
 export default function Workspace() {
   const router = useRouter();
   const { user, loading } = useAuth();
@@ -111,6 +119,8 @@ export default function Workspace() {
   );
   const [showSiteImageWarning, setShowSiteImageWarning] = useState(false);
   const [showSubmitNotice, setShowSubmitNotice] = useState<null | string>(null);
+  const [finishNotice, setFinishNotice] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
@@ -129,13 +139,6 @@ export default function Workspace() {
     Array<Record<string, number>>
   >([]);
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
-  const [messages, setMessages] = useState<Record<string, string[]>>(() => {
-    const initialState: Record<string, string[]> = {};
-    steps.forEach((step) => {
-      initialState[step.id] = [...initialMessages];
-    });
-    return initialState;
-  });
   const [savedSummaries, setSavedSummaries] = useState<
     Record<string, string>
   >({});
@@ -208,33 +211,43 @@ export default function Workspace() {
     if (!user) {
       return;
     }
-    if (typeof window === "undefined") {
-      return;
-    }
-    const storedLogs = window.localStorage.getItem(
-      `${chatLogStorageKey}-${userKey}`
-    );
-    if (storedLogs) {
-      try {
-        const parsed = JSON.parse(storedLogs) as ChatLog[];
-        setChatLogs(parsed);
-        const grouped = parsed.reduce<Record<string, string[]>>(
-          (acc, log) => {
-            acc[log.stepId] = acc[log.stepId] || [];
-            acc[log.stepId].push(log.text);
-            return acc;
-          },
-          {}
-        );
-        setMessages((prev) => ({
-          ...prev,
-          ...grouped,
-        }));
-      } catch {
-        setChatLogs([]);
+    const loadLogs = async () => {
+      const storedLogs = await loadChatLogsFromStorage<
+        Array<Partial<ChatLog> & { sender?: "Planner" | "ChatGPT" | "user" | "assistant" }>
+      >(userKey);
+      if (!storedLogs) {
+        return;
       }
-    }
-  }, [user, userKey]);
+      const normalized = storedLogs
+        .map((log, index) => {
+          const sender =
+            log.sender === "Planner"
+              ? "user"
+              : log.sender === "ChatGPT"
+              ? "assistant"
+              : log.sender;
+          if (!sender || !log.stepId || !log.text || !log.provider) {
+            return null;
+          }
+          const label =
+            log.label ?? (sender === "assistant" ? log.provider : role);
+          const createdAt =
+            log.createdAt ?? new Date(Date.now() + index).toISOString();
+          return {
+            stepId: log.stepId,
+            provider: log.provider,
+            sender,
+            text: log.text,
+            label,
+            createdAt,
+          } as ChatLog;
+        })
+        .filter((log): log is ChatLog => Boolean(log))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      setChatLogs(normalized);
+    };
+    loadLogs();
+  }, [user, userKey, role]);
 
   useEffect(() => {
     if (!user) {
@@ -272,13 +285,7 @@ export default function Workspace() {
     if (!user) {
       return;
     }
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(
-      `${chatLogStorageKey}-${userKey}`,
-      JSON.stringify(chatLogs)
-    );
+    saveChatLogsToStorage(userKey, chatLogs);
   }, [chatLogs, user, userKey]);
 
   useEffect(() => {
@@ -304,6 +311,16 @@ export default function Workspace() {
     );
   }, [evaluationImages]);
 
+  useEffect(() => {
+    if (!finishNotice) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      setFinishNotice(null);
+    }, 3000);
+    return () => window.clearTimeout(timeout);
+  }, [finishNotice]);
+
   const progressValue = useMemo(() => {
     const index = steps.findIndex((step) => step.id === activeStep.id);
     if (index === -1) {
@@ -311,6 +328,16 @@ export default function Workspace() {
     }
     return Math.round((index / (steps.length - 1)) * 100);
   }, [activeStep.id]);
+
+  const buildWorkspaceInput = () => {
+    return steps.reduce<Record<string, string[]>>((acc, step) => {
+      acc[step.id] = chatLogs
+        .filter((log) => log.stepId === step.id)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .map((log) => log.text);
+      return acc;
+    }, {});
+  };
 
   const handleSend = async () => {
     if (!inputValue.trim()) {
@@ -324,17 +351,15 @@ export default function Workspace() {
     const stepId = activeStep.id;
     const userMessage = inputValue.trim();
     setIsSending(true);
-    setMessages((prev) => ({
-      ...prev,
-      [stepId]: [...prev[stepId], userMessage],
-    }));
     setChatLogs((prev) => [
       ...prev,
       {
         stepId,
         provider: activeProvider,
-        sender: "Planner",
+        sender: "user",
         text: userMessage,
+        label: role,
+        createdAt: new Date().toISOString(),
       },
     ]);
     setInputValue("");
@@ -356,13 +381,16 @@ export default function Workspace() {
       }
       const payload = (await response.json()) as { reply: string };
       const reply = payload.reply;
-      setMessages((prev) => ({
-        ...prev,
-        [stepId]: [...prev[stepId], reply],
-      }));
       setChatLogs((prev) => [
         ...prev,
-        { stepId, provider: activeProvider, sender: "ChatGPT", text: reply },
+        {
+          stepId,
+          provider: activeProvider,
+          sender: "assistant",
+          text: reply,
+          label: activeProvider,
+          createdAt: new Date().toISOString(),
+        },
       ]);
 
       if (stepId === "alternatives") {
@@ -384,25 +412,42 @@ export default function Workspace() {
     }
   };
 
-  const handleCompleteStep = () => {
+  const handleCompleteStep = async () => {
     setSavedSummaries((prev) => ({
       ...prev,
       [activeStep.id]: stepSummaries[activeStep.id],
     }));
-    if (typeof window !== "undefined") {
-      const entry = {
-        stepId: activeStep.id,
-        summary: stepSummaries[activeStep.id],
-        userId: userKey,
-        role,
-        submittedAt: new Date().toISOString(),
+    setFinishNotice("Chat log sent to Report. Updating summaries...");
+    setIsSummarizing(true);
+    try {
+      const response = await fetch("/api/workspace-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentStage: activeStep.title,
+          workspaceInput: buildWorkspaceInput(),
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Summary generation failed.");
+      }
+      const payload = (await response.json()) as {
+        workspaceSummary: {
+          stageSummaries: Record<string, string>;
+          overallSummary: string;
+        };
       };
-      const stored = window.localStorage.getItem(sharedSummariesKey);
-      const parsed = stored ? (JSON.parse(stored) as typeof entry[]) : [];
-      window.localStorage.setItem(
-        sharedSummariesKey,
-        JSON.stringify([...parsed, entry])
+      await saveWorkspaceSummary(userKey, payload.workspaceSummary);
+      setFinishNotice("Chat log sent to Report.");
+    } catch (error) {
+      setFinishNotice(
+        error instanceof Error
+          ? `Chat log sent, summary update failed: ${error.message}`
+          : "Chat log sent, summary update failed."
       );
+    } finally {
+      setIsSummarizing(false);
     }
   };
 
@@ -458,7 +503,7 @@ export default function Workspace() {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, activeStep.id]);
+  }, [chatLogs, activeStep.id]);
 
   const aggregatedResults = useMemo(() => {
     if (!evaluationResults.length) {
@@ -551,7 +596,20 @@ export default function Workspace() {
   }
 
   const renderChatPanel = () => {
-    const stepMessages = messages[activeStep.id] ?? [];
+    const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
+    const basePrompt = basePromptsByStep[activeStep.id];
+    const displayedMessages = [
+      ...(basePrompt
+        ? [
+            {
+              text: basePrompt,
+              sender: "assistant" as const,
+              label: activeProvider,
+            },
+          ]
+        : []),
+      ...stepLogs,
+    ];
     return (
     <div className="flex h-full flex-col rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
@@ -566,19 +624,19 @@ export default function Workspace() {
         </span>
       </div>
       <div className="mt-4 max-h-[420px] flex-1 space-y-4 overflow-auto text-sm text-slate-600">
-        {stepMessages.length === 0 && (
+        {displayedMessages.length === 0 && (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
             Start a conversation here to discuss the project and planning
             needs.
           </div>
         )}
-        {activeStep.id === "alternatives" && stepMessages.length > 0 && (
+        {activeStep.id === "alternatives" && stepLogs.length > 0 && (
           <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
             Based on our conversation, I generated design images for review.
           </div>
         )}
-        {stepMessages.map((message, index) => {
-          const isAssistant = index % 2 === 1;
+        {displayedMessages.map((message, index) => {
+          const isAssistant = message.sender === "assistant";
           return (
             <div
               key={`${activeStep.id}-${index}`}
@@ -589,9 +647,9 @@ export default function Workspace() {
               } ${isAssistant ? "mr-auto" : "ml-auto"}`}
             >
               <p className="text-xs font-semibold uppercase text-slate-400">
-                {isAssistant ? "ChatGPT" : "Planner"}
+                {message.label}
               </p>
-              <p className="mt-2">{message}</p>
+              <p className="mt-2">{message.text}</p>
             </div>
           );
         })}
@@ -624,12 +682,18 @@ export default function Workspace() {
           {errorMessage}
         </div>
       )}
+      {finishNotice && (
+        <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
+          {finishNotice}
+        </div>
+      )}
       <button
         className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
         type="button"
         onClick={handleCompleteStep}
+        disabled={isSummarizing}
       >
-        Finish Stage
+        {isSummarizing ? "Updating..." : "Finish Stage"}
       </button>
     </div>
   );
