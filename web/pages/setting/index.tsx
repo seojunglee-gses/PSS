@@ -46,18 +46,16 @@ export default function Setting() {
   const [siteSaveMessage, setSiteSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
+  setIsAdmin(Boolean(user && user.email === adminEmail));
+}, [user]);
+  
+  useEffect(() => {
+    if (typeof window === "undefined") {return;}
     const storedProvider = window.localStorage.getItem(providerStorageKey);
     if (storedProvider && providers.includes(storedProvider as Provider)) {
       setActiveProvider(storedProvider as Provider);
     }
   }, []);
-
-  useEffect(() => {
-    setIsAdmin(user?.email === adminEmail);
-  }, [user?.email]);
 
   useEffect(() => {
     if (!isAdmin) {
