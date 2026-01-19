@@ -37,6 +37,10 @@ export default function Setting() {
     "success" | "error" | null
   >(null);
   const [siteSaveMessage, setSiteSaveMessage] = useState<string | null>(null);
+  const [backgroundLoadMessage, setBackgroundLoadMessage] = useState<
+    string | null
+  >(null);
+  const [siteLoadMessage, setSiteLoadMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setIsAdmin(Boolean(user && user.email === adminEmail));
@@ -53,9 +57,6 @@ export default function Setting() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin) {
-      return;
-    }
     let isMounted = true;
     loadBackgroundKnowledge()
       .then((data) => {
@@ -65,10 +66,9 @@ export default function Setting() {
       })
       .catch(() => {
         if (isMounted) {
-          setBackgroundSaveMessage(
+          setBackgroundLoadMessage(
             "Unable to load background knowledge from storage."
           );
-          setBackgroundSaveTone("error");
         }
       });
     loadCurrentSiteImage()
@@ -79,15 +79,13 @@ export default function Setting() {
       })
       .catch(() => {
         if (isMounted) {
-          setSiteSaveMessage(
-            "Unable to load current site image from storage."
-          );
+          setSiteLoadMessage("Unable to load current site image from storage.");
         }
       });
     return () => {
       isMounted = false;
     };
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -126,67 +124,67 @@ export default function Setting() {
   };
 
   const handleBackgroundSave = async () => {
-  if (isBackgroundSaving) return;
-  setIsBackgroundSaving(true);
-  setBackgroundSaveMessage(null);
-  setBackgroundSaveTone(null);
+    if (isBackgroundSaving) return;
+    setIsBackgroundSaving(true);
+    setBackgroundSaveMessage(null);
+    setBackgroundSaveTone(null);
 
-  try {
-    if (!user) {
-      throw new Error("Not logged in");
+    try {
+      if (!user) {
+        throw new Error("Not logged in");
+      }
+      if (!backgroundFiles.length) {
+        throw new Error("Please upload background knowledge files.");
+      }
+
+      const token = await user.getIdToken();
+
+      const filesPayload = await Promise.all(
+        backgroundFiles.map(async (file) => {
+          const buffer = await file.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+          return {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            lastModified: file.lastModified,
+            data: base64,
+          };
+        })
+      );
+
+      const res = await fetch("/api/admin/background-knowledge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ files: filesPayload }),
+      });
+
+      const text = await res.text();
+
+      if (!res.ok) {
+        throw new Error(text || "Save failed");
+      }
+
+      const payload = text ? JSON.parse(text) : {};
+      if (payload.curatedText) {
+        setBackgroundText(payload.curatedText);
+      }
+
+      setBackgroundFiles([]);
+      setBackgroundSaveMessage("Background knowledge saved.");
+      setBackgroundSaveTone("success");
+    } catch (error) {
+      setBackgroundSaveMessage(
+        error instanceof Error ? error.message : "Save failed"
+      );
+      setBackgroundSaveTone("error");
+    } finally {
+      setIsBackgroundSaving(false);
     }
-    if (!backgroundFiles.length) {
-      throw new Error("Please upload background knowledge files.");
-    }
-
-    const token = await user.getIdToken();
-
-    const filesPayload = await Promise.all(
-      backgroundFiles.map(async (file) => {
-        const buffer = await file.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-        return {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          lastModified: file.lastModified,
-          data: base64,
-        };
-      })
-    );
-
-    const res = await fetch("/api/admin/background-knowledge", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ files: filesPayload }),
-    });
-
-    const text = await res.text();
-
-    if (!res.ok) {
-      throw new Error(text || "Save failed");
-    }
-
-    const payload = text ? JSON.parse(text) : {};
-    if (payload.curatedText) {
-      setBackgroundText(payload.curatedText);
-    }
-
-    setBackgroundFiles([]);
-    setBackgroundSaveMessage("Background knowledge saved.");
-    setBackgroundSaveTone("success");
-  } catch (error) {
-    setBackgroundSaveMessage(
-      error instanceof Error ? error.message : "Save failed"
-    );
-    setBackgroundSaveTone("error");
-  } finally {
-    setIsBackgroundSaving(false);
-  }
-};
+  };
 
   const handleSiteImageSave = async () => {
     if (!siteImageFiles.length) {
@@ -297,7 +295,7 @@ export default function Setting() {
           </div>
         </div>
       </section>
-      {isAdmin ? (
+      {isAdmin && (
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold">Administrator settings</h3>
           <p className="mt-2 text-sm text-slate-500">
@@ -354,10 +352,15 @@ export default function Setting() {
                   onClick={handleBackgroundSave}
                   disabled={isBackgroundSaving}
                 >
-                 {isBackgroundSaving ? 
-                 "Saving..." : 
-                 "Generate and save summary"}
+                  {isBackgroundSaving
+                    ? "Saving..."
+                    : "Generate and save summary"}
                 </button>
+                {backgroundLoadMessage && (
+                  <span className="text-xs text-rose-500">
+                    {backgroundLoadMessage}
+                  </span>
+                )}
                 {backgroundSaveMessage && (
                   <span
                     className={`text-xs ${
@@ -410,6 +413,11 @@ export default function Setting() {
                 >
                   Save site images
                 </button>
+                {siteLoadMessage && (
+                  <span className="text-xs text-rose-500">
+                    {siteLoadMessage}
+                  </span>
+                )}
                 {siteSaveMessage && (
                   <span className="text-xs text-emerald-600">
                     {siteSaveMessage}
@@ -418,14 +426,6 @@ export default function Setting() {
               </div>
             </div>
           </div>
-        </section>
-      ) : (
-        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">Administrator access</h3>
-          <p className="mt-2 text-sm text-slate-500">
-            Sign in with {adminEmail} to manage background knowledge and site
-            images.
-          </p>
         </section>
       )}
     </AppShell>
