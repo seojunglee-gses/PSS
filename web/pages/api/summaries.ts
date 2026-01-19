@@ -1,7 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { loadBackgroundKnowledge } from "../../lib/firebase";
 
-const systemPrompt =
+const systemPromptBase =
   "You are an analyst creating structured summaries for a PPSS workflow report based on the Chat log. Return ONLY valid JSON that matches the schema. No extra keys.";
+const buildSystemPrompt = (backgroundKnowledge?: string) =>
+  backgroundKnowledge
+    ? `${systemPromptBase}\n\nBackground knowledge (stable system context for all planning stages):\n${backgroundKnowledge}`
+    : systemPromptBase;
 const buildPrompt = (payload: unknown) => `...`;
 
 export default async function handler(
@@ -20,6 +25,8 @@ export default async function handler(
   }
 
   try {
+    const backgroundKnowledge = await loadBackgroundKnowledge();
+    const curatedBackground = backgroundKnowledge?.curatedText?.trim();
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -28,7 +35,9 @@ export default async function handler(
       },
       body: JSON.stringify({
         model: "gpt-5-mini",
-        input: `${systemPrompt}\n\n${buildPrompt(req.body)}`,
+        input: `${buildSystemPrompt(curatedBackground)}\n\n${buildPrompt(
+          req.body
+        )}`,
         text: {
           format: { type: "json_object" },
         },

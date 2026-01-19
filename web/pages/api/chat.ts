@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { loadBackgroundKnowledge } from "../../lib/firebase";
 
 type ChatRequest = {
   model?: string;
@@ -29,6 +30,11 @@ export default async function handler(
   }
 
   try {
+    const backgroundKnowledge = await loadBackgroundKnowledge();
+    const curatedBackground = backgroundKnowledge?.curatedText?.trim();
+    const systemText = curatedBackground
+      ? `You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.\n\nBackground knowledge (stable system context for all planning stages):\n${curatedBackground}`
+      : "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.";
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -43,8 +49,7 @@ export default async function handler(
             content: [
               {
                 type: "input_text",
-                text:
-                  "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.",
+                text: systemText,
               },
             ],
           },

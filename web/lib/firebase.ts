@@ -11,7 +11,7 @@ import {
   query,
   setDoc,
 } from "firebase/firestore";
-import { getStorage, ref, getBytes, uploadString } from "firebase/storage";
+import { getStorage, ref, getBytes, uploadBytes, uploadString } from "firebase/storage";
 
 type EvaluationPayload = {
   submittedAt: string;
@@ -35,6 +35,21 @@ type ExecutiveSummary = {
     decision: string;
   };
   createdAt?: string;
+};
+
+type BackgroundKnowledge = {
+  curatedText: string;
+  updatedAt?: string;
+  updatedBy?: string;
+};
+
+type BackgroundKnowledgeArchive = {
+  fileName: string;
+  storagePath: string;
+  contentType: string;
+  size: number;
+  uploadedAt: string;
+  uploadedBy: string;
 };
 
 const firebaseConfig = {
@@ -153,4 +168,64 @@ export const loadLatestExecutiveSummary = async (): Promise<
     return null;
   }
   return docSnapshot.data() as ExecutiveSummary;
+};
+
+export const saveBackgroundKnowledge = async (payload: {
+  curatedText: string;
+  updatedBy: string;
+}) => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return;
+  }
+  const db = getFirestore(app);
+  await setDoc(
+    doc(db, "ppssBackgroundKnowledge", "current"),
+    {
+      curatedText: payload.curatedText,
+      updatedBy: payload.updatedBy,
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+};
+
+export const loadBackgroundKnowledge = async (): Promise<
+  BackgroundKnowledge | null
+> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return null;
+  }
+  const db = getFirestore(app);
+  const snapshot = await getDoc(doc(db, "ppssBackgroundKnowledge", "current"));
+  if (!snapshot.exists()) {
+    return null;
+  }
+  return snapshot.data() as BackgroundKnowledge;
+};
+
+export const archiveBackgroundKnowledgeFile = async (
+  file: File,
+  uploadedBy: string
+) => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return;
+  }
+  const storage = getStorage(app);
+  const db = getFirestore(app);
+  const timestamp = new Date().toISOString();
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const storagePath = `ppss-background-knowledge/originals/${timestamp}-${safeName}`;
+  await uploadBytes(ref(storage, storagePath), file);
+  const archivePayload: BackgroundKnowledgeArchive = {
+    fileName: file.name,
+    storagePath,
+    contentType: file.type || "application/octet-stream",
+    size: file.size,
+    uploadedAt: timestamp,
+    uploadedBy,
+  };
+  await addDoc(collection(db, "ppssBackgroundKnowledgeArchives"), archivePayload);
 };
