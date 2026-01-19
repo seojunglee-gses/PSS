@@ -15,6 +15,20 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /ppssSiteImages/{documentId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /ppssGeneratedImages/{documentId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    match /ppssUserDesignSubmissions/{documentId} {
+      allow read, write: if request.auth != null;
+    }
+
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
