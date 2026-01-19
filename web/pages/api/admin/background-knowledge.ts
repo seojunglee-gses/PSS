@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import * as mammoth from "mammoth";
 import pdf from "pdf-parse";
 import { adminBucket, adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
+const mammoth = require("mammoth");
 
 type UploadedFile = {
   name: string;
