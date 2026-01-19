@@ -170,22 +170,13 @@ export default async function handler(
 
     await db.doc("ppssBackgroundKnowledge/current").set(
       {
-        curatedText: finalCuratedText,
-        updatedBy: decoded.email ?? decoded.uid,
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
-    
-    await db.doc("ppssBackgroundKnowledge/current").set(
-      {
         curatedText,
         updatedBy: decoded.email ?? decoded.uid,
         updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
-
+    
     res.status(200).json({ ok: true, curatedText });
   } catch (error) {
     console.error("ADMIN BACKGROUND ERROR:", error);
