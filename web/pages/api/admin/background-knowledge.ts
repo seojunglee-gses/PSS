@@ -1,7 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { adminBucket, adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
-const mammoth = require("mammoth");
-const pdf = require("pdf-parse");
 
 export const runtime = "nodejs";
 
@@ -14,11 +12,13 @@ type UploadedFile = {
 };
 
 async function extractDocxText(buffer: Buffer): Promise<string> {
+  const mammoth = await import("mammoth");
   const result = await mammoth.extractRawText({ buffer });
   return result.value || "";
 }
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
+  const pdf = (await import("pdf-parse")).default;
   const data = await pdf(buffer);
   return data.text || "";
 }
