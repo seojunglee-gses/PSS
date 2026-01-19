@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
-import { auth } from "@/lib/firebase";
+import { useAuth } from "../../lib/auth";
 import {
   archiveBackgroundKnowledgeFile,
   loadBackgroundKnowledge,
@@ -14,12 +14,11 @@ const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
 type Provider = (typeof providers)[number];
 
 const providerStorageKey = "ppss-active-provider";
-const adminStorageKey = "ppss-admin-mode";
-const adminCode = "0000";
+const adminEmail = "test@snu.ac.kr";
 
 export default function Setting() {
+  const { user } = useAuth();
   const [activeProvider, setActiveProvider] = useState<Provider>("ChatGPT");
-  const [adminInput, setAdminInput] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [siteImageFiles, setSiteImageFiles] = useState<File[]>([]);
   const [siteImagePreview, setSiteImagePreview] = useState<string | null>(null);
@@ -41,14 +40,14 @@ export default function Setting() {
       return;
     }
     const storedProvider = window.localStorage.getItem(providerStorageKey);
-    const storedAdmin = window.localStorage.getItem(adminStorageKey);
     if (storedProvider && providers.includes(storedProvider as Provider)) {
       setActiveProvider(storedProvider as Provider);
     }
-    if (storedAdmin === "true") {
-      setIsAdmin(true);
-    }
   }, []);
+
+  useEffect(() => {
+    setIsAdmin(user?.email === adminEmail);
+  }, [user?.email]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -109,16 +108,6 @@ export default function Setting() {
     window.localStorage.setItem(providerStorageKey, activeProvider);
   };
 
-  const handleAdminUnlock = () => {
-    if (adminInput.trim() !== adminCode) {
-      return;
-    }
-    setIsAdmin(true);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(adminStorageKey, "true");
-    }
-  };
-
   const handleSiteImagesChange = (files: FileList | null) => {
     const fileList = files ? Array.from(files) : [];
     if (siteImagePreview) {
@@ -142,8 +131,8 @@ export default function Setting() {
     setBackgroundSaveTone(null);
     try {
       const updatedBy =
-        auth.currentUser?.email ??
-        auth.currentUser?.uid ??
+        user?.email ??
+        user?.uid ??
         "admin";
       await saveBackgroundKnowledge({
         curatedText: backgroundText.trim(),
@@ -176,8 +165,8 @@ export default function Setting() {
     }
     try {
       const updatedBy =
-        auth.currentUser?.email ??
-        auth.currentUser?.uid ??
+        user?.email ??
+        user?.uid ??
         "admin";
       const saved = await saveCurrentSiteImage(siteImageFiles[0], updatedBy);
       if (saved) {
@@ -259,34 +248,7 @@ export default function Setting() {
           </div>
         </div>
       </section>
-      {!isAdmin ? (
-        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">Administrator access</h3>
-          <p className="mt-2 text-sm text-slate-500">
-            Enter the administrator code to manage background knowledge and
-            site images.
-          </p>
-          <div className="mt-6 grid gap-4 max-w-md">
-            <label className="text-xs font-semibold uppercase text-slate-500">
-              Admin code
-            </label>
-            <input
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
-              placeholder="0000"
-              type="password"
-              value={adminInput}
-              onChange={(event) => setAdminInput(event.target.value)}
-            />
-            <button
-              className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--primary-dark)]"
-              type="button"
-              onClick={handleAdminUnlock}
-            >
-              Enter admin mode
-            </button>
-          </div>
-        </section>
-      ) : (
+      {isAdmin ? (
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold">Administrator settings</h3>
           <p className="mt-2 text-sm text-slate-500">
@@ -407,6 +369,14 @@ export default function Setting() {
               </div>
             </div>
           </div>
+        </section>
+      ) : (
+        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold">Administrator access</h3>
+          <p className="mt-2 text-sm text-slate-500">
+            Sign in with {adminEmail} to manage background knowledge and site
+            images.
+          </p>
         </section>
       )}
     </AppShell>
