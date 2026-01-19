@@ -32,9 +32,7 @@ export default function Setting() {
   const [backgroundSaveMessage, setBackgroundSaveMessage] = useState<
     string | null
   >(null);
-  const [backgroundSaveStatus, setBackgroundSaveStatus] = useState<
-    "idle" | "saving"
-  >("idle");
+  const [isBackgroundSaving, setIsBackgroundSaving] = useState(false);
   const [backgroundSaveTone, setBackgroundSaveTone] = useState<
     "success" | "error" | null
   >(null);
@@ -128,65 +126,67 @@ export default function Setting() {
   };
 
   const handleBackgroundSave = async () => {
-    if (backgroundSaveStatus === "saving") return;
-    setBackgroundSaveStatus("saving");
-    setBackgroundSaveMessage(null);
-    setBackgroundSaveTone(null);
-    try {
-      if (!user) {
-        throw new Error("Not logged in");
-      }
-      if (!backgroundFiles.length) {
-        throw new Error("Please upload background knowledge files.");
-      }
-      const token = await user.getIdToken();
+  if (isBackgroundSaving) return;
+  setIsBackgroundSaving(true);
+  setBackgroundSaveMessage(null);
+  setBackgroundSaveTone(null);
 
-      const filesPayload = await Promise.all(
-        backgroundFiles.map(async (file) => {
-          const buffer = await file.arrayBuffer();
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-          return {
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            lastModified: file.lastModified,
-            data: base64,
-          };
-        })
-      );
+  try {
+    if (!user) {
+      throw new Error("Not logged in");
+    }
+    if (!backgroundFiles.length) {
+      throw new Error("Please upload background knowledge files.");
+    }
 
-      const res = await fetch("/api/admin/background-knowledge", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          files: filesPayload,
-        }),
-      });
-      
-      const text = await res.text();
-      
-      if (!res.ok) {
-        try {
-          const err = JSON.parse(text);
-          throw new Error(err.error || "Save failed");
-        } catch {
-          throw new Error(text || "Save failed");
-        }
-      }
-      
-      let payload: { curatedText?: string } = {};
-      if (text) {
-        payload = JSON.parse(text);
-      }
-      
-      if (payload.curatedText) {
-        setBackgroundText(payload.curatedText);
-      }
+    const token = await user.getIdToken();
 
+    const filesPayload = await Promise.all(
+      backgroundFiles.map(async (file) => {
+        const buffer = await file.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+        return {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          lastModified: file.lastModified,
+          data: base64,
+        };
+      })
+    );
 
+    const res = await fetch("/api/admin/background-knowledge", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ files: filesPayload }),
+    });
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      throw new Error(text || "Save failed");
+    }
+
+    const payload = text ? JSON.parse(text) : {};
+    if (payload.curatedText) {
+      setBackgroundText(payload.curatedText);
+    }
+
+    setBackgroundFiles([]);
+    setBackgroundSaveMessage("Background knowledge saved.");
+    setBackgroundSaveTone("success");
+  } catch (error) {
+    setBackgroundSaveMessage(
+      error instanceof Error ? error.message : "Save failed"
+    );
+    setBackgroundSaveTone("error");
+  } finally {
+    setIsBackgroundSaving(false);
+  }
+};
 
   const handleSiteImageSave = async () => {
     if (!siteImageFiles.length) {
@@ -352,11 +352,11 @@ export default function Setting() {
                   className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
                   type="button"
                   onClick={handleBackgroundSave}
-                  disabled={backgroundSaveStatus === "saving"}
+                  disabled={isBackgroundSaving}
                 >
-                  {backgroundSaveStatus === "saving"
-                    ? "Saving..."
-                    : "Generate and save summary"}
+                 {isBackgroundSaving ? 
+                 "Saving..." : 
+                 "Generate and save summary"}
                 </button>
                 {backgroundSaveMessage && (
                   <span
