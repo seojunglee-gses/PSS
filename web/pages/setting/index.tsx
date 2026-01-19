@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
+import { auth } from "../../lib/firebase";
 import {
   loadBackgroundKnowledge,
   loadCurrentSiteImage,
