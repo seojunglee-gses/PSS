@@ -28,7 +28,14 @@ export default async function handler(
   }
 
   try {
-    const decoded = await verifyAdminRequest(req.headers.authorization);
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing Authorization header" });
+      return;
+    }
+const token = authHeader.replace("Bearer ", "");
+const decoded = await verifyAdminRequest(token);
+
     const { name, type, size, lastModified, data } = req.body as {
       name?: string;
       type?: string;
@@ -71,8 +78,9 @@ export default async function handler(
 
     res.status(200).json({ downloadUrl });
   } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Unexpected error.",
-    });
-  }
+  console.error("SITE IMAGE UPLOAD ERROR:", error);
+  res.status(500).json({
+    error: error instanceof Error ? error.message : "Unexpected error.",
+  });
+}
 }
