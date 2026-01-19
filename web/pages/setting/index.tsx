@@ -124,67 +124,67 @@ export default function Setting() {
   };
 
   const handleBackgroundSave = async () => {
-  if (isBackgroundSaving) return;
-  setIsBackgroundSaving(true);
-  setBackgroundSaveMessage(null);
-  setBackgroundSaveTone(null);
+    if (isBackgroundSaving) return;
+    setIsBackgroundSaving(true);
+    setBackgroundSaveMessage(null);
+    setBackgroundSaveTone(null);
 
-  try {
-    if (!user) {
-      throw new Error("Not logged in");
+    try {
+      if (!user) {
+        throw new Error("Not logged in");
+      }
+      if (!backgroundFiles.length) {
+        throw new Error("Please upload background knowledge files.");
+      }
+
+      const token = await user.getIdToken();
+
+      const filesPayload = await Promise.all(
+        backgroundFiles.map(async (file) => {
+          const buffer = await file.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+          return {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            lastModified: file.lastModified,
+            data: base64,
+          };
+        })
+      );
+
+      const res = await fetch("/api/admin/background-knowledge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ files: filesPayload }),
+      });
+
+      const text = await res.text();
+
+      if (!res.ok) {
+        throw new Error(text || "Save failed");
+      }
+
+      const payload = text ? JSON.parse(text) : {};
+      if (payload.curatedText) {
+        setBackgroundText(payload.curatedText);
+      }
+
+      setBackgroundFiles([]);
+      setBackgroundSaveMessage("Background knowledge saved.");
+      setBackgroundSaveTone("success");
+    } catch (error) {
+      setBackgroundSaveMessage(
+        error instanceof Error ? error.message : "Save failed"
+      );
+      setBackgroundSaveTone("error");
+    } finally {
+      setIsBackgroundSaving(false);
     }
-    if (!backgroundFiles.length) {
-      throw new Error("Please upload background knowledge files.");
-    }
-
-    const token = await user.getIdToken();
-
-    const filesPayload = await Promise.all(
-      backgroundFiles.map(async (file) => {
-        const buffer = await file.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-        return {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          lastModified: file.lastModified,
-          data: base64,
-        };
-      })
-    );
-
-    const res = await fetch("/api/admin/background-knowledge", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ files: filesPayload }),
-    });
-
-    const text = await res.text();
-
-    if (!res.ok) {
-      throw new Error(text || "Save failed");
-    }
-
-    const payload = text ? JSON.parse(text) : {};
-    if (payload.curatedText) {
-      setBackgroundText(payload.curatedText);
-    }
-
-    setBackgroundFiles([]);
-    setBackgroundSaveMessage("Background knowledge saved.");
-    setBackgroundSaveTone("success");
-  } catch (error) {
-    setBackgroundSaveMessage(
-      error instanceof Error ? error.message : "Save failed"
-    );
-    setBackgroundSaveTone("error");
-  } finally {
-    setIsBackgroundSaving(false);
-  }
-};
+  };
 
   const handleSiteImageSave = async () => {
     if (!siteImageFiles.length) {
@@ -352,9 +352,9 @@ export default function Setting() {
                   onClick={handleBackgroundSave}
                   disabled={isBackgroundSaving}
                 >
-                 {isBackgroundSaving ? 
-                 "Saving..." : 
-                 "Generate and save summary"}
+                  {isBackgroundSaving
+                    ? "Saving..."
+                    : "Generate and save summary"}
                 </button>
                 {backgroundLoadMessage && (
                   <span className="text-xs text-rose-500">
@@ -429,10 +429,11 @@ export default function Setting() {
         </section>
       ) : (
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">Workspace resources</h3>
+          <h3 className="text-lg font-semibold">Administrator settings</h3>
           <p className="mt-2 text-sm text-slate-500">
-            Admin-managed background knowledge and site imagery are shared with
-            every workspace member. You can view the latest uploads below.
+            Only administrators can view or update workspace resources here.
+            The latest admin-managed background knowledge and site imagery are
+            still used inside the workspace for all members.
           </p>
           <div className="mt-6 grid gap-6">
             <div>
