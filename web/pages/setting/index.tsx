@@ -165,29 +165,27 @@ export default function Setting() {
           files: filesPayload,
         }),
       });
-
+      
+      const text = await res.text();
+      
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Save failed");
+        try {
+          const err = JSON.parse(text);
+          throw new Error(err.error || "Save failed");
+        } catch {
+          throw new Error(text || "Save failed");
+        }
       }
-
-      const payload = (await res.json()) as { curatedText?: string };
+      
+      let payload: { curatedText?: string } = {};
+      if (text) {
+        payload = JSON.parse(text);
+      }
+      
       if (payload.curatedText) {
         setBackgroundText(payload.curatedText);
       }
-      setBackgroundFiles([]);
-      setBackgroundSaveMessage("Background knowledge summarized and saved.");
-      setBackgroundSaveTone("success");
-    } catch (error) {
-      console.error("CLIENT SAVE ERROR:", error);
-      setBackgroundSaveMessage(
-        error instanceof Error ? error.message : "Save failed"
-      );
-      setBackgroundSaveTone("error");
-    } finally {
-      setBackgroundSaveStatus("idle");
-    }
-  };
+
 
 
   const handleSiteImageSave = async () => {
