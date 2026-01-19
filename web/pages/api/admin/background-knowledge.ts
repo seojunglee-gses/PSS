@@ -3,6 +3,8 @@ import { adminBucket, adminDb, verifyAdminRequest } from "../../../lib/firebaseA
 const mammoth = require("mammoth");
 const pdf = require("pdf-parse");
 
+export const runtime = "nodejs";
+
 type UploadedFile = {
   name: string;
   type: string;
@@ -35,7 +37,6 @@ export const config = {
     bodyParser: {
       sizeLimit: "10mb",
     },
-    runtime: "nodejs", 
   },
 };
 
