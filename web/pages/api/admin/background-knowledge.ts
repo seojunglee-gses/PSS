@@ -1,13 +1,3 @@
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: "10mb",
-    },
-    runtime: "nodejs", 
-  },
-};
-
-
 import type { NextApiRequest, NextApiResponse } from "next";
 import { adminBucket, adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
 const mammoth = require("mammoth");
@@ -45,6 +35,7 @@ export const config = {
     bodyParser: {
       sizeLimit: "10mb",
     },
+    runtime: "nodejs", 
   },
 };
 
