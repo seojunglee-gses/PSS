@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import mammoth from "mammoth";
+import * as mammoth from "mammoth";
 import pdf from "pdf-parse";
 import { adminBucket, adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
 
