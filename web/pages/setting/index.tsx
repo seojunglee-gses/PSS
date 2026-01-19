@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
 import { getStorage, ref, uploadBytes } from "firebase/storage";
-import { auth } from "firebase/auth";
 import {
   loadBackgroundKnowledge,
   loadCurrentSiteImage,
@@ -154,7 +153,6 @@ export default function Setting() {
     reader.readAsDataURL(file);
   });
 const uploadBackgroundFile = async (file: File) => {
-  const user = auth.currentUser;
   if (!user) throw new Error("Not logged in");
 
   const storage = getStorage();
@@ -175,17 +173,13 @@ const uploadBackgroundFile = async (file: File) => {
   
 const handleBackgroundSave = async () => {
   if (backgroundSaveStatus === "saving") return;
-
   setBackgroundSaveStatus("saving");
   setBackgroundSaveMessage(null);
   setBackgroundSaveTone(null);
-
   try {
-    const user = auth.currentUser;
     if (!user) {
       throw new Error("Not logged in");
     }
-
     const token = await user.getIdToken();
 
     const filesPayload = await Promise.all(
