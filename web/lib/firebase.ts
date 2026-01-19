@@ -89,7 +89,7 @@ const isConfigReady = Object.values(firebaseConfig).every(Boolean);
 
 const getFirebaseApp = () => {
   if (!isConfigReady) {
-    return null;
+    throw new Error("Firebase config is not ready");
   }
   if (!getApps().length) {
     return initializeApp(firebaseConfig);
