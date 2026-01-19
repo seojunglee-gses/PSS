@@ -12,14 +12,16 @@ type UploadedFile = {
 };
 
 async function extractDocxText(buffer: Buffer): Promise<string> {
-  const mammoth = await import("mammoth");
+  const mammothMod: any = await import("mammoth");
+  const mammoth = mammothMod.default ?? mammothMod;
   const result = await mammoth.extractRawText({ buffer });
   return result.value || "";
 }
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  const pdf = (await import("pdf-parse")).default;
-  const data = await pdf(buffer);
+  const pdfParse: any = await import("pdf-parse");
+  const parse = pdfParse.default ?? pdfParse;
+  const data = await parse(buffer);
   return data.text || "";
 }
 
