@@ -33,8 +33,9 @@ export default async function handler(
       res.status(401).json({ error: "Missing Authorization header" });
       return;
     }
-const token = authHeader.replace("Bearer ", "");
-const decoded = await verifyAdminRequest(token);
+    const authToken = authHeader.replace("Bearer ", "");
+    const decoded = await verifyAdminRequest(authToken);
+    const downloadToken = randomUUID();
 
     const { name, type, size, lastModified, data } = req.body as {
       name?: string;
@@ -54,17 +55,19 @@ const decoded = await verifyAdminRequest(token);
     const storagePath = "ppss-site-image/current";
     const token = randomUUID();
     const bucket = adminBucket();
-    await bucket
-      .file(storagePath)
-      .save(Buffer.from(stripDataPrefix(data), "base64"), {
+    await bucket.file(storagePath).save(
+      Buffer.from(stripDataPrefix(data), "base64"),
+      {
         metadata: {
           contentType: type || "application/octet-stream",
           metadata: {
-            firebaseStorageDownloadTokens: token,
+            firebaseStorageDownloadTokens: downloadToken,
           },
         },
-      });
-    const downloadUrl = buildDownloadUrl(storagePath, token);
+      }
+    );
+    const downloadUrl = buildDownloadUrl(storagePath, downloadToken);
+    
     await db.doc("ppssSiteImages/current").set(
       {
         imageId,
