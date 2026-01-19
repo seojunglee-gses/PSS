@@ -435,6 +435,52 @@ export default function Setting() {
             The latest admin-managed background knowledge and site imagery are
             still used inside the workspace for all members.
           </p>
+          <div className="mt-6 grid gap-6">
+            <div>
+              <label className="text-xs font-semibold uppercase text-slate-500">
+                Background knowledge (admin-curated)
+              </label>
+              <textarea
+                className="mt-2 h-40 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 focus:border-[var(--primary)] focus:outline-none"
+                placeholder="No background knowledge has been uploaded yet."
+                value={backgroundText}
+                readOnly
+              />
+              {backgroundLoadMessage && (
+                <p className="mt-2 text-xs text-rose-500">
+                  {backgroundLoadMessage}
+                </p>
+              )}
+            </div>
+            <div className="border-t border-slate-200 pt-6">
+              <h4 className="text-sm font-semibold">Current site image</h4>
+              <p className="mt-2 text-sm text-slate-500">
+                The workspace will use the most recent site image uploaded by
+                the admin.
+              </p>
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                {siteImagePreview ? (
+                  <img
+                    src={siteImagePreview}
+                    alt="Current site"
+                    className="h-40 w-full rounded-lg object-cover"
+                  />
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    No site image has been uploaded yet.
+                  </p>
+                )}
+                {siteLoadMessage && (
+                  <p className="mt-2 text-xs text-rose-500">
+                    {siteLoadMessage}
+                  </p>
+                )}
+              </div>
+              <p className="mt-3 text-xs text-slate-500">
+                Sign in with {adminEmail} if you need to replace these assets.
+              </p>
+            </div>
+          </div>
         </section>
       )}
     </AppShell>
