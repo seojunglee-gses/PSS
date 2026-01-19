@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
-import { getStorage, ref, uploadBytes } from "firebase/storage";
-import {
-  loadBackgroundKnowledge,
-  loadCurrentSiteImage,
-} from "../../lib/firebase";
+import { loadBackgroundKnowledge, loadCurrentSiteImage } from "../../lib/firebase";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
 
@@ -24,7 +20,6 @@ const fileToBase64 = (file: File) =>
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
-
 
 export default function Setting() {
   const { user } = useAuth();
@@ -46,11 +41,13 @@ export default function Setting() {
   const [siteSaveMessage, setSiteSaveMessage] = useState<string | null>(null);
 
   useEffect(() => {
-  setIsAdmin(Boolean(user && user.email === adminEmail));
-}, [user]);
-  
+    setIsAdmin(Boolean(user && user.email === adminEmail));
+  }, [user]);
+
   useEffect(() => {
-    if (typeof window === "undefined") {return;}
+    if (typeof window === "undefined") {
+      return;
+    }
     const storedProvider = window.localStorage.getItem(providerStorageKey);
     if (storedProvider && providers.includes(storedProvider as Provider)) {
       setActiveProvider(storedProvider as Provider);
@@ -129,102 +126,68 @@ export default function Setting() {
   const handleBackgroundFilesChange = (files: FileList | null) => {
     setBackgroundFiles(files ? Array.from(files) : []);
   };
-  
-  const fileToUploadPayload = (file: File) =>
-  new Promise<{
-    name: string;
-    type: string;
-    size: number;
-    lastModified: number;
-    data: string;
-  }>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.onload = () =>
-      resolve({
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        lastModified: file.lastModified,
-        data: String(reader.result), // data URL
+
+  const handleBackgroundSave = async () => {
+    if (backgroundSaveStatus === "saving") return;
+    setBackgroundSaveStatus("saving");
+    setBackgroundSaveMessage(null);
+    setBackgroundSaveTone(null);
+    try {
+      if (!user) {
+        throw new Error("Not logged in");
+      }
+      if (!backgroundFiles.length) {
+        throw new Error("Please upload background knowledge files.");
+      }
+      const token = await user.getIdToken();
+
+      const filesPayload = await Promise.all(
+        backgroundFiles.map(async (file) => {
+          const buffer = await file.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+          return {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            lastModified: file.lastModified,
+            data: base64,
+          };
+        })
+      );
+
+      const res = await fetch("/api/admin/background-knowledge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          files: filesPayload,
+        }),
       });
-    reader.readAsDataURL(file);
-  });
-const uploadBackgroundFile = async (file: File) => {
-  if (!user) throw new Error("Not logged in");
 
-  const storage = getStorage();
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const path = `ppss-background-knowledge/originals/${Date.now()}-${safeName}`;
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Save failed");
+      }
 
-  const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file);
-
-  return {
-    fileName: file.name,
-    storagePath: path,
-    size: file.size,
-    contentType: file.type,
+      const payload = (await res.json()) as { curatedText?: string };
+      if (payload.curatedText) {
+        setBackgroundText(payload.curatedText);
+      }
+      setBackgroundFiles([]);
+      setBackgroundSaveMessage("Background knowledge summarized and saved.");
+      setBackgroundSaveTone("success");
+    } catch (error) {
+      console.error("CLIENT SAVE ERROR:", error);
+      setBackgroundSaveMessage(
+        error instanceof Error ? error.message : "Save failed"
+      );
+      setBackgroundSaveTone("error");
+    } finally {
+      setBackgroundSaveStatus("idle");
+    }
   };
-};
-
-  
-const handleBackgroundSave = async () => {
-  if (backgroundSaveStatus === "saving") return;
-  setBackgroundSaveStatus("saving");
-  setBackgroundSaveMessage(null);
-  setBackgroundSaveTone(null);
-  try {
-    if (!user) {
-      throw new Error("Not logged in");
-    }
-    const token = await user.getIdToken();
-
-    const filesPayload = await Promise.all(
-      backgroundFiles.map(async (file) => {
-        const buffer = await file.arrayBuffer();
-        const base64 = btoa(
-          String.fromCharCode(...new Uint8Array(buffer))
-        );
-        return {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          lastModified: file.lastModified,
-          data: base64,
-        };
-      })
-    );
-
-    const res = await fetch("/api/admin/background-knowledge", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-      files: filesPayload,
-    }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "Save failed");
-    }
-
-    setBackgroundFiles([]);
-    setBackgroundSaveMessage("Background knowledge saved.");
-    setBackgroundSaveTone("success");
-  } catch (error) {
-    console.error("CLIENT SAVE ERROR:", error);
-    setBackgroundSaveMessage(
-      error instanceof Error ? error.message : "Save failed"
-    );
-    setBackgroundSaveTone("error");
-  } finally {
-    setBackgroundSaveStatus("idle");
-  }
-};
 
 
   const handleSiteImageSave = async () => {
@@ -383,7 +346,7 @@ const handleBackgroundSave = async () => {
                 <p className="mt-2 text-xs text-slate-500">
                   The API generates this curated text from uploaded materials,
                   then stores it in Firestore for stable LLM context across
-                  planning and summary workflows.
+                  planning and summary workflows for every workspace user.
                 </p>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -395,7 +358,7 @@ const handleBackgroundSave = async () => {
                 >
                   {backgroundSaveStatus === "saving"
                     ? "Saving..."
-                    : "Save background knowledge"}
+                    : "Generate and save summary"}
                 </button>
                 {backgroundSaveMessage && (
                   <span
