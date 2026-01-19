@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
+import { getStorage, ref, uploadBytes } from "firebase/storage";
+import { auth } from "firebase/auth";
 import {
   loadBackgroundKnowledge,
   loadCurrentSiteImage,
@@ -23,6 +25,7 @@ const fileToBase64 = (file: File) =>
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+
 
 export default function Setting() {
   const { user } = useAuth();
@@ -129,7 +132,7 @@ export default function Setting() {
   const handleBackgroundFilesChange = (files: FileList | null) => {
     setBackgroundFiles(files ? Array.from(files) : []);
   };
-
+  
   const fileToUploadPayload = (file: File) =>
   new Promise<{
     name: string;
@@ -150,40 +153,57 @@ export default function Setting() {
       });
     reader.readAsDataURL(file);
   });
+const uploadBackgroundFile = async (file: File) => {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not logged in");
 
+  const storage = getStorage();
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `ppss-background-knowledge/originals/${Date.now()}-${safeName}`;
+
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+
+  return {
+    fileName: file.name,
+    storagePath: path,
+    size: file.size,
+    contentType: file.type,
+  };
+};
+
+  
 const handleBackgroundSave = async () => {
   if (backgroundSaveStatus === "saving") return;
+
   setBackgroundSaveStatus("saving");
   setBackgroundSaveMessage(null);
   setBackgroundSaveTone(null);
+
   try {
+    const user = auth.currentUser;
     if (!user) {
       throw new Error("Not logged in");
     }
+
     const token = await user.getIdToken();
+
     const filesPayload = await Promise.all(
-      backgroundFiles.map((file) => {
-        return new Promise<{
-          name: string;
-          type: string;
-          size: number;
-          lastModified: number;
-          data: string;
-        }>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () =>
-            resolve({
-              name: file.name,
-              type: file.type,
-              size: file.size,
-              lastModified: file.lastModified,
-              data: reader.result as string,
-            });
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
+      backgroundFiles.map(async (file) => {
+        const buffer = await file.arrayBuffer();
+        const base64 = btoa(
+          String.fromCharCode(...new Uint8Array(buffer))
+        );
+        return {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          lastModified: file.lastModified,
+          data: base64,
+        };
       })
     );
+
     const res = await fetch("/api/admin/background-knowledge", {
       method: "POST",
       headers: {
@@ -195,22 +215,26 @@ const handleBackgroundSave = async () => {
         files: filesPayload,
       }),
     });
+
     if (!res.ok) {
-      const payload = await res.json().catch(() => ({}));
-      throw new Error(payload?.error ?? "Failed to save background knowledge");
+      const err = await res.json();
+      throw new Error(err.error || "Save failed");
     }
+
+    setBackgroundFiles([]);
     setBackgroundSaveMessage("Background knowledge saved.");
     setBackgroundSaveTone("success");
-    setBackgroundFiles([]);
-  } catch (err) {
+  } catch (error) {
+    console.error("CLIENT SAVE ERROR:", error);
     setBackgroundSaveMessage(
-      err instanceof Error ? err.message : "Save failed"
+      error instanceof Error ? error.message : "Save failed"
     );
     setBackgroundSaveTone("error");
   } finally {
     setBackgroundSaveStatus("idle");
   }
 };
+
 
   const handleSiteImageSave = async () => {
     if (!siteImageFiles.length) {
