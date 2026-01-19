@@ -54,7 +54,7 @@ export default async function handler(
     const db = adminDb();
     await db.doc("ppssBackgroundKnowledge/current").set(
       {
-        curatedText,
+        curatedText: finalCuratedText,
         updatedBy: decoded.email ?? decoded.uid,
         updatedAt: new Date().toISOString(),
       },
