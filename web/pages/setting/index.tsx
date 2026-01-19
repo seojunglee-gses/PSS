@@ -2,11 +2,8 @@ import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
 import {
-  archiveBackgroundKnowledgeFile,
   loadBackgroundKnowledge,
   loadCurrentSiteImage,
-  saveCurrentSiteImage,
-  saveBackgroundKnowledge,
 } from "../../lib/firebase";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
@@ -15,6 +12,17 @@ type Provider = (typeof providers)[number];
 
 const providerStorageKey = "ppss-active-provider";
 const adminEmail = "test@snu.ac.kr";
+
+const fileToBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 
 export default function Setting() {
   const { user } = useAuth();
@@ -130,22 +138,35 @@ export default function Setting() {
     setBackgroundSaveMessage(null);
     setBackgroundSaveTone(null);
     try {
-      const updatedBy =
-        user?.email ??
-        user?.uid ??
-        "admin";
-      await saveBackgroundKnowledge({
-        curatedText: backgroundText.trim(),
-        updatedBy,
-      });
-      if (backgroundFiles.length) {
-        await Promise.all(
-          backgroundFiles.map((file) =>
-            archiveBackgroundKnowledgeFile(file, updatedBy)
-          )
-        );
-        setBackgroundFiles([]);
+      if (!user) {
+        throw new Error("Authentication required.");
       }
+      const token = await user.getIdToken();
+      const files = await Promise.all(
+        backgroundFiles.map(async (file) => ({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          lastModified: file.lastModified,
+          data: await fileToBase64(file),
+        }))
+      );
+      const response = await fetch("/api/admin/background-knowledge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          curatedText: backgroundText.trim(),
+          files,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Save failed.");
+      }
+      setBackgroundFiles([]);
       setBackgroundSaveMessage("Background knowledge saved.");
       setBackgroundSaveTone("success");
     } catch {
@@ -164,14 +185,33 @@ export default function Setting() {
       return;
     }
     try {
-      const updatedBy =
-        user?.email ??
-        user?.uid ??
-        "admin";
-      const saved = await saveCurrentSiteImage(siteImageFiles[0], updatedBy);
-      if (saved) {
-        setSiteSaveMessage("Current site image saved to Firebase Storage.");
-        setSiteImagePreview(saved.downloadUrl);
+      if (!user) {
+        throw new Error("Authentication required.");
+      }
+      const token = await user.getIdToken();
+      const file = siteImageFiles[0];
+      const response = await fetch("/api/admin/site-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          lastModified: file.lastModified,
+          data: await fileToBase64(file),
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Save failed.");
+      }
+      const payload = (await response.json()) as { downloadUrl?: string };
+      setSiteSaveMessage("Current site image saved to Firebase Storage.");
+      if (payload.downloadUrl) {
+        setSiteImagePreview(payload.downloadUrl);
       }
     } catch {
       setSiteSaveMessage(
