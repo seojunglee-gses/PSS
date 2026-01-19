@@ -299,7 +299,15 @@ export const loadCurrentSiteImage = async (): Promise<SiteImage | null> => {
   if (!snapshot.exists()) {
     return null;
   }
-  return snapshot.data() as SiteImage;
+  const record = snapshot.data() as SiteImage;
+  if (record.imageId) {
+    return record;
+  }
+  const fallbackId =
+    record.storagePath?.split("/").pop() ??
+    record.downloadUrl?.split("?")[0] ??
+    "current-site-image";
+  return { ...record, imageId: fallbackId };
 };
 
 export const saveGeneratedImageFromBase64 = async (payload: {
