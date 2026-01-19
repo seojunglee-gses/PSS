@@ -102,9 +102,8 @@ export default async function handler(
         } else {
           fileInputs.push({
             type: "input_file",
-            filename: file.name,
-            file_data: raw,
-            mime_type: file.type || undefined,
+            filename: string,
+            file_data: string,
           });
         }
       })
@@ -117,7 +116,7 @@ export default async function handler(
       return;
     }
 
-    const promptText = `Summarize the uploaded background knowledge for the PPSS workspace.\n\nInstructions:\n- Write in Korean.\n- Capture 핵심 요약 so every workspace user can rely on it.\n- Organize with short headings for: 프로젝트 개요, 물리적 조건, 사회적 조건, 자주 요청되는 사항, 제약/주의사항.\n- Keep it concise and actionable.\n\nContent:\n${textChunks.join("\n\n")}`;
+    const promptText = `Summarize the uploaded background knowledge for the PPSS workspace.\n\nInstructions:\n- Capture main content so every workspace user can rely on it.\n- Organize with short headings for: Project overview, Physical constrainsts, Social contexts, stakeholderIssues, Common requests, ext.\n- Keep it concise and actionable.\n\nContent:\n${textChunks.join("\n\n")}`;
 
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
