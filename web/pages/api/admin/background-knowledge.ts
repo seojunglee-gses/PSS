@@ -96,7 +96,7 @@ export default async function handler(
     }
 
     res.status(200).json({ ok: true });
-  } } catch (error) {
+  } catch (error) {
   console.error("ADMIN BACKGROUND ERROR:", error);
   res.status(500).json({
     error: error instanceof Error ? error.message : "Unexpected error",
