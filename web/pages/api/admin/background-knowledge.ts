@@ -31,8 +31,7 @@ export default async function handler(
   res: NextApiResponse
 ) {
   if (req.method !== "POST") {
-    res.status(405).json({ error: "Method not allowed" });
-    return;
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
@@ -169,6 +168,15 @@ export default async function handler(
       return;
     }
 
+    await db.doc("ppssBackgroundKnowledge/current").set(
+      {
+        curatedText: finalCuratedText,
+        updatedBy: decoded.email ?? decoded.uid,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    
     await db.doc("ppssBackgroundKnowledge/current").set(
       {
         curatedText,
