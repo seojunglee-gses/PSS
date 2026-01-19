@@ -37,6 +37,10 @@ export default function Setting() {
     "success" | "error" | null
   >(null);
   const [siteSaveMessage, setSiteSaveMessage] = useState<string | null>(null);
+  const [backgroundLoadMessage, setBackgroundLoadMessage] = useState<
+    string | null
+  >(null);
+  const [siteLoadMessage, setSiteLoadMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setIsAdmin(Boolean(user && user.email === adminEmail));
@@ -53,9 +57,6 @@ export default function Setting() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin) {
-      return;
-    }
     let isMounted = true;
     loadBackgroundKnowledge()
       .then((data) => {
@@ -65,10 +66,9 @@ export default function Setting() {
       })
       .catch(() => {
         if (isMounted) {
-          setBackgroundSaveMessage(
+          setBackgroundLoadMessage(
             "Unable to load background knowledge from storage."
           );
-          setBackgroundSaveTone("error");
         }
       });
     loadCurrentSiteImage()
@@ -79,15 +79,13 @@ export default function Setting() {
       })
       .catch(() => {
         if (isMounted) {
-          setSiteSaveMessage(
-            "Unable to load current site image from storage."
-          );
+          setSiteLoadMessage("Unable to load current site image from storage.");
         }
       });
     return () => {
       isMounted = false;
     };
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -358,6 +356,11 @@ export default function Setting() {
                  "Saving..." : 
                  "Generate and save summary"}
                 </button>
+                {backgroundLoadMessage && (
+                  <span className="text-xs text-rose-500">
+                    {backgroundLoadMessage}
+                  </span>
+                )}
                 {backgroundSaveMessage && (
                   <span
                     className={`text-xs ${
@@ -410,6 +413,11 @@ export default function Setting() {
                 >
                   Save site images
                 </button>
+                {siteLoadMessage && (
+                  <span className="text-xs text-rose-500">
+                    {siteLoadMessage}
+                  </span>
+                )}
                 {siteSaveMessage && (
                   <span className="text-xs text-emerald-600">
                     {siteSaveMessage}
@@ -421,11 +429,57 @@ export default function Setting() {
         </section>
       ) : (
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">Administrator access</h3>
+          <h3 className="text-lg font-semibold">Workspace resources</h3>
           <p className="mt-2 text-sm text-slate-500">
-            Sign in with {adminEmail} to manage background knowledge and site
-            images.
+            Admin-managed background knowledge and site imagery are shared with
+            every workspace member. You can view the latest uploads below.
           </p>
+          <div className="mt-6 grid gap-6">
+            <div>
+              <label className="text-xs font-semibold uppercase text-slate-500">
+                Background knowledge (admin-curated)
+              </label>
+              <textarea
+                className="mt-2 h-40 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 focus:border-[var(--primary)] focus:outline-none"
+                placeholder="No background knowledge has been uploaded yet."
+                value={backgroundText}
+                readOnly
+              />
+              {backgroundLoadMessage && (
+                <p className="mt-2 text-xs text-rose-500">
+                  {backgroundLoadMessage}
+                </p>
+              )}
+            </div>
+            <div className="border-t border-slate-200 pt-6">
+              <h4 className="text-sm font-semibold">Current site image</h4>
+              <p className="mt-2 text-sm text-slate-500">
+                The workspace will use the most recent site image uploaded by
+                the admin.
+              </p>
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                {siteImagePreview ? (
+                  <img
+                    src={siteImagePreview}
+                    alt="Current site"
+                    className="h-40 w-full rounded-lg object-cover"
+                  />
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    No site image has been uploaded yet.
+                  </p>
+                )}
+                {siteLoadMessage && (
+                  <p className="mt-2 text-xs text-rose-500">
+                    {siteLoadMessage}
+                  </p>
+                )}
+              </div>
+              <p className="mt-3 text-xs text-slate-500">
+                Sign in with {adminEmail} if you need to replace these assets.
+              </p>
+            </div>
+          </div>
         </section>
       )}
     </AppShell>
