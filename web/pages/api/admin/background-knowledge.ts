@@ -40,11 +40,16 @@ export default async function handler(
     const { curatedText } = req.body as {
   curatedText?: string;
 };
-
-    if (!curatedText) {
-      res.status(400).json({ error: "curatedText is required." });
-      return;
+    let finalCuratedText = curatedText;
+    
+    if (!finalCuratedText && files?.length) {
+      finalCuratedText = "Auto-generated background knowledge from uploaded files.";
     }
+    
+    if (!finalCuratedText) {
+      return res.status(400).json({ error: "No background knowledge content." });
+    }
+
 
     const db = adminDb();
     await db.doc("ppssBackgroundKnowledge/current").set(
