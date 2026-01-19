@@ -65,7 +65,6 @@ export default async function handler(
       type: "input_file";
       filename: string;
       file_data: string;
-      mime_type?: string;
     }[] = [];
 
     await Promise.all(
@@ -102,8 +101,8 @@ export default async function handler(
         } else {
           fileInputs.push({
             type: "input_file",
-            filename: string,
-            file_data: string,
+            filename: file.name,
+            file_data: raw,
           });
         }
       })
