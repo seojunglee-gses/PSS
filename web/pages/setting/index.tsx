@@ -1,37 +1,45 @@
 import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
+import { useAuth } from "../../lib/auth";
+import {
+  loadBackgroundKnowledge,
+  loadCurrentSiteImage,
+} from "../../lib/firebase";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
 
 type Provider = (typeof providers)[number];
 
-type ApiState = {
-  files: Array<{ name: string }>;
-};
-
-const defaultState: Record<Provider, ApiState> = {
-  ChatGPT: { files: [] },
-  Gemini: { files: [] },
-  DeepSeek: { files: [] },
-};
-
-const settingsStorageKey = "ppss-provider-settings";
 const providerStorageKey = "ppss-active-provider";
-const adminStorageKey = "ppss-admin-mode";
-const siteImageStorageKey = "ppss-site-image";
-const adminCode = "0000";
+const adminEmail = "test@snu.ac.kr";
+
+const fileToBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 
 export default function Setting() {
+  const { user } = useAuth();
   const [activeProvider, setActiveProvider] = useState<Provider>("ChatGPT");
-  const [settings, setSettings] =
-    useState<Record<Provider, ApiState>>(defaultState);
-  const [adminInput, setAdminInput] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
-  const [siteImages, setSiteImages] = useState<Array<{ name: string }>>([]);
-  const [siteImagePreviews, setSiteImagePreviews] = useState<string[]>([]);
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [siteImageFiles, setSiteImageFiles] = useState<File[]>([]);
+  const [siteImagePreview, setSiteImagePreview] = useState<string | null>(null);
+  const [backgroundFiles, setBackgroundFiles] = useState<File[]>([]);
+  const [backgroundText, setBackgroundText] = useState("");
   const [backgroundSaveMessage, setBackgroundSaveMessage] = useState<
     string | null
+  >(null);
+  const [backgroundSaveStatus, setBackgroundSaveStatus] = useState<
+    "idle" | "saving"
+  >("idle");
+  const [backgroundSaveTone, setBackgroundSaveTone] = useState<
+    "success" | "error" | null
   >(null);
   const [siteSaveMessage, setSiteSaveMessage] = useState<string | null>(null);
 
@@ -39,64 +47,66 @@ export default function Setting() {
     if (typeof window === "undefined") {
       return;
     }
-    const storedSettings = window.localStorage.getItem(settingsStorageKey);
     const storedProvider = window.localStorage.getItem(providerStorageKey);
-    const storedAdmin = window.localStorage.getItem(adminStorageKey);
-    const storedSiteImages = window.localStorage.getItem(siteImageStorageKey);
-    if (storedSettings) {
-      try {
-        setSettings(JSON.parse(storedSettings));
-      } catch {
-        setSettings(defaultState);
-      }
-    }
     if (storedProvider && providers.includes(storedProvider as Provider)) {
       setActiveProvider(storedProvider as Provider);
-    }
-    if (storedAdmin === "true") {
-      setIsAdmin(true);
-    }
-    if (storedSiteImages) {
-      try {
-        setSiteImages(JSON.parse(storedSiteImages));
-      } catch {
-        setSiteImages([]);
-      }
     }
   }, []);
 
   useEffect(() => {
+    setIsAdmin(user?.email === adminEmail);
+  }, [user?.email]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+    let isMounted = true;
+    loadBackgroundKnowledge()
+      .then((data) => {
+        if (isMounted && data?.curatedText) {
+          setBackgroundText(data.curatedText);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setBackgroundSaveMessage(
+            "Unable to load background knowledge from storage."
+          );
+          setBackgroundSaveTone("error");
+        }
+      });
+    loadCurrentSiteImage()
+      .then((data) => {
+        if (isMounted && data?.downloadUrl) {
+          setSiteImagePreview(data.downloadUrl);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSiteSaveMessage(
+            "Unable to load current site image from storage."
+          );
+        }
+      });
     return () => {
-      siteImagePreviews.forEach((src) => URL.revokeObjectURL(src));
+      isMounted = false;
     };
-  }, [siteImagePreviews]);
+  }, [isAdmin]);
+
+  useEffect(() => {
+    return () => {
+      if (siteImagePreview && siteImagePreview.startsWith("blob:")) {
+        URL.revokeObjectURL(siteImagePreview);
+      }
+    };
+  }, [siteImagePreview]);
 
   const handleProviderChange = (provider: Provider) => {
     setActiveProvider(provider);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(providerStorageKey, provider);
     }
-  };
-
-  const handleFilesChange = (provider: Provider, files: FileList | null) => {
-    const fileList = files
-      ? Array.from(files).map((file) => ({ name: file.name }))
-      : [];
-    setSettings((prev) => ({
-      ...prev,
-      [provider]: {
-        ...prev[provider],
-        files: fileList,
-      },
-    }));
-  };
-
-  const handleSave = () => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(settingsStorageKey, JSON.stringify(settings));
-    setSaveMessage("Settings saved successfully.");
   };
 
   const handleUseInWorkspace = () => {
@@ -106,42 +116,108 @@ export default function Setting() {
     window.localStorage.setItem(providerStorageKey, activeProvider);
   };
 
-  const handleAdminUnlock = () => {
-    if (adminInput.trim() !== adminCode) {
+  const handleSiteImagesChange = (files: FileList | null) => {
+    const fileList = files ? Array.from(files) : [];
+    if (siteImagePreview) {
+      URL.revokeObjectURL(siteImagePreview);
+    }
+    const preview = fileList.length ? URL.createObjectURL(fileList[0]) : null;
+    setSiteImageFiles(fileList);
+    setSiteImagePreview(preview);
+  };
+
+  const handleBackgroundFilesChange = (files: FileList | null) => {
+    setBackgroundFiles(files ? Array.from(files) : []);
+  };
+
+  const handleBackgroundSave = async () => {
+    if (backgroundSaveStatus === "saving") {
       return;
     }
-    setIsAdmin(true);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(adminStorageKey, "true");
+    setBackgroundSaveStatus("saving");
+    setBackgroundSaveMessage(null);
+    setBackgroundSaveTone(null);
+    try {
+      if (!user) {
+        throw new Error("Authentication required.");
+      }
+      const token = await user.getIdToken();
+      const files = await Promise.all(
+        backgroundFiles.map(async (file) => ({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          lastModified: file.lastModified,
+          data: await fileToBase64(file),
+        }))
+      );
+      const response = await fetch("/api/admin/background-knowledge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          curatedText: backgroundText.trim(),
+          files,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Save failed.");
+      }
+      setBackgroundFiles([]);
+      setBackgroundSaveMessage("Background knowledge saved.");
+      setBackgroundSaveTone("success");
+    } catch {
+      setBackgroundSaveMessage(
+        "Unable to save background knowledge. Check your Firebase connection."
+      );
+      setBackgroundSaveTone("error");
+    } finally {
+      setBackgroundSaveStatus("idle");
     }
   };
 
-  const handleSiteImagesChange = (files: FileList | null) => {
-    const fileList = files
-      ? Array.from(files).map((file) => ({ name: file.name }))
-      : [];
-    const previews = files ? Array.from(files).map((file) => URL.createObjectURL(file)) : [];
-    setSiteImages(fileList);
-    setSiteImagePreviews(previews);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        siteImageStorageKey,
-        JSON.stringify(fileList)
+  const handleSiteImageSave = async () => {
+    if (!siteImageFiles.length) {
+      setSiteSaveMessage("Please select a site image to upload.");
+      return;
+    }
+    try {
+      if (!user) {
+        throw new Error("Authentication required.");
+      }
+      const token = await user.getIdToken();
+      const file = siteImageFiles[0];
+      const response = await fetch("/api/admin/site-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          lastModified: file.lastModified,
+          data: await fileToBase64(file),
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Save failed.");
+      }
+      const payload = (await response.json()) as { downloadUrl?: string };
+      setSiteSaveMessage("Current site image saved to Firebase Storage.");
+      if (payload.downloadUrl) {
+        setSiteImagePreview(payload.downloadUrl);
+      }
+    } catch {
+      setSiteSaveMessage(
+        "Unable to save site image. Check your Firebase connection."
       );
     }
-  };
-
-  const handleBackgroundSave = () => {
-    handleSave();
-    setBackgroundSaveMessage("Background knowledge saved.");
-  };
-
-  const handleSiteImageSave = () => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(siteImageStorageKey, JSON.stringify(siteImages));
-    setSiteSaveMessage("Current site images saved.");
   };
 
   return (
@@ -212,34 +288,7 @@ export default function Setting() {
           </div>
         </div>
       </section>
-      {!isAdmin ? (
-        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">Administrator access</h3>
-          <p className="mt-2 text-sm text-slate-500">
-            Enter the administrator code to manage background knowledge and
-            site images.
-          </p>
-          <div className="mt-6 grid gap-4 max-w-md">
-            <label className="text-xs font-semibold uppercase text-slate-500">
-              Admin code
-            </label>
-            <input
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
-              placeholder="0000"
-              type="password"
-              value={adminInput}
-              onChange={(event) => setAdminInput(event.target.value)}
-            />
-            <button
-              className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--primary-dark)]"
-              type="button"
-              onClick={handleAdminUnlock}
-            >
-              Enter admin mode
-            </button>
-          </div>
-        </section>
-      ) : (
+      {isAdmin ? (
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold">Administrator settings</h3>
           <p className="mt-2 text-sm text-slate-500">
@@ -258,41 +307,61 @@ export default function Setting() {
                   accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
                   multiple
                   onChange={(event) =>
-                    handleFilesChange(activeProvider, event.target.files)
+                    handleBackgroundFilesChange(event.target.files)
                   }
                 />
                 <p className="mt-3 text-xs text-slate-500">
-                  Upload Word, PDF, or image files to seed the workspace
-                  context.
+                  Upload Word, PDF, or image files to archive the original
+                  background knowledge for admins.
                 </p>
-                {settings[activeProvider].files.length > 0 && (
+                {backgroundFiles.length > 0 && (
                   <ul className="mt-3 space-y-1 text-xs text-slate-600">
-                    {settings[activeProvider].files.map((file) => (
+                    {backgroundFiles.map((file) => (
                       <li key={file.name}>{file.name}</li>
                     ))}
                   </ul>
                 )}
+              </div>
+              <div className="mt-4">
+                <label className="text-xs font-semibold uppercase text-slate-500">
+                  Curated background knowledge
+                </label>
+                <textarea
+                  className="mt-2 h-40 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 focus:border-[var(--primary)] focus:outline-none"
+                  placeholder="Summarize project context, physical conditions, social conditions, and common requests."
+                  value={backgroundText}
+                  onChange={(event) => setBackgroundText(event.target.value)}
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  This curated text is stored in Firestore and used as stable
+                  system context for the LLM across planning and summary
+                  workflows.
+                </p>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button
                   className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
                   type="button"
                   onClick={handleBackgroundSave}
+                  disabled={backgroundSaveStatus === "saving"}
                 >
-                  Save background knowledge
+                  {backgroundSaveStatus === "saving"
+                    ? "Saving..."
+                    : "Save background knowledge"}
                 </button>
                 {backgroundSaveMessage && (
-                  <span className="text-xs text-emerald-600">
+                  <span
+                    className={`text-xs ${
+                      backgroundSaveTone === "error"
+                        ? "text-rose-500"
+                        : "text-emerald-600"
+                    }`}
+                  >
                     {backgroundSaveMessage}
                   </span>
                 )}
               </div>
             </div>
-            {saveMessage && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {saveMessage}
-              </div>
-            )}
             <div className="border-t border-slate-200 pt-6">
               <h4 className="text-sm font-semibold">Current site image</h4>
               <p className="mt-2 text-sm text-slate-500">
@@ -304,30 +373,23 @@ export default function Setting() {
                   className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-full file:border-0 file:bg-[var(--primary)] file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white file:hover:bg-[var(--primary-dark)]"
                   type="file"
                   accept=".png,.jpg,.jpeg"
-                  multiple
                   onChange={(event) => handleSiteImagesChange(event.target.files)}
                 />
                 <p className="mt-3 text-xs text-slate-500">
-                  Upload one or more site images to enable workspace
-                  generation.
+                  Upload a site image to enable workspace generation.
                 </p>
-                {siteImages.length > 0 && (
-                  <ul className="mt-3 space-y-1 text-xs text-slate-600">
-                    {siteImages.map((file) => (
-                      <li key={file.name}>{file.name}</li>
-                    ))}
-                  </ul>
+                {siteImageFiles.length > 0 && (
+                  <p className="mt-3 text-xs text-slate-600">
+                    {siteImageFiles[0].name}
+                  </p>
                 )}
-                {siteImagePreviews.length > 0 && (
-                  <div className="mt-4 grid grid-cols-3 gap-3">
-                    {siteImagePreviews.map((src) => (
-                      <img
-                        key={src}
-                        src={src}
-                        alt="Site preview"
-                        className="h-20 w-full rounded-lg object-cover"
-                      />
-                    ))}
+                {siteImagePreview && (
+                  <div className="mt-4">
+                    <img
+                      src={siteImagePreview}
+                      alt="Site preview"
+                      className="h-40 w-full rounded-lg object-cover"
+                    />
                   </div>
                 )}
               </div>
@@ -347,6 +409,14 @@ export default function Setting() {
               </div>
             </div>
           </div>
+        </section>
+      ) : (
+        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold">Administrator access</h3>
+          <p className="mt-2 text-sm text-slate-500">
+            Sign in with {adminEmail} to manage background knowledge and site
+            images.
+          </p>
         </section>
       )}
     </AppShell>

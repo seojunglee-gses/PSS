@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
 import {
   loadChatLogsFromStorage,
+  loadCurrentSiteImage,
+  loadGeneratedImages,
+  saveGeneratedImageFromBase64,
+  saveUserDesignSubmission,
   saveChatLogsToStorage,
   saveWorkspaceSummary,
   sendEvaluationResult,
@@ -52,7 +56,6 @@ const stepSummaries: Record<string, string> = {
 
 const storageKey = "ppss-workspace-summaries";
 const evaluationStorageKey = "ppss-evaluation-results";
-const evaluationStorageImagesKey = "ppss-shared-evaluation-images";
 const defaultEvaluationImages: DesignImage[] = Array.from(
   { length: 7 },
   (_, index) => ({
@@ -60,8 +63,6 @@ const defaultEvaluationImages: DesignImage[] = Array.from(
     label: `Concept ${index + 1}`,
     note: "",
   }));
-const alternativeImageStorageKey = "ppss-alternative-images";
-const siteImageStorageKey = "ppss-site-image";
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 const providerStorageKey = "ppss-active-provider";
 
@@ -87,9 +88,8 @@ type DesignImage = {
   id: string;
   label: string;
   note: string;
+  imageUrl?: string;
 };
-
-const imageModel = "GPT-image-1-mini";
 
 const chatModel = "gpt-5-mini";
 
@@ -133,6 +133,7 @@ export default function Workspace() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
+  const [siteImageId, setSiteImageId] = useState<string | null>(null);
   const [alternativeImages, setAlternativeImages] = useState<DesignImage[]>([]);
   const [evaluationImages, setEvaluationImages] = useState<DesignImage[]>(
     defaultEvaluationImages
@@ -205,15 +206,6 @@ export default function Workspace() {
     if (storedProvider) {
       setActiveProvider(storedProvider);
     }
-    const storedSiteImages = window.localStorage.getItem(siteImageStorageKey);
-    if (storedSiteImages) {
-      try {
-        const parsed = JSON.parse(storedSiteImages) as Array<{ name: string }>;
-        setSiteImageConfigured(parsed.length > 0);
-      } catch {
-        setSiteImageConfigured(false);
-      }
-    }
   }, []);
 
   useEffect(() => {
@@ -261,29 +253,20 @@ export default function Workspace() {
     if (typeof window === "undefined") {
       return;
     }
-    const storedAlternatives = window.localStorage.getItem(
-      `${alternativeImageStorageKey}-${userKey}`
-    );
-    if (storedAlternatives) {
-      try {
-        setAlternativeImages(JSON.parse(storedAlternatives));
-      } catch {
-        setAlternativeImages([]);
+    const loadImages = async () => {
+      const generated = await loadGeneratedImages();
+      if (generated.length) {
+        const mapped = generated.map((image) => ({
+          id: image.imageId,
+          label: image.label,
+          note: image.note,
+          imageUrl: image.downloadUrl,
+        }));
+        setAlternativeImages(mapped);
+        setEvaluationImages(mapped);
       }
-    }
-    const storedEvaluationImages = window.localStorage.getItem(
-      evaluationStorageImagesKey
-    );
-    if (storedEvaluationImages) {
-      try {
-        const parsed = JSON.parse(storedEvaluationImages) as DesignImage[];
-        if (parsed.length) {
-          setEvaluationImages(parsed);
-        }
-      } catch {
-        setEvaluationImages(defaultEvaluationImages);
-      }
-    }
+    };
+    loadImages();
   }, [user, userKey]);
 
   useEffect(() => {
@@ -294,27 +277,18 @@ export default function Workspace() {
   }, [chatLogs, user, userKey]);
 
   useEffect(() => {
-    if (!user) {
-      return;
-    }
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(
-      `${alternativeImageStorageKey}-${userKey}`,
-      JSON.stringify(alternativeImages)
-    );
-  }, [alternativeImages, user, userKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(
-      evaluationStorageImagesKey,
-      JSON.stringify(evaluationImages)
-    );
-  }, [evaluationImages]);
+    const loadSiteImage = async () => {
+      const current = await loadCurrentSiteImage();
+      if (current?.imageId) {
+        setSiteImageConfigured(true);
+        setSiteImageId(current.imageId);
+      } else {
+        setSiteImageConfigured(false);
+        setSiteImageId(null);
+      }
+    };
+    loadSiteImage();
+  }, []);
 
   useEffect(() => {
     if (!finishNotice) {
@@ -325,6 +299,18 @@ export default function Workspace() {
     }, 3000);
     return () => window.clearTimeout(timeout);
   }, [finishNotice]);
+
+  useEffect(() => {
+    setRankings((prev) => {
+      const next = { ...prev };
+      evaluationImages.forEach((image, index) => {
+        if (!next[image.id]) {
+          next[image.id] = index + 1;
+        }
+      });
+      return next;
+    });
+  }, [evaluationImages]);
 
   const progressValue = useMemo(() => {
     const index = steps.findIndex((step) => step.id === activeStep.id);
@@ -342,6 +328,96 @@ export default function Workspace() {
         .map((log) => log.text);
       return acc;
     }, {});
+  };
+
+  const requestGeneratedImage = async () => {
+    if (!siteImageConfigured || !siteImageId) {
+      return;
+    }
+    const response = await fetch("/api/generate-alternative", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        siteImageId,
+        workspaceSummary: savedSummaries,
+        workspaceInput: buildWorkspaceInput(),
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload?.error ?? "Image generation failed.");
+    }
+    const payload = (await response.json()) as {
+      imageId: string;
+      label: string;
+      note: string;
+      base64?: string;
+      downloadUrl?: string;
+      existing: boolean;
+    };
+    if (payload.existing && payload.downloadUrl) {
+      setAlternativeImages((prev) => {
+        const exists = prev.some((image) => image.id === payload.imageId);
+        if (exists) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: payload.imageId,
+            label: payload.label,
+            note: payload.note,
+            imageUrl: payload.downloadUrl,
+          },
+        ];
+      });
+      setEvaluationImages((prev) => {
+        const exists = prev.some((image) => image.id === payload.imageId);
+        if (exists) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: payload.imageId,
+            label: payload.label,
+            note: payload.note,
+            imageUrl: payload.downloadUrl,
+          },
+        ];
+      });
+      return;
+    }
+    if (!payload.base64) {
+      throw new Error("No image data returned.");
+    }
+    const saved = await saveGeneratedImageFromBase64({
+      imageId: payload.imageId,
+      base64: payload.base64,
+      label: payload.label,
+      note: payload.note,
+    });
+    if (!saved) {
+      throw new Error("Unable to save generated image.");
+    }
+    setAlternativeImages((prev) => [
+      ...prev,
+      {
+        id: saved.imageId,
+        label: saved.label,
+        note: saved.note,
+        imageUrl: saved.downloadUrl,
+      },
+    ]);
+    setEvaluationImages((prev) => [
+      ...prev,
+      {
+        id: saved.imageId,
+        label: saved.label,
+        note: saved.note,
+        imageUrl: saved.downloadUrl,
+      },
+    ]);
   };
 
   const handleSend = async () => {
@@ -399,12 +475,7 @@ export default function Workspace() {
       ]);
 
       if (stepId === "alternatives") {
-        const nextImage: DesignImage = {
-          id: `alt-${Date.now()}`,
-          label: `Generated Concept ${alternativeImages.length + 1}`,
-          note: `Generated with ${imageModel} from the latest feedback request.`,
-        };
-        setAlternativeImages((prev) => [...prev, nextImage]);
+        await requestGeneratedImage();
       }
     } catch (error) {
       setErrorMessage(
@@ -492,7 +563,7 @@ export default function Workspace() {
     }));
   };
 
-  const handleSubmitAlternative = () => {
+  const handleSubmitAlternative = async () => {
     if (!selectedAlternative) {
       return;
     }
@@ -513,6 +584,7 @@ export default function Workspace() {
       ...prev,
       [selected.id]: Object.keys(prev).length + 1,
     }));
+    await saveUserDesignSubmission(userKey, selected.id);
     setSelectedAlternative(null);
     setShowSubmitNotice("Your selected design has been submitted.");
   };
@@ -560,7 +632,7 @@ export default function Workspace() {
         topChoice,
       };
     });
-  }, [evaluationResults]);
+  }, [evaluationResults, evaluationImages]);
 
   const combinedDialogueSummary = useMemo(
     () => chatLogs.map((log) => log.text).join(" "),
@@ -580,19 +652,13 @@ export default function Workspace() {
     if (!siteImageConfigured) {
       return;
     }
-    const seeded = [
-      {
-        id: `alt-${Date.now()}-a`,
-        label: "Generated Concept A",
-        note: "Initial design based on the dialogue summary.",
-      },
-      {
-        id: `alt-${Date.now()}-b`,
-        label: "Generated Concept B",
-        note: "Alternative proposal reflecting stakeholder feedback.",
-      },
-    ];
-    setAlternativeImages(seeded);
+    requestGeneratedImage().catch((error) => {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to generate design alternatives."
+      );
+    });
   }, [
     activeStep.id,
     alternativeImages.length,
@@ -607,7 +673,7 @@ export default function Workspace() {
     }
     const best = [...ranked].sort((a, b) => a.average - b.average)[0];
     return evaluationImages.find((image) => image.id === best.id);
-  }, [aggregatedResults]);
+  }, [aggregatedResults, evaluationImages]);
 
   if (loading) {
     return (
@@ -903,13 +969,21 @@ export default function Workspace() {
                     }`}
                   >
                     <button
-                      className="h-32 w-full rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                      className="h-32 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
                       type="button"
                       onClick={() => {
                         setSelectedImage(item.id);
                         setSelectedAlternative(item.id);
                       }}
-                    />
+                    >
+                      {item.imageUrl && (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.label}
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                    </button>
                     <p className="mt-3 text-sm font-semibold text-slate-700">
                       {item.label}
                     </p>
@@ -951,10 +1025,18 @@ export default function Workspace() {
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
                 >
                   <button
-                    className="h-28 w-full rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                    className="h-28 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
                     type="button"
                     onClick={() => setSelectedImage(image.id)}
-                  />
+                  >
+                    {image.imageUrl && (
+                      <img
+                        src={image.imageUrl}
+                        alt={image.label}
+                        className="h-full w-full object-cover"
+                      />
+                    )}
+                  </button>
                   <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
                     <span className="font-semibold text-slate-700">
                       {image.label}
@@ -1031,7 +1113,15 @@ export default function Workspace() {
                 <p className="text-xs font-semibold uppercase text-slate-400">
                   Top preference
                 </p>
-                <div className="mt-3 h-32 rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
+                <div className="mt-3 h-32 overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100">
+                  {topPreference?.imageUrl && (
+                    <img
+                      src={topPreference.imageUrl}
+                      alt={topPreference.label}
+                      className="h-full w-full object-cover"
+                    />
+                  )}
+                </div>
                 <p className="mt-3 text-sm font-semibold text-slate-700">
                   {topPreference?.label ?? "Top concept"}
                 </p>
@@ -1097,7 +1187,29 @@ export default function Workspace() {
                 Close
               </button>
             </div>
-            <div className="mt-6 h-80 rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-100 via-white to-slate-100" />
+            <div className="mt-6">
+              {(
+                evaluationImages.find((image) => image.id === selectedImage) ||
+                alternativeImages.find((image) => image.id === selectedImage)
+              )?.imageUrl ? (
+                <img
+                  src={
+                    (
+                      evaluationImages.find(
+                        (image) => image.id === selectedImage
+                      ) ||
+                      alternativeImages.find(
+                        (image) => image.id === selectedImage
+                      )
+                    )?.imageUrl
+                  }
+                  alt="Selected concept"
+                  className="h-80 w-full rounded-2xl object-cover"
+                />
+              ) : (
+                <div className="h-80 rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-100 via-white to-slate-100" />
+              )}
+            </div>
             <p className="mt-4 text-sm text-slate-500">
               Inspect the design concept in detail before assigning a ranking.
             </p>
