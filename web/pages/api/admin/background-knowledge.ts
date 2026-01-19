@@ -27,11 +27,20 @@ export default async function handler(
       curatedText?: string;
     };
 
-    if (!curatedText) {
-      return res
-        .status(400)
-        .json({ error: "curatedText is required." });
-    }
+    const finalCuratedText =
+  curatedText && curatedText.trim().length > 0
+    ? curatedText.trim()
+    : "Background knowledge uploaded. Pending curation.";
+    
+    const db = adminDb();
+    await db.doc("ppssBackgroundKnowledge/current").set(
+      {
+        curatedText: finalCuratedText,
+        updatedBy: decoded.email ?? decoded.uid,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
 
     const db = adminDb();
     await db.doc("ppssBackgroundKnowledge/current").set(
