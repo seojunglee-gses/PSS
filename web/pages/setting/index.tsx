@@ -203,9 +203,8 @@ const handleBackgroundSave = async () => {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        curatedText: backgroundText.trim(),
-        files: filesPayload,
-      }),
+      files: filesPayload,
+    }),
     });
 
     if (!res.ok) {
