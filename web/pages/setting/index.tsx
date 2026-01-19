@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
-import { auth } from "../../lib/firebase";
 import {
   loadBackgroundKnowledge,
   loadCurrentSiteImage,
@@ -158,35 +157,54 @@ const handleBackgroundSave = async () => {
   setBackgroundSaveMessage(null);
   setBackgroundSaveTone(null);
   try {
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
+    if (!user) {
       throw new Error("Not logged in");
     }
-    const idToken = await currentUser.getIdToken(true);
+    const token = await user.getIdToken();
     const filesPayload = await Promise.all(
-      backgroundFiles.map((file) => fileToUploadPayload(file))
+      backgroundFiles.map((file) => {
+        return new Promise<{
+          name: string;
+          type: string;
+          size: number;
+          lastModified: number;
+          data: string;
+        }>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () =>
+            resolve({
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              lastModified: file.lastModified,
+              data: reader.result as string,
+            });
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      })
     );
-    const response = await fetch("/api/admin/background-knowledge", {
+    const res = await fetch("/api/admin/background-knowledge", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         curatedText: backgroundText.trim(),
         files: filesPayload,
       }),
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload?.error ?? "Save failed");
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      throw new Error(payload?.error ?? "Failed to save background knowledge");
     }
-    setBackgroundFiles([]);
     setBackgroundSaveMessage("Background knowledge saved.");
     setBackgroundSaveTone("success");
-  } catch (error) {
+    setBackgroundFiles([]);
+  } catch (err) {
     setBackgroundSaveMessage(
-      error instanceof Error ? error.message : "Save failed"
+      err instanceof Error ? err.message : "Save failed"
     );
     setBackgroundSaveTone("error");
   } finally {
