@@ -1,12 +1,18 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { loadBackgroundKnowledge } from "../../lib/firebase";
 
 type WorkspaceSummary = {
   stageSummaries: Record<string, string>;
   overallSummary: string;
 };
 
-const systemPrompt =
+const systemPromptBase =
   "You are an analyst creating structured workspace summaries for a PPSS workflow. Return ONLY valid JSON that matches the schema. No extra keys.";
+
+const buildSystemPrompt = (backgroundKnowledge?: string) =>
+  backgroundKnowledge
+    ? `${systemPromptBase}\n\nBackground knowledge (stable system context for all planning stages):\n${backgroundKnowledge}`
+    : systemPromptBase;
 
 const buildPrompt = (payload: unknown) =>
   `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"workspaceSummary\": {\n    \"stageSummaries\": {\n      \"problem\": \"...\",\n      \"data\": \"...\",\n      \"alternatives\": \"...\",\n      \"evaluation\": \"...\",\n      \"report\": \"...\"\n    },\n    \"overallSummary\": \"...\"\n  }\n}\n\nRules:\n- Workspace summary is ONLY the current user's dialogues grouped by stage.\n- Provide stage-specific insights and a concise overall summary.\n- Use abstract insights, not raw quotes.`;
@@ -27,6 +33,8 @@ export default async function handler(
   }
 
   try {
+    const backgroundKnowledge = await loadBackgroundKnowledge();
+    const curatedBackground = backgroundKnowledge?.curatedText?.trim();
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -36,7 +44,7 @@ export default async function handler(
       body: JSON.stringify({
         model: "gpt-5-mini",
         input: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: buildSystemPrompt(curatedBackground) },
           { role: "user", content: buildPrompt(req.body) },
         ],
         response_format: { type: "json_object" },
