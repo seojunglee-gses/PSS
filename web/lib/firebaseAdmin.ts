@@ -38,15 +38,14 @@ export const adminBucket = () => {
   return getStorage(app).bucket();
 };
 
-export const verifyAdminRequest = async (authorization?: string) => {
-  if (!authorization) {
-    throw new Error("Authorization header missing.");
+export const verifyAdminRequest = async (token?: string) => {
+  if (!token) {
+    throw new Error("Missing ID token");
   }
-  const token = authorization.replace("Bearer ", "");
   const auth = getAuth(getAdminApp());
   const decoded = await auth.verifyIdToken(token);
-  if (decoded.email !== adminEmail) {
-    throw new Error("Admin access required.");
+  if (!decoded.email || decoded.email !== adminEmail) {
+    throw new Error("Admin access required");
   }
   return decoded;
 };
