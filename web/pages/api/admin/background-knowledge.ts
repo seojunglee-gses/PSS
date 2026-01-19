@@ -1,4 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import mammoth from "mammoth";
+import pdf from "pdf-parse";
 import { adminBucket, adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
 
 type UploadedFile = {
@@ -8,6 +10,16 @@ type UploadedFile = {
   lastModified: number;
   data: string;
 };
+
+async function extractDocxText(buffer: Buffer): Promise<string> {
+  const result = await mammoth.extractRawText({ buffer });
+  return result.value || "";
+}
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const data = await pdf(buffer);
+  return data.text || "";
+}
 
 const stripDataPrefix = (data: string) =>
   data.includes(",") ? data.split(",")[1] : data;
@@ -61,54 +73,77 @@ export default async function handler(
 
     const textChunks: string[] = [];
     const imageInputs: { type: "input_image"; image_url: string }[] = [];
-    const fileInputs: {
-      type: "input_file";
-      filename: string;
-      file_data: string;
-    }[] = [];
 
-    await Promise.all(
-      files.map(async (file) => {
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const storagePath = `ppss-background-knowledge/originals/${timestamp}-${safeName}`;
-        const raw = stripDataPrefix(file.data);
-        const buffer = Buffer.from(raw, "base64");
-        await bucket.file(storagePath).save(buffer, {
-          contentType: file.type || "application/octet-stream",
-        });
+  await Promise.all(
+  files.map(async (file) => {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const storagePath = `ppss-background-knowledge/originals/${timestamp}-${safeName}`;
+    const raw = stripDataPrefix(file.data);
+    const buffer = Buffer.from(raw, "base64");
 
-        await db.collection("ppssBackgroundKnowledgeArchives").add({
-          fileName: file.name,
-          storagePath,
-          contentType: file.type || "application/octet-stream",
-          size: file.size,
-          uploadedAt: timestamp,
-          uploadedBy: decoded.email ?? decoded.uid,
-        });
+    // 1. Firebase Storage 저장
+    await bucket.file(storagePath).save(buffer, {
+      contentType: file.type || "application/octet-stream",
+    });
 
-        if (isImageType(file.type)) {
-          imageInputs.push({
-            type: "input_image",
-            image_url: `data:${file.type};base64,${raw}`,
-          });
-        } else if (file.type.startsWith("text/")) {
-          const extracted = Buffer.from(raw, "base64").toString("utf-8");
-          if (extracted.trim()) {
-            textChunks.push(
-              `File: ${file.name}\n${truncate(extracted.trim(), 12000)}`
-            );
-          }
-        } else {
-          fileInputs.push({
-            type: "input_file",
-            filename: file.name,
-            file_data: raw,
-          });
-        }
-      })
-    );
+    await db.collection("ppssBackgroundKnowledgeArchives").add({
+      fileName: file.name,
+      storagePath,
+      contentType: file.type || "application/octet-stream",
+      size: file.size,
+      uploadedAt: timestamp,
+      uploadedBy: decoded.email ?? decoded.uid,
+    });
 
-    if (!textChunks.length && !imageInputs.length && !fileInputs.length) {
+    // 2. 이미지
+    if (isImageType(file.type)) {
+      imageInputs.push({
+        type: "input_image",
+        image_url: `data:${file.type};base64,${raw}`,
+      });
+      return;
+    }
+
+    // 3. TXT
+    if (file.type.startsWith("text/")) {
+      const extracted = buffer.toString("utf-8");
+      if (extracted.trim()) {
+        textChunks.push(
+          `File: ${file.name}\n${truncate(extracted.trim(), 12000)}`
+        );
+      }
+      return;
+    }
+
+    // 4. DOCX
+    if (
+      file.type ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ) {
+      const extracted = await extractDocxText(buffer);
+      if (extracted.trim()) {
+        textChunks.push(
+          `File: ${file.name}\n${truncate(extracted.trim(), 12000)}`
+        );
+      }
+      return;
+    }
+
+    // 5. PDF
+    if (file.type === "application/pdf") {
+      const extracted = await extractPdfText(buffer);
+      if (extracted.trim()) {
+        textChunks.push(
+          `File: ${file.name}\n${truncate(extracted.trim(), 12000)}`
+        );
+      }
+      return;
+    }
+  })
+);
+
+
+      if (!textChunks.length && !imageInputs.length) {
       res.status(400).json({
         error: "Unable to extract any text or images from the uploaded files.",
       });
@@ -139,13 +174,13 @@ export default async function handler(
             role: "user",
             content: [
               { type: "input_text", text: promptText },
-              ...fileInputs,
               ...imageInputs,
             ],
           },
         ],
       }),
     });
+
 
     if (!response.ok) {
       const errorPayload = await response.json().catch(() => ({}));
