@@ -373,18 +373,18 @@ const handleBackgroundSave = async () => {
               </div>
               <div className="mt-4">
                 <label className="text-xs font-semibold uppercase text-slate-500">
-                  Curated background knowledge
+                  Curated background knowledge (auto-generated)
                 </label>
                 <textarea
                   className="mt-2 h-40 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 focus:border-[var(--primary)] focus:outline-none"
-                  placeholder="Summarize project context, physical conditions, social conditions, and common requests."
+                  placeholder="Auto-generated from uploaded files."
                   value={backgroundText}
-                  onChange={(event) => setBackgroundText(event.target.value)}
+                  readOnly
                 />
                 <p className="mt-2 text-xs text-slate-500">
-                  This curated text is stored in Firestore and used as stable
-                  system context for the LLM across planning and summary
-                  workflows.
+                  The API generates this curated text from uploaded materials,
+                  then stores it in Firestore for stable LLM context across
+                  planning and summary workflows.
                 </p>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
