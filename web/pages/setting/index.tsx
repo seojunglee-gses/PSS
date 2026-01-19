@@ -130,54 +130,68 @@ export default function Setting() {
     setBackgroundFiles(files ? Array.from(files) : []);
   };
 
-  const handleBackgroundSave = async () => {
-    if (backgroundSaveStatus === "saving") {
-      return;
-    }
-    setBackgroundSaveStatus("saving");
-    setBackgroundSaveMessage(null);
-    setBackgroundSaveTone(null);
-    try {
-      if (!user) {
-        throw new Error("Authentication required.");
-      }
-      const token = await user.getIdToken();
-      const files = await Promise.all(
-        backgroundFiles.map(async (file) => ({
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          lastModified: file.lastModified,
-          data: await fileToBase64(file),
-        }))
-      );
-      const response = await fetch("/api/admin/background-knowledge", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          curatedText: backgroundText.trim(),
-          files,
-        }),
+  const fileToUploadPayload = (file: File) =>
+  new Promise<{
+    name: string;
+    type: string;
+    size: number;
+    lastModified: number;
+    data: string;
+  }>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.onload = () =>
+      resolve({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        lastModified: file.lastModified,
+        data: String(reader.result), // data URL
       });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Save failed.");
-      }
-      setBackgroundFiles([]);
-      setBackgroundSaveMessage("Background knowledge saved.");
-      setBackgroundSaveTone("success");
-    } catch {
-      setBackgroundSaveMessage(
-        "Unable to save background knowledge. Check your Firebase connection."
-      );
-      setBackgroundSaveTone("error");
-    } finally {
-      setBackgroundSaveStatus("idle");
+    reader.readAsDataURL(file);
+  });
+
+const handleBackgroundSave = async () => {
+  if (backgroundSaveStatus === "saving") return;
+  setBackgroundSaveStatus("saving");
+  setBackgroundSaveMessage(null);
+  setBackgroundSaveTone(null);
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error("Not logged in");
     }
-  };
+    const idToken = await currentUser.getIdToken(true);
+    const filesPayload = await Promise.all(
+      backgroundFiles.map((file) => fileToUploadPayload(file))
+    );
+    const response = await fetch("/api/admin/background-knowledge", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        curatedText: backgroundText.trim(),
+        files: filesPayload,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error ?? "Save failed");
+    }
+    setBackgroundFiles([]);
+    setBackgroundSaveMessage("Background knowledge saved.");
+    setBackgroundSaveTone("success");
+  } catch (error) {
+    setBackgroundSaveMessage(
+      error instanceof Error ? error.message : "Save failed"
+    );
+    setBackgroundSaveTone("error");
+  } finally {
+    setBackgroundSaveStatus("idle");
+  }
+};
 
   const handleSiteImageSave = async () => {
     if (!siteImageFiles.length) {
