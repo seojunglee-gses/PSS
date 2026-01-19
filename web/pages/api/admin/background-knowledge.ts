@@ -36,7 +36,14 @@ export default async function handler(
   }
 
   try {
-    const decoded = await verifyAdminRequest(req.headers.authorization);
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Missing or invalid Authorization header" });
+    }
+
+const token = authHeader.replace("Bearer ", "");
+const decoded = await verifyAdminRequest(token);
+
     const { curatedText, files } = req.body as {
       curatedText?: string;
       files?: UploadFile[];
