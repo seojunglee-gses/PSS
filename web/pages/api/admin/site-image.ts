@@ -42,24 +42,9 @@ export default async function handler(
       return;
     }
 
-    const imageId = `${name}-${size}-${lastModified}`.replace(
-      /[^a-zA-Z0-9._-]/g,
-      "_"
-    );
+    const imageId = "current";
     const db = adminDb();
-    const existingSnapshot = await db.doc("ppssSiteImages/current").get();
-    if (existingSnapshot.exists) {
-      const existing = existingSnapshot.data() as {
-        imageId?: string;
-        downloadUrl?: string;
-      };
-      if (existing?.imageId === imageId && existing.downloadUrl) {
-        res.status(200).json({ downloadUrl: existing.downloadUrl });
-        return;
-      }
-    }
-
-    const storagePath = `ppss-site-images/${imageId}`;
+    const storagePath = "ppss-site-image/current";
     const token = randomUUID();
     const bucket = adminBucket();
     await bucket

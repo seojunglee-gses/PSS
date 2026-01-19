@@ -264,18 +264,8 @@ export const saveCurrentSiteImage = async (
   }
   const db = getFirestore(app);
   const storage = getStorage(app);
-  const imageId = `${file.name}-${file.size}-${file.lastModified}`.replace(
-    /[^a-zA-Z0-9._-]/g,
-    "_"
-  );
-  const existingSnapshot = await getDoc(doc(db, "ppssSiteImages", "current"));
-  const existing = existingSnapshot.exists()
-    ? (existingSnapshot.data() as SiteImage)
-    : null;
-  if (existing && existing.imageId === imageId) {
-    return existing;
-  }
-  const storagePath = `ppss-site-images/${imageId}`;
+  const imageId = "current";
+  const storagePath = "ppss-site-image/current";
   await uploadBytes(ref(storage, storagePath), file);
   const downloadUrl = await getDownloadURL(ref(storage, storagePath));
   const payload: SiteImage = {
