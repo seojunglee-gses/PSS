@@ -41,8 +41,7 @@ export default async function handler(
       },
       { merge: true }
     );
-
-    const db = adminDb();
+    
     await db.doc("ppssBackgroundKnowledge/current").set(
       {
         curatedText,
