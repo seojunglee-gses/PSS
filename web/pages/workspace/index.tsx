@@ -586,12 +586,17 @@ export default function Workspace() {
     if (!selectedAlternative) {
       return;
     }
+    if (!userKey) {
+      setShowSubmitNotice("Authentication required.");
+      return;
+    }
     const selected = alternativeImages.find(
       (image) => image.id === selectedAlternative
     );
     if (!selected) {
       return;
     }
+    
     setEvaluationImages((prev) => {
       const exists = prev.some((image) => image.id === selected.id);
       if (exists) {
