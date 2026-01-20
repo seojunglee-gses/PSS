@@ -8,7 +8,6 @@ import {
   saveGeneratedImageFromBase64,
   saveChatLogsToFirestore,
   saveUserDesignSubmission,
-  saveStageLocks,
   saveWorkspaceSummary,
   sendEvaluationResult,
 } from "../../lib/firebase";
