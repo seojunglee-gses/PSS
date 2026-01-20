@@ -229,13 +229,13 @@ export default function Workspace() {
   }, []);
 
   useEffect(() => {
-    if (!user) {
+    if (!user?.uid) {
       return;
     }
     const loadLogs = async () => {
       const storedLogs = await loadChatLogsFromFirestore<
         Array<Partial<ChatLog> & { sender?: "Planner" | "ChatGPT" | "user" | "assistant" }>
-      >(userKey);
+      >(user.uid);
       if (!storedLogs) {
         return;
       }
@@ -264,7 +264,24 @@ export default function Workspace() {
       setChatLogs(normalized);
     };
     loadLogs();
-  }, [user, userKey, role]);
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    const loadLocks = async () => {
+      const state = await loadStageLocks();
+      if (!state) {
+        setLockedStages({});
+        setRevisedAfterLock({});
+        return;
+      }
+      setLockedStages(state.lockedStages ?? {});
+      setRevisedAfterLock(state.revisedAfterLock ?? {});
+    };
+    loadLocks();
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -307,11 +324,11 @@ export default function Workspace() {
   }, [user, userKey]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user?.uid) {
       return;
     }
-    saveChatLogsToFirestore(userKey, chatLogs, user.email ?? user.uid);
-  }, [chatLogs, user, userKey]);
+    saveChatLogsToFirestore(user.uid, chatLogs, user.email ?? user.uid);
+  }, [chatLogs, user?.uid, user?.email]);
 
   useEffect(() => {
     const loadSiteImage = async () => {
