@@ -21,11 +21,17 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+    if (req.method === "OPTIONS") {
+    res.setHeader("Allow", "POST, OPTIONS");
+    res.status(200).end();
+    return;
+  }
+
   if (req.method !== "POST") {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
-
+  
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
@@ -44,17 +50,6 @@ export default async function handler(
       body: JSON.stringify({
         model: "gpt-5-mini",
         input: `${buildSystemPrompt(curatedBackground)}\n\n${buildPrompt(req.body)}`,
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: buildPrompt(req.body),
-              },
-            ],
-          },
-        ],
         text: {
           format: { type: "json_object" }, 
         },
