@@ -50,7 +50,6 @@ function extractOutputText(result: any): string | null {
   return null;
 }
 
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -161,12 +160,6 @@ export default async function handler(
     }
     
     const parsed = JSON.parse(content);
-      
-        if (!content) {
-          res.status(500).json({ error: "No summary content returned." });
-          return;
-        }
-        const parsed = JSON.parse(content);
 
     const payload = {
       keywords: parsed.keywords ?? [],
