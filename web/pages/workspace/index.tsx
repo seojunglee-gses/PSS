@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
 import {
-  loadChatLogsFromStorage,
+  loadChatLogsFromFirestore,
   loadCurrentSiteImage,
   loadGeneratedImages,
+  loadStageLocks,
   saveGeneratedImageFromBase64,
+  saveChatLogsToFirestore,
   saveUserDesignSubmission,
-  saveChatLogsToStorage,
   saveWorkspaceSummary,
   sendEvaluationResult,
 } from "../../lib/firebase";
@@ -152,6 +153,10 @@ export default function Workspace() {
   const [savedSummaries, setSavedSummaries] = useState<
     Record<string, string>
   >({});
+  const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
+  const [revisedAfterLock, setRevisedAfterLock] = useState<
+    Record<string, boolean>
+  >({});
 
   useEffect(() => {
     if (!loading && !user) {
@@ -172,6 +177,19 @@ export default function Workspace() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    const loadSavedSummaries = async () => {
+      const summary = await loadWorkspaceSummary(userKey);
+      if (summary?.stageSummaries) {
+        setSavedSummaries(summary.stageSummaries);
+      }
+    };
+    loadSavedSummaries();
+  }, [user, userKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -209,13 +227,13 @@ export default function Workspace() {
   }, []);
 
   useEffect(() => {
-    if (!user) {
+    if (!user?.uid) {
       return;
     }
     const loadLogs = async () => {
-      const storedLogs = await loadChatLogsFromStorage<
+      const storedLogs = await loadChatLogsFromFirestore<
         Array<Partial<ChatLog> & { sender?: "Planner" | "ChatGPT" | "user" | "assistant" }>
-      >(userKey);
+      >(user.uid);
       if (!storedLogs) {
         return;
       }
@@ -244,7 +262,24 @@ export default function Workspace() {
       setChatLogs(normalized);
     };
     loadLogs();
-  }, [user, userKey, role]);
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    const loadLocks = async () => {
+      const state = await loadStageLocks();
+      if (!state) {
+        setLockedStages({});
+        setRevisedAfterLock({});
+        return;
+      }
+      setLockedStages(state.lockedStages ?? {});
+      setRevisedAfterLock(state.revisedAfterLock ?? {});
+    };
+    loadLocks();
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -270,11 +305,11 @@ export default function Workspace() {
   }, [user, userKey]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user?.uid) {
       return;
     }
-    saveChatLogsToStorage(userKey, chatLogs);
-  }, [chatLogs, user, userKey]);
+    saveChatLogsToFirestore(user.uid, chatLogs, user.email ?? user.uid);
+  }, [chatLogs, user?.uid, user?.email]);
 
   useEffect(() => {
     const loadSiteImage = async () => {
@@ -424,8 +459,7 @@ export default function Workspace() {
     if (!inputValue.trim()) {
       return;
     }
-    if (!siteImageConfigured) {
-      setShowSiteImageWarning(true);
+    if (lockedStages[activeStep.id]) {
       return;
     }
     setErrorMessage(null);
@@ -475,6 +509,10 @@ export default function Workspace() {
       ]);
 
       if (stepId === "alternatives") {
+        if (!siteImageConfigured) {
+          setShowSiteImageWarning(true);
+          return;
+        }
         await requestGeneratedImage();
       }
     } catch (error) {
@@ -489,6 +527,10 @@ export default function Workspace() {
   };
 
   const handleCompleteStep = async () => {
+    if (lockedStages[activeStep.id]) {
+      setFinishNotice("This stage is locked. Contact the administrator.");
+      return;
+    }
     setSavedSummaries((prev) => ({
       ...prev,
       [activeStep.id]: stepSummaries[activeStep.id],
@@ -515,35 +557,6 @@ export default function Workspace() {
         };
       };
       await saveWorkspaceSummary(userKey, payload.workspaceSummary);
-      setFinishNotice("Chat log sent to Report.");
-    } catch (error) {
-      setFinishNotice(
-        error instanceof Error
-          ? `Chat log sent, summary update failed: ${error.message}`
-          : "Chat log sent, summary update failed."
-      );
-    } finally {
-      setIsSummarizing(false);
-    }
-    setFinishNotice("Chat log sent to Report. Updating summaries...");
-    setIsSummarizing(true);
-    try {
-      const response = await fetch("/api/summaries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentStage: activeStep.title,
-          executiveInput: {},
-          workspaceInput: buildWorkspaceInput(),
-        }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Summary generation failed.");
-      }
-      const payload = (await response.json()) as {
-        workspaceSummary: { stageSummaries: Record<string, string>; overallSummary: string };
-      };
       setFinishNotice("Chat log sent to Report.");
     } catch (error) {
       setFinishNotice(
@@ -710,6 +723,18 @@ export default function Workspace() {
         : []),
       ...stepLogs,
     ];
+    const formatMessage = (text: string) =>
+      text.split(/(\*\*[^*]+\*\*)/g).map((segment, segmentIndex) => {
+        if (segment.startsWith("**") && segment.endsWith("**")) {
+          return (
+            <strong key={`bold-${segmentIndex}`}>
+              {segment.slice(2, -2)}
+            </strong>
+          );
+        }
+        return <span key={`text-${segmentIndex}`}>{segment}</span>;
+      });
+    const isStageLocked = Boolean(lockedStages[activeStep.id]);
     return (
     <div className="flex h-full flex-col rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
@@ -723,6 +748,24 @@ export default function Workspace() {
           {activeProvider}
         </span>
       </div>
+      {isStageLocked && (
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+          <p className="font-semibold text-slate-700">Stage completed</p>
+          <p className="mt-1">
+            🔒 This stage is completed
+            <br />
+            Your responses have been summarized and locked for collaboration
+            consistency.
+            <br />
+            Contact the administrator to reopen this stage.
+          </p>
+          {revisedAfterLock[activeStep.id] && (
+            <p className="mt-2 text-[11px] text-slate-500">
+              Revised after lock.
+            </p>
+          )}
+        </div>
+      )}
       <div className="mt-4 max-h-[420px] flex-1 space-y-4 overflow-auto text-sm text-slate-600">
         {displayedMessages.length === 0 && (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
@@ -749,7 +792,9 @@ export default function Workspace() {
               <p className="text-xs font-semibold uppercase text-slate-400">
                 {message.label}
               </p>
-              <p className="mt-2">{message.text}</p>
+              <p className="mt-2 whitespace-pre-line">
+                {formatMessage(message.text)}
+              </p>
             </div>
           );
         })}
@@ -757,7 +802,7 @@ export default function Workspace() {
       </div>
       <div className="mt-4 flex items-center gap-2">
         <input
-          className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:border-[var(--primary)] focus:outline-none"
+          className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:border-[var(--primary)] focus:outline-none disabled:bg-slate-100"
           placeholder="Send a prompt to the PPSS assistant..."
           value={inputValue}
           onChange={(event) => setInputValue(event.target.value)}
@@ -767,12 +812,13 @@ export default function Workspace() {
               handleSend();
             }
           }}
+          disabled={isStageLocked}
         />
         <button
           className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
           type="button"
           onClick={handleSend}
-          disabled={isSending}
+          disabled={isSending || isStageLocked}
         >
           {isSending ? "Sending..." : "Send"}
         </button>
@@ -1220,11 +1266,10 @@ export default function Workspace() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-slate-900">
-              Site image not configured
+              Site image not uploaded yet
             </h3>
             <p className="mt-3 text-sm text-slate-500">
-              The admin must upload the current site image in Settings before
-              the workspace chatbot can generate responses.
+              Image-based generation is disabled.
             </p>
             <button
               className="mt-6 w-full rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
