@@ -24,7 +24,7 @@ const buildSystemPrompt = (backgroundKnowledge?: string) =>
     : systemPromptBase;
 
 const buildPrompt = (payload: unknown) =>
-  `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"keywords\": [\"...\"],\n  \"stageSummaries\": {\n    \"problemDefinition\": \"...\",\n    \"dataAnalysis\": \"...\",\n    \"designAlternatives\": \"...\",\n    \"designEvaluation\": \"...\",\n    \"decision\": \"...\"\n  }\n}\n\nRules:\n- Summaries reflect all participants' workspace dialogue summaries.\n- Keywords should capture recurring themes across accumulated dialogues.\n- Keep output concise and structured.`;
+  `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"keywords\": [\"...\"],\n  \"stageSummary\": \"...\"\n}\n\nRules:\n- Stage summary reflects all participants' workspace dialogue summaries for the requested stage.\n- Keywords should capture recurring themes across accumulated dialogues.\n- Keep output concise and structured.`;
 
 export default async function handler(
   req: NextApiRequest,
@@ -40,6 +40,13 @@ export default async function handler(
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
+      return;
+    }
+
+    const { stageId } = req.body as { stageId?: string };
+    const stage = stageOrder.find((entry) => entry.id === stageId);
+    if (!stage) {
+      res.status(400).json({ error: "Invalid stage selection." });
       return;
     }
 
@@ -59,12 +66,6 @@ export default async function handler(
       },
       {}
     );
-
-    const currentStage =
-      [...stageOrder]
-        .reverse()
-        .find((stage) => stageCounts[stage.id] > 0)?.label ??
-      stageOrder[0].label;
 
     const aggregated = stageOrder.reduce<Record<string, string[]>>(
       (acc, stage) => {
@@ -92,9 +93,11 @@ export default async function handler(
           {
             role: "user",
             content: buildPrompt({
+              stageId: stage.id,
+              stageLabel: stage.label,
               participants: summaries.length,
               stageCounts,
-              stageSummaries: aggregated,
+              stageSummary: aggregated[stage.id] ?? [],
             }),
           },
         ],
@@ -119,24 +122,34 @@ export default async function handler(
 
     const parsed = JSON.parse(content) as {
       keywords: string[];
-      stageSummaries: {
-        problemDefinition: string;
-        dataAnalysis: string;
-        designAlternatives: string;
-        designEvaluation: string;
-        decision: string;
-      };
+      stageSummary: string;
     };
 
     const payload = {
       keywords: parsed.keywords ?? [],
-      currentStage,
-      stageSummaries: parsed.stageSummaries ?? {
+      currentStage: stage.label,
+      stageId: stage.id,
+      stageSummaries: {
         problemDefinition: "",
         dataAnalysis: "",
         designAlternatives: "",
         designEvaluation: "",
         decision: "",
+        ...(stage.id === "problem"
+          ? { problemDefinition: parsed.stageSummary ?? "" }
+          : {}),
+        ...(stage.id === "data"
+          ? { dataAnalysis: parsed.stageSummary ?? "" }
+          : {}),
+        ...(stage.id === "alternatives"
+          ? { designAlternatives: parsed.stageSummary ?? "" }
+          : {}),
+        ...(stage.id === "evaluation"
+          ? { designEvaluation: parsed.stageSummary ?? "" }
+          : {}),
+        ...(stage.id === "report"
+          ? { decision: parsed.stageSummary ?? "" }
+          : {}),
       },
       createdAt: new Date().toISOString(),
     };
