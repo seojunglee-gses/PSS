@@ -5,6 +5,7 @@ import {
   loadCurrentSiteImage,
   loadGeneratedImages,
   loadStageLocks,
+  loadWorkspaceSummary,
   saveGeneratedImageFromBase64,
   saveChatLogsToFirestore,
   saveUserDesignSubmission,
