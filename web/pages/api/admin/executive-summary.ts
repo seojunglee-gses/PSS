@@ -44,7 +44,7 @@ export default async function handler(
     }
     const token = authHeader.replace("Bearer ", "");
 
-    await verifyAdminRequest(req.headers.authorization);
+    await verifyAdminRequest(token);
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
