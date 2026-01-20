@@ -26,6 +26,31 @@ const buildSystemPrompt = (backgroundKnowledge?: string) =>
 const buildPrompt = (payload: unknown) =>
   `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"keywords\": [\"...\"],\n  \"stageSummary\": \"...\"\n}\n\nRules:\n- Stage summary reflects all participants' workspace dialogue summaries for the requested stage.\n- Keywords should capture recurring themes across accumulated dialogues.\n- Keep output concise and structured.`;
 
+function extractOutputText(result: any): string | null {
+  if (typeof result?.output_text === "string" && result.output_text.trim()) {
+    return result.output_text.trim();
+  }
+  const output = result?.output;
+  if (!Array.isArray(output)) return null;
+
+  for (const item of output) {
+    const contents = item?.content;
+    if (!Array.isArray(contents)) continue;
+
+    for (const block of contents) {
+      if (
+        (block.type === "output_text" || block.type === "text") &&
+        typeof block.text === "string" &&
+        block.text.trim()
+      ) {
+        return block.text.trim();
+      }
+    }
+  }
+  return null;
+}
+
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -124,16 +149,24 @@ export default async function handler(
     }
 
     const result = await response.json();
-    const content =
-      typeof result.output_text === "string"
-        ? result.output_text
-        : null;
+    console.log(
+      "EXEC SUMMARY RAW RESULT:",
+      JSON.stringify(result, null, 2)
+    );
+    
+    const content = extractOutputText(result);
     
     if (!content) {
-      res.status(500).json({ error: "No summary content returned." });
-      return;
+      throw new Error("No summary content returned.");
     }
+    
     const parsed = JSON.parse(content);
+      
+        if (!content) {
+          res.status(500).json({ error: "No summary content returned." });
+          return;
+        }
+        const parsed = JSON.parse(content);
 
     const payload = {
       keywords: parsed.keywords ?? [],
