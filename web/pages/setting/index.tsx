@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
-import { loadBackgroundKnowledge, loadCurrentSiteImage } from "../../lib/firebase";
+import {
+  loadAllWorkspaceSummaries,
+  loadBackgroundKnowledge,
+  loadCurrentSiteImage,
+  loadStageLocks,
+  saveStageLocks,
+} from "../../lib/firebase";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
 
@@ -37,6 +43,20 @@ export default function Setting() {
     "success" | "error" | null
   >(null);
   const [siteSaveMessage, setSiteSaveMessage] = useState<string | null>(null);
+  const [backgroundLoadMessage, setBackgroundLoadMessage] = useState<
+    string | null
+  >(null);
+  const [siteLoadMessage, setSiteLoadMessage] = useState<string | null>(null);
+  const [participantCount, setParticipantCount] = useState(0);
+  const [stageCompletionCounts, setStageCompletionCounts] = useState<
+    Record<string, number>
+  >({});
+  const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
+  const [isGeneratingExecutiveSummary, setIsGeneratingExecutiveSummary] =
+    useState(false);
+  const [executiveSummaryMessage, setExecutiveSummaryMessage] = useState<
+    Record<string, string>
+  >({});
 
   useEffect(() => {
     setIsAdmin(Boolean(user && user.email === adminEmail));
@@ -53,9 +73,6 @@ export default function Setting() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin) {
-      return;
-    }
     let isMounted = true;
     loadBackgroundKnowledge()
       .then((data) => {
@@ -65,10 +82,9 @@ export default function Setting() {
       })
       .catch(() => {
         if (isMounted) {
-          setBackgroundSaveMessage(
+          setBackgroundLoadMessage(
             "Unable to load background knowledge from storage."
           );
-          setBackgroundSaveTone("error");
         }
       });
     loadCurrentSiteImage()
@@ -79,15 +95,116 @@ export default function Setting() {
       })
       .catch(() => {
         if (isMounted) {
-          setSiteSaveMessage(
-            "Unable to load current site image from storage."
-          );
+          setSiteLoadMessage("Unable to load current site image from storage.");
         }
       });
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+    let isMounted = true;
+    const loadWorkspaceProgress = async () => {
+      const summaries = await loadAllWorkspaceSummaries();
+      if (!isMounted) {
+        return;
+      }
+      const counts = summaries.reduce<Record<string, number>>((acc, entry) => {
+        Object.entries(entry.summary.stageSummaries ?? {}).forEach(
+          ([stage, summary]) => {
+            if (summary && summary.trim()) {
+              acc[stage] = (acc[stage] ?? 0) + 1;
+            }
+          }
+        );
+        return acc;
+      }, {});
+      setParticipantCount(summaries.length);
+      setStageCompletionCounts(counts);
+    };
+    loadWorkspaceProgress();
+    return () => {
+      isMounted = false;
+    };
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+    let isMounted = true;
+    const loadLocks = async () => {
+      const state = await loadStageLocks();
+      if (!isMounted) {
+        return;
+      }
+      setLockedStages(state?.lockedStages ?? {});
+    };
+    loadLocks();
+    return () => {
+      isMounted = false;
+    };
+  }, [isAdmin]);
+
+  const handleExecutiveSummaryGenerate = async (stageId: string) => {
+    if (!user) {
+      setExecutiveSummaryMessage((prev) => ({
+        ...prev,
+        [stageId]: "Authentication required.",
+      }));
+      return;
+    }
+    try {
+      setIsGeneratingExecutiveSummary(true);
+      setExecutiveSummaryMessage((prev) => ({
+        ...prev,
+        [stageId]: "",
+      }));
+      const token = await user.getIdToken();
+      const response = await fetch("/api/admin/executive-summary", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ stageId }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Executive summary failed.");
+      }
+      setExecutiveSummaryMessage((prev) => ({
+        ...prev,
+        [stageId]: "Executive summary generated.",
+      }));
+    } catch (error) {
+      setExecutiveSummaryMessage((prev) => ({
+        ...prev,
+        [stageId]:
+          error instanceof Error
+            ? error.message
+            : "Unable to generate executive summary.",
+      }));
+    } finally {
+      setIsGeneratingExecutiveSummary(false);
+    }
+  };
+
+  const handleStageLockToggle = async (stageId: string, locked: boolean) => {
+    if (!user) {
+      return;
+    }
+    const nextLocks = { ...lockedStages, [stageId]: locked };
+    setLockedStages(nextLocks);
+    await saveStageLocks({
+      lockedStages: nextLocks,
+      updatedBy: user.email ?? user.uid,
+    });
+  };
 
   useEffect(() => {
     return () => {
@@ -126,67 +243,67 @@ export default function Setting() {
   };
 
   const handleBackgroundSave = async () => {
-  if (isBackgroundSaving) return;
-  setIsBackgroundSaving(true);
-  setBackgroundSaveMessage(null);
-  setBackgroundSaveTone(null);
+    if (isBackgroundSaving) return;
+    setIsBackgroundSaving(true);
+    setBackgroundSaveMessage(null);
+    setBackgroundSaveTone(null);
 
-  try {
-    if (!user) {
-      throw new Error("Not logged in");
+    try {
+      if (!user) {
+        throw new Error("Not logged in");
+      }
+      if (!backgroundFiles.length) {
+        throw new Error("Please upload background knowledge files.");
+      }
+
+      const token = await user.getIdToken();
+
+      const filesPayload = await Promise.all(
+        backgroundFiles.map(async (file) => {
+          const buffer = await file.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+          return {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            lastModified: file.lastModified,
+            data: base64,
+          };
+        })
+      );
+
+      const res = await fetch("/api/admin/background-knowledge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ files: filesPayload }),
+      });
+
+      const text = await res.text();
+
+      if (!res.ok) {
+        throw new Error(text || "Save failed");
+      }
+
+      const payload = text ? JSON.parse(text) : {};
+      if (payload.curatedText) {
+        setBackgroundText(payload.curatedText);
+      }
+
+      setBackgroundFiles([]);
+      setBackgroundSaveMessage("Background knowledge saved.");
+      setBackgroundSaveTone("success");
+    } catch (error) {
+      setBackgroundSaveMessage(
+        error instanceof Error ? error.message : "Save failed"
+      );
+      setBackgroundSaveTone("error");
+    } finally {
+      setIsBackgroundSaving(false);
     }
-    if (!backgroundFiles.length) {
-      throw new Error("Please upload background knowledge files.");
-    }
-
-    const token = await user.getIdToken();
-
-    const filesPayload = await Promise.all(
-      backgroundFiles.map(async (file) => {
-        const buffer = await file.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-        return {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          lastModified: file.lastModified,
-          data: base64,
-        };
-      })
-    );
-
-    const res = await fetch("/api/admin/background-knowledge", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ files: filesPayload }),
-    });
-
-    const text = await res.text();
-
-    if (!res.ok) {
-      throw new Error(text || "Save failed");
-    }
-
-    const payload = text ? JSON.parse(text) : {};
-    if (payload.curatedText) {
-      setBackgroundText(payload.curatedText);
-    }
-
-    setBackgroundFiles([]);
-    setBackgroundSaveMessage("Background knowledge saved.");
-    setBackgroundSaveTone("success");
-  } catch (error) {
-    setBackgroundSaveMessage(
-      error instanceof Error ? error.message : "Save failed"
-    );
-    setBackgroundSaveTone("error");
-  } finally {
-    setIsBackgroundSaving(false);
-  }
-};
+  };
 
   const handleSiteImageSave = async () => {
     if (!siteImageFiles.length) {
@@ -297,7 +414,7 @@ export default function Setting() {
           </div>
         </div>
       </section>
-      {isAdmin ? (
+      {isAdmin && (
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold">Administrator settings</h3>
           <p className="mt-2 text-sm text-slate-500">
@@ -305,6 +422,94 @@ export default function Setting() {
             workspace generation.
           </p>
           <div className="mt-6 grid gap-6">
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-700">
+                    Workspace progress & controls
+                  </h4>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Track stage completion, lock stages, and trigger executive
+                    summaries from one panel.
+                  </p>
+                </div>
+                <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+                  Total participants: {participantCount}
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 text-xs">
+                {[
+                  { id: "problem", label: "Problem Definition" },
+                  { id: "data", label: "Data Analysis" },
+                  { id: "alternatives", label: "Design/Plan Alternatives" },
+                  { id: "evaluation", label: "Design/Plan Evaluation" },
+                  { id: "report", label: "Design/Plan Decision" },
+                ].map((stage) => (
+                  <div
+                    key={stage.id}
+                    className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 lg:grid-cols-[1.4fr_0.7fr_0.9fr]"
+                  >
+                    <div>
+                      <p className="font-semibold text-slate-700">
+                        {stage.label}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Completed: {stageCompletionCounts[stage.id] ?? 0}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-500">
+                        Stage lock
+                      </span>
+                      <button
+                        className={`relative h-6 w-11 rounded-full transition ${
+                          lockedStages[stage.id]
+                            ? "bg-[var(--primary)]"
+                            : "bg-slate-200"
+                        }`}
+                        type="button"
+                        onClick={() =>
+                          handleStageLockToggle(
+                            stage.id,
+                            !lockedStages[stage.id]
+                          )
+                        }
+                        aria-pressed={lockedStages[stage.id]}
+                      >
+                        <span
+                          className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition ${
+                            lockedStages[stage.id] ? "translate-x-5" : ""
+                          }`}
+                        />
+                      </button>
+                      <span className="text-[11px] text-slate-500">
+                        {lockedStages[stage.id] ? "Locked" : "Open"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {executiveSummaryMessage[stage.id] && (
+                        <span className="text-[11px] text-slate-500">
+                          {executiveSummaryMessage[stage.id]}
+                        </span>
+                      )}
+                      <button
+                        className="rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                        type="button"
+                        onClick={() =>
+                          handleExecutiveSummaryGenerate(stage.id)
+                        }
+                        disabled={isGeneratingExecutiveSummary}
+                      >
+                        {isGeneratingExecutiveSummary
+                          ? "Generating..."
+                          : "Generate executive summary"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="border-t border-slate-200" />
             <div>
               <label className="text-xs font-semibold uppercase text-slate-500">
                 Background knowledge
@@ -354,10 +559,15 @@ export default function Setting() {
                   onClick={handleBackgroundSave}
                   disabled={isBackgroundSaving}
                 >
-                 {isBackgroundSaving ? 
-                 "Saving..." : 
-                 "Generate and save summary"}
+                  {isBackgroundSaving
+                    ? "Saving..."
+                    : "Generate and save summary"}
                 </button>
+                {backgroundLoadMessage && (
+                  <span className="text-xs text-rose-500">
+                    {backgroundLoadMessage}
+                  </span>
+                )}
                 {backgroundSaveMessage && (
                   <span
                     className={`text-xs ${
@@ -378,29 +588,35 @@ export default function Setting() {
                 alternatives in the workspace.
               </p>
               <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                <input
-                  className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-full file:border-0 file:bg-[var(--primary)] file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white file:hover:bg-[var(--primary-dark)]"
-                  type="file"
-                  accept=".png,.jpg,.jpeg"
-                  onChange={(event) => handleSiteImagesChange(event.target.files)}
-                />
-                <p className="mt-3 text-xs text-slate-500">
-                  Upload a site image to enable workspace generation.
-                </p>
-                {siteImageFiles.length > 0 && (
-                  <p className="mt-3 text-xs text-slate-600">
-                    {siteImageFiles[0].name}
-                  </p>
-                )}
-                {siteImagePreview && (
-                  <div className="mt-4">
-                    <img
-                      src={siteImagePreview}
-                      alt="Site preview"
-                      className="h-40 w-full rounded-lg object-cover"
+                <div className="flex flex-wrap items-start gap-4">
+                  <div className="min-w-[220px] flex-1">
+                    <input
+                      className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-full file:border-0 file:bg-[var(--primary)] file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white file:hover:bg-[var(--primary-dark)]"
+                      type="file"
+                      accept=".png,.jpg,.jpeg"
+                      onChange={(event) =>
+                        handleSiteImagesChange(event.target.files)
+                      }
                     />
+                    <p className="mt-3 text-xs text-slate-500">
+                      Upload a site image to enable workspace generation.
+                    </p>
+                    {siteImageFiles.length > 0 && (
+                      <p className="mt-3 text-xs text-slate-600">
+                        {siteImageFiles[0].name}
+                      </p>
+                    )}
                   </div>
-                )}
+                  {siteImagePreview && (
+                    <div className="flex items-center">
+                      <img
+                        src={siteImagePreview}
+                        alt="Site preview"
+                        className="h-24 w-24 rounded-lg border border-slate-200 bg-white object-contain"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button
@@ -410,6 +626,11 @@ export default function Setting() {
                 >
                   Save site images
                 </button>
+                {siteLoadMessage && (
+                  <span className="text-xs text-rose-500">
+                    {siteLoadMessage}
+                  </span>
+                )}
                 {siteSaveMessage && (
                   <span className="text-xs text-emerald-600">
                     {siteSaveMessage}
@@ -418,14 +639,6 @@ export default function Setting() {
               </div>
             </div>
           </div>
-        </section>
-      ) : (
-        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">Administrator access</h3>
-          <p className="mt-2 text-sm text-slate-500">
-            Sign in with {adminEmail} to manage background knowledge and site
-            images.
-          </p>
         </section>
       )}
     </AppShell>
