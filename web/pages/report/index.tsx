@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
 import {
-  loadChatLogsFromStorage,
+  loadChatLogsFromFirestore,
   loadLatestExecutiveSummary,
   loadWorkspaceSummary,
   saveWorkspaceSummary,
@@ -112,7 +112,7 @@ export default function Report() {
       return;
     }
     const loadData = async () => {
-      const logs = await loadChatLogsFromStorage<ChatLog[]>(userKey);
+      const logs = await loadChatLogsFromFirestore<ChatLog[]>(userKey);
       if (logs) {
         setChatLogs(logs);
       }
