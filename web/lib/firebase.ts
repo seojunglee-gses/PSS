@@ -173,6 +173,21 @@ export const loadWorkspaceSummary = async (
   return snapshot.data() as WorkspaceSummary;
 };
 
+export const loadAllWorkspaceSummaries = async (): Promise<
+  Array<{ userId: string; summary: WorkspaceSummary }>
+> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return [];
+  }
+  const db = getFirestore(app);
+  const snapshot = await getDocs(collection(db, "ppssWorkspaceSummaries"));
+  return snapshot.docs.map((docSnap) => ({
+    userId: docSnap.id,
+    summary: docSnap.data() as WorkspaceSummary,
+  }));
+};
+
 export const loadLatestExecutiveSummary = async (): Promise<
   ExecutiveSummary | null
 > => {
