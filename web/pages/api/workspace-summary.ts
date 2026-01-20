@@ -44,12 +44,31 @@ export default async function handler(
       body: JSON.stringify({
         model: "gpt-5-mini",
         input: [
-          { role: "system", content: buildSystemPrompt(curatedBackground) },
-          { role: "user", content: buildPrompt(req.body) },
+          {
+            role: "system",
+            content: [
+              {
+                type: "input_text",
+                text: buildSystemPrompt(curatedBackground),
+              },
+            ],
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: buildPrompt(req.body),
+              },
+            ],
+          },
         ],
-        response_format: { type: "json_object" },
+        text: {
+          format: { type: "json_object" }, 
+        },
       }),
     });
+    ;
 
     if (!response.ok) {
       const errorPayload = await response.json().catch(() => ({}));

@@ -28,7 +28,15 @@ export default async function handler(
   }
 
   try {
-    const decoded = await verifyAdminRequest(req.headers.authorization);
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing Authorization header" });
+      return;
+    }
+    const authToken = authHeader.replace("Bearer ", "");
+    const decoded = await verifyAdminRequest(authToken);
+    const downloadToken = randomUUID();
+
     const { name, type, size, lastModified, data } = req.body as {
       name?: string;
       type?: string;
@@ -47,17 +55,19 @@ export default async function handler(
     const storagePath = "ppss-site-image/current";
     const token = randomUUID();
     const bucket = adminBucket();
-    await bucket
-      .file(storagePath)
-      .save(Buffer.from(stripDataPrefix(data), "base64"), {
+    await bucket.file(storagePath).save(
+      Buffer.from(stripDataPrefix(data), "base64"),
+      {
         metadata: {
           contentType: type || "application/octet-stream",
           metadata: {
-            firebaseStorageDownloadTokens: token,
+            firebaseStorageDownloadTokens: downloadToken,
           },
         },
-      });
-    const downloadUrl = buildDownloadUrl(storagePath, token);
+      }
+    );
+    const downloadUrl = buildDownloadUrl(storagePath, downloadToken);
+    
     await db.doc("ppssSiteImages/current").set(
       {
         imageId,
@@ -71,8 +81,9 @@ export default async function handler(
 
     res.status(200).json({ downloadUrl });
   } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Unexpected error.",
-    });
-  }
+  console.error("SITE IMAGE UPLOAD ERROR:", error);
+  res.status(500).json({
+    error: error instanceof Error ? error.message : "Unexpected error.",
+  });
+}
 }
