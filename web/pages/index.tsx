@@ -5,7 +5,7 @@ import { useAuth } from "../lib/auth";
 import {
   loadWorkspaceSummary,
   saveWorkspaceSummary,
-} from "../../lib/firebase";
+} from "../lib/firebase";
 
 
 const roles = [
