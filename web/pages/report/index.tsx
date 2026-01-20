@@ -3,9 +3,8 @@ import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
 import {
   loadChatLogsFromFirestore,
-  loadLatestExecutiveSummary,
+  loadLatestExecutiveSummariesByStage,
   loadWorkspaceSummary,
-  saveWorkspaceSummary,
 } from "../../lib/firebase";
 
 const workflowSteps = [
@@ -30,7 +29,6 @@ type ChatLog = {
 
 type ExecutiveSummary = {
   keywords: string[];
-  currentStage: string;
   stageSummaries: {
     problemDefinition: string;
     dataAnalysis: string;
@@ -43,6 +41,32 @@ type ExecutiveSummary = {
 type WorkspaceSummary = {
   stageSummaries: Record<string, string>;
   overallSummary: string;
+};
+
+const renderFormattedSummary = (summary?: string) => {
+  if (!summary) {
+    return null;
+  }
+  return summary.split(/\n+/).map((line, lineIndex) => {
+    const parts = line
+      .split(/(\*\*[^*]+\*\*)/g)
+      .filter(Boolean)
+      .map((part, partIndex) => {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          return (
+            <strong key={`${lineIndex}-${partIndex}`}>
+              {part.slice(2, -2)}
+            </strong>
+          );
+        }
+        return <span key={`${lineIndex}-${partIndex}`}>{part}</span>;
+      });
+    return (
+      <p key={lineIndex} className="text-sm text-slate-600 leading-relaxed">
+        {parts}
+      </p>
+    );
+  });
 };
 
 export default function Report() {
@@ -97,7 +121,7 @@ export default function Report() {
       if (summary) {
         setWorkspaceSummary(summary);
       }
-      const executive = await loadLatestExecutiveSummary();
+      const executive = await loadLatestExecutiveSummariesByStage();
       if (executive) {
         setExecutiveSummary(executive);
       }
@@ -154,7 +178,16 @@ export default function Report() {
             <div className="mt-3 flex flex-wrap gap-2">
               {workflowSteps.map((step) => {
                 const isActive =
-                  executiveSummary?.currentStage === step ||
+                  (step === "Problem Definition" &&
+                    executiveSummary?.stageSummaries.problemDefinition) ||
+                  (step === "Data Analysis" &&
+                    executiveSummary?.stageSummaries.dataAnalysis) ||
+                  (step === "Design/Plan Alternatives" &&
+                    executiveSummary?.stageSummaries.designAlternatives) ||
+                  (step === "Design/Plan Evaluation" &&
+                    executiveSummary?.stageSummaries.designEvaluation) ||
+                  (step === "Design/Plan Decision" &&
+                    executiveSummary?.stageSummaries.decision) ||
                   (!executiveSummary && step === activeStep);
                 return (
                   <span
@@ -178,37 +211,49 @@ export default function Report() {
             <p className="text-sm font-semibold text-slate-700">
               Problem Definition
             </p>
-            <p className="mt-2 text-sm text-slate-600">
-              {executiveSummary?.stageSummaries.problemDefinition ??
-                "Refresh to generate stakeholder comparisons."}
-            </p>
+            <div className="mt-2 space-y-2">
+              {executiveSummary?.stageSummaries.problemDefinition
+                ? renderFormattedSummary(
+                    executiveSummary.stageSummaries.problemDefinition
+                  )
+                : "Refresh to generate stakeholder comparisons."}
+            </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
             <p className="text-sm font-semibold text-slate-700">
               Data Analysis
             </p>
-            <p className="mt-2 text-sm text-slate-600">
-              {executiveSummary?.stageSummaries.dataAnalysis ??
-                "Refresh to generate lessons learned."}
-            </p>
+            <div className="mt-2 space-y-2">
+              {executiveSummary?.stageSummaries.dataAnalysis
+                ? renderFormattedSummary(
+                    executiveSummary.stageSummaries.dataAnalysis
+                  )
+                : "Refresh to generate lessons learned."}
+            </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
             <p className="text-sm font-semibold text-slate-700">
               Design Alternatives
             </p>
-            <p className="mt-2 text-sm text-slate-600">
-              {executiveSummary?.stageSummaries.designAlternatives ??
-                "Refresh to generate design intent keywords."}
-            </p>
+            <div className="mt-2 space-y-2">
+              {executiveSummary?.stageSummaries.designAlternatives
+                ? renderFormattedSummary(
+                    executiveSummary.stageSummaries.designAlternatives
+                  )
+                : "Refresh to generate design intent keywords."}
+            </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
             <p className="text-sm font-semibold text-slate-700">
               Design Evaluation
             </p>
-            <p className="mt-2 text-sm text-slate-600">
-              {executiveSummary?.stageSummaries.designEvaluation ??
-                "Refresh to generate evaluation feedback."}
-            </p>
+            <div className="mt-2 space-y-2">
+              {executiveSummary?.stageSummaries.designEvaluation
+                ? renderFormattedSummary(
+                    executiveSummary.stageSummaries.designEvaluation
+                  )
+                : "Refresh to generate evaluation feedback."}
+            </div>
           </div>
         </div>
       </section>
@@ -254,10 +299,11 @@ export default function Report() {
               {loading ? "Loading..." : "Synced from Firestore"}
             </span>
           </div>
-          <p className="mt-3">
-            {workspaceSummary?.overallSummary ??
-              "Finish a stage to generate your overall summary."}
-          </p>
+          <div className="mt-3 space-y-2">
+            {workspaceSummary?.overallSummary
+              ? renderFormattedSummary(workspaceSummary.overallSummary)
+              : "Finish a stage to generate your overall summary."}
+          </div>
           {errorMessage && (
             <p className="mt-3 text-xs text-rose-600">{errorMessage}</p>
           )}
@@ -269,10 +315,13 @@ export default function Report() {
               className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4"
             >
               <p className="text-sm font-semibold text-slate-700">{step}</p>
-              <p className="mt-2 text-sm text-slate-600">
-                {workspaceSummary?.stageSummaries[stepIds[index]] ??
-                  "Finish the stage to generate your summary."}
-              </p>
+              <div className="mt-2 space-y-2">
+                {workspaceSummary?.stageSummaries[stepIds[index]]
+                  ? renderFormattedSummary(
+                      workspaceSummary?.stageSummaries[stepIds[index]]
+                    )
+                  : "Finish the stage to generate your summary."}
+              </div>
             </div>
           ))}
         </div>
