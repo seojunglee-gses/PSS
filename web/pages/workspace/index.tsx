@@ -14,6 +14,10 @@ import {
 } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
+import {
+  loadWorkspaceSummary,
+  saveWorkspaceSummary,
+} from "../lib/firebase";
 
 
 const steps = [
