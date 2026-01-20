@@ -43,15 +43,7 @@ export default async function handler(
       },
       body: JSON.stringify({
         model: "gpt-5-mini",
-        input: [
-          {
-            role: "system",
-            content: [
-              {
-                type: "input_text",
-                text: buildSystemPrompt(curatedBackground),
-              },
-            ],
+        input: `${buildSystemPrompt(curatedBackground)}\n\n${buildPrompt(req.body)}`,
           },
           {
             role: "user",
