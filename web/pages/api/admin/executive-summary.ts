@@ -36,6 +36,14 @@ export default async function handler(
   }
 
   try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing or invalid Authorization header" });
+      return;
+    }
+    const token = authHeader.replace("Bearer ", "");
+
     await verifyAdminRequest(req.headers.authorization);
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
