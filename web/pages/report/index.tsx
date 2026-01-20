@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
 import {
@@ -56,18 +56,6 @@ export default function Report() {
     useState<WorkspaceSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const groupedUserLogs = useMemo(() => {
-    return stepIds.reduce<Record<string, string[]>>((acc, stepId) => {
-      acc[stepId] = chatLogs
-        .filter((log) => log.stepId === stepId)
-        .sort((a, b) =>
-          (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
-        )
-        .map((log) => log.text);
-      return acc;
-    }, {});
-  }, [chatLogs]);
 
   const refreshSummaries = useCallback(async () => {
     if (!userKey) {
