@@ -16,7 +16,7 @@ import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
 import {
   loadWorkspaceSummary,
-} from "../lib/firebase";
+} from "../../lib/firebase";
 
 
 const steps = [
