@@ -44,6 +44,13 @@ type ExecutiveSummary = {
   createdAt?: string;
 };
 
+type StageLockState = {
+  lockedStages: Record<string, boolean>;
+  revisedAfterLock?: Record<string, boolean>;
+  updatedAt?: string;
+  updatedBy?: string;
+};
+
 type BackgroundKnowledge = {
   curatedText: string;
   updatedAt?: string;
@@ -143,6 +150,43 @@ export const loadChatLogsFromStorage = async <T>(
   }
 };
 
+export const saveChatLogsToFirestore = async (
+  userId: string,
+  logs: unknown,
+  updatedBy?: string
+) => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return;
+  }
+  const db = getFirestore(app);
+  await setDoc(
+    doc(db, "ppssChatLogs", userId),
+    {
+      logs,
+      updatedAt: new Date().toISOString(),
+      updatedBy,
+    },
+    { merge: true }
+  );
+};
+
+export const loadChatLogsFromFirestore = async <T>(
+  userId: string
+): Promise<T | null> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return null;
+  }
+  const db = getFirestore(app);
+  const snapshot = await getDoc(doc(db, "ppssChatLogs", userId));
+  if (!snapshot.exists()) {
+    return null;
+  }
+  const data = snapshot.data() as { logs?: T };
+  return data.logs ?? null;
+};
+
 export const saveWorkspaceSummary = async (
   userId: string,
   summary: WorkspaceSummary
@@ -173,6 +217,21 @@ export const loadWorkspaceSummary = async (
   return snapshot.data() as WorkspaceSummary;
 };
 
+export const loadAllWorkspaceSummaries = async (): Promise<
+  Array<{ userId: string; summary: WorkspaceSummary }>
+> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return [];
+  }
+  const db = getFirestore(app);
+  const snapshot = await getDocs(collection(db, "ppssWorkspaceSummaries"));
+  return snapshot.docs.map((docSnap) => ({
+    userId: docSnap.id,
+    summary: docSnap.data() as WorkspaceSummary,
+  }));
+};
+
 export const loadLatestExecutiveSummary = async (): Promise<
   ExecutiveSummary | null
 > => {
@@ -192,6 +251,37 @@ export const loadLatestExecutiveSummary = async (): Promise<
     return null;
   }
   return docSnapshot.data() as ExecutiveSummary;
+};
+
+export const loadStageLocks = async (): Promise<StageLockState | null> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return null;
+  }
+  const db = getFirestore(app);
+  const snapshot = await getDoc(doc(db, "ppssStageLocks", "current"));
+  if (!snapshot.exists()) {
+    return null;
+  }
+  return snapshot.data() as StageLockState;
+};
+
+export const saveStageLocks = async (
+  payload: StageLockState
+): Promise<void> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return;
+  }
+  const db = getFirestore(app);
+  await setDoc(
+    doc(db, "ppssStageLocks", "current"),
+    {
+      ...payload,
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
 };
 
 export const saveBackgroundKnowledge = async (payload: {
@@ -264,18 +354,8 @@ export const saveCurrentSiteImage = async (
   }
   const db = getFirestore(app);
   const storage = getStorage(app);
-  const imageId = `${file.name}-${file.size}-${file.lastModified}`.replace(
-    /[^a-zA-Z0-9._-]/g,
-    "_"
-  );
-  const existingSnapshot = await getDoc(doc(db, "ppssSiteImages", "current"));
-  const existing = existingSnapshot.exists()
-    ? (existingSnapshot.data() as SiteImage)
-    : null;
-  if (existing && existing.imageId === imageId) {
-    return existing;
-  }
-  const storagePath = `ppss-site-images/${imageId}`;
+  const imageId = "current";
+  const storagePath = "ppss-site-image/current";
   await uploadBytes(ref(storage, storagePath), file);
   const downloadUrl = await getDownloadURL(ref(storage, storagePath));
   const payload: SiteImage = {
