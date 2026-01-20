@@ -5,18 +5,16 @@ import {
   loadCurrentSiteImage,
   loadGeneratedImages,
   loadStageLocks,
+  loadWorkspaceSummary,
   saveGeneratedImageFromBase64,
   saveChatLogsToFirestore,
   saveUserDesignSubmission,
   saveWorkspaceSummary,
   sendEvaluationResult,
+  saveStageLocks,
 } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
-import {
-  loadWorkspaceSummary,
-} from "../../lib/firebase";
-
 
 const steps = [
   {
