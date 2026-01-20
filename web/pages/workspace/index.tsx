@@ -424,10 +424,6 @@ export default function Workspace() {
     if (!inputValue.trim()) {
       return;
     }
-    if (!siteImageConfigured) {
-      setShowSiteImageWarning(true);
-      return;
-    }
     setErrorMessage(null);
     const stepId = activeStep.id;
     const userMessage = inputValue.trim();
@@ -475,6 +471,10 @@ export default function Workspace() {
       ]);
 
       if (stepId === "alternatives") {
+        if (!siteImageConfigured) {
+          setShowSiteImageWarning(true);
+          return;
+        }
         await requestGeneratedImage();
       }
     } catch (error) {
@@ -1220,11 +1220,10 @@ export default function Workspace() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-slate-900">
-              Site image not configured
+              Site image not uploaded yet
             </h3>
             <p className="mt-3 text-sm text-slate-500">
-              The admin must upload the current site image in Settings before
-              the workspace chatbot can generate responses.
+              Image-based generation is disabled.
             </p>
             <button
               className="mt-6 w-full rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
