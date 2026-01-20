@@ -79,7 +79,10 @@ export default async function handler(
     }
 
     const result = await response.json();
-    const content = result?.output?.[0]?.content?.[0]?.text;
+    const content =
+    typeof result.output_text === "string"
+      ? result.output_text
+      : null;
     if (!content) {
       res.status(500).json({ error: "No summary content returned." });
       return;
