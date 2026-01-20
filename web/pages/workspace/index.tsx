@@ -710,6 +710,17 @@ export default function Workspace() {
         : []),
       ...stepLogs,
     ];
+    const formatMessage = (text: string) =>
+      text.split(/(\*\*[^*]+\*\*)/g).map((segment, segmentIndex) => {
+        if (segment.startsWith("**") && segment.endsWith("**")) {
+          return (
+            <strong key={`bold-${segmentIndex}`}>
+              {segment.slice(2, -2)}
+            </strong>
+          );
+        }
+        return <span key={`text-${segmentIndex}`}>{segment}</span>;
+      });
     return (
     <div className="flex h-full flex-col rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
@@ -749,7 +760,9 @@ export default function Workspace() {
               <p className="text-xs font-semibold uppercase text-slate-400">
                 {message.label}
               </p>
-              <p className="mt-2">{message.text}</p>
+              <p className="mt-2 whitespace-pre-line">
+                {formatMessage(message.text)}
+              </p>
             </div>
           );
         })}
