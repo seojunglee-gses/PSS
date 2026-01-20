@@ -64,7 +64,7 @@ export default async function handler(
           },
         ],
         text: {
-          format: { type: "json" }, 
+          format: { type: "json_object" }, 
         },
       }),
     });
