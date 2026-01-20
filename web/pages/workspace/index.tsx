@@ -525,35 +525,6 @@ export default function Workspace() {
     } finally {
       setIsSummarizing(false);
     }
-    setFinishNotice("Chat log sent to Report. Updating summaries...");
-    setIsSummarizing(true);
-    try {
-      const response = await fetch("/api/summaries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentStage: activeStep.title,
-          executiveInput: {},
-          workspaceInput: buildWorkspaceInput(),
-        }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Summary generation failed.");
-      }
-      const payload = (await response.json()) as {
-        workspaceSummary: { stageSummaries: Record<string, string>; overallSummary: string };
-      };
-      setFinishNotice("Chat log sent to Report.");
-    } catch (error) {
-      setFinishNotice(
-        error instanceof Error
-          ? `Chat log sent, summary update failed: ${error.message}`
-          : "Chat log sent, summary update failed."
-      );
-    } finally {
-      setIsSummarizing(false);
-    }
   };
 
   const handleRankingChange = (imageId: string, value: string) => {
