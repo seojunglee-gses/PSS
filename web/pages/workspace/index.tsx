@@ -424,10 +424,6 @@ export default function Workspace() {
     if (!inputValue.trim()) {
       return;
     }
-    if (!siteImageConfigured) {
-      setShowSiteImageWarning(true);
-      return;
-    }
     setErrorMessage(null);
     const stepId = activeStep.id;
     const userMessage = inputValue.trim();
@@ -475,6 +471,10 @@ export default function Workspace() {
       ]);
 
       if (stepId === "alternatives") {
+        if (!siteImageConfigured) {
+          setShowSiteImageWarning(true);
+          return;
+        }
         await requestGeneratedImage();
       }
     } catch (error) {
@@ -710,6 +710,17 @@ export default function Workspace() {
         : []),
       ...stepLogs,
     ];
+    const formatMessage = (text: string) =>
+      text.split(/(\*\*[^*]+\*\*)/g).map((segment, segmentIndex) => {
+        if (segment.startsWith("**") && segment.endsWith("**")) {
+          return (
+            <strong key={`bold-${segmentIndex}`}>
+              {segment.slice(2, -2)}
+            </strong>
+          );
+        }
+        return <span key={`text-${segmentIndex}`}>{segment}</span>;
+      });
     return (
     <div className="flex h-full flex-col rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
@@ -749,7 +760,9 @@ export default function Workspace() {
               <p className="text-xs font-semibold uppercase text-slate-400">
                 {message.label}
               </p>
-              <p className="mt-2">{message.text}</p>
+              <p className="mt-2 whitespace-pre-line">
+                {formatMessage(message.text)}
+              </p>
             </div>
           );
         })}
@@ -1220,11 +1233,10 @@ export default function Workspace() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-slate-900">
-              Site image not configured
+              Site image not uploaded yet
             </h3>
             <p className="mt-3 text-sm text-slate-500">
-              The admin must upload the current site image in Settings before
-              the workspace chatbot can generate responses.
+              Image-based generation is disabled.
             </p>
             <button
               className="mt-6 w-full rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"

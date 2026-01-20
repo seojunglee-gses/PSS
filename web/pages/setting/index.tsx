@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
-import { loadBackgroundKnowledge, loadCurrentSiteImage } from "../../lib/firebase";
+import {
+  loadAllWorkspaceSummaries,
+  loadBackgroundKnowledge,
+  loadCurrentSiteImage,
+} from "../../lib/firebase";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
 
@@ -37,6 +41,19 @@ export default function Setting() {
     "success" | "error" | null
   >(null);
   const [siteSaveMessage, setSiteSaveMessage] = useState<string | null>(null);
+  const [backgroundLoadMessage, setBackgroundLoadMessage] = useState<
+    string | null
+  >(null);
+  const [siteLoadMessage, setSiteLoadMessage] = useState<string | null>(null);
+  const [participantCount, setParticipantCount] = useState(0);
+  const [stageCompletionCounts, setStageCompletionCounts] = useState<
+    Record<string, number>
+  >({});
+  const [isGeneratingExecutiveSummary, setIsGeneratingExecutiveSummary] =
+    useState(false);
+  const [executiveSummaryMessage, setExecutiveSummaryMessage] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     setIsAdmin(Boolean(user && user.email === adminEmail));
@@ -53,9 +70,6 @@ export default function Setting() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin) {
-      return;
-    }
     let isMounted = true;
     loadBackgroundKnowledge()
       .then((data) => {
@@ -65,10 +79,9 @@ export default function Setting() {
       })
       .catch(() => {
         if (isMounted) {
-          setBackgroundSaveMessage(
+          setBackgroundLoadMessage(
             "Unable to load background knowledge from storage."
           );
-          setBackgroundSaveTone("error");
         }
       });
     loadCurrentSiteImage()
@@ -79,15 +92,74 @@ export default function Setting() {
       })
       .catch(() => {
         if (isMounted) {
-          setSiteSaveMessage(
-            "Unable to load current site image from storage."
-          );
+          setSiteLoadMessage("Unable to load current site image from storage.");
         }
       });
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+    let isMounted = true;
+    const loadWorkspaceProgress = async () => {
+      const summaries = await loadAllWorkspaceSummaries();
+      if (!isMounted) {
+        return;
+      }
+      const counts = summaries.reduce<Record<string, number>>((acc, entry) => {
+        Object.entries(entry.summary.stageSummaries ?? {}).forEach(
+          ([stage, summary]) => {
+            if (summary && summary.trim()) {
+              acc[stage] = (acc[stage] ?? 0) + 1;
+            }
+          }
+        );
+        return acc;
+      }, {});
+      setParticipantCount(summaries.length);
+      setStageCompletionCounts(counts);
+    };
+    loadWorkspaceProgress();
+    return () => {
+      isMounted = false;
+    };
   }, [isAdmin]);
+
+  const handleExecutiveSummaryGenerate = async () => {
+    if (!user) {
+      setExecutiveSummaryMessage("Authentication required.");
+      return;
+    }
+    try {
+      setIsGeneratingExecutiveSummary(true);
+      setExecutiveSummaryMessage(null);
+      const token = await user.getIdToken();
+      const response = await fetch("/api/admin/executive-summary", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Executive summary failed.");
+      }
+      setExecutiveSummaryMessage("Executive summary generated.");
+    } catch (error) {
+      setExecutiveSummaryMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to generate executive summary."
+      );
+    } finally {
+      setIsGeneratingExecutiveSummary(false);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -126,67 +198,67 @@ export default function Setting() {
   };
 
   const handleBackgroundSave = async () => {
-  if (isBackgroundSaving) return;
-  setIsBackgroundSaving(true);
-  setBackgroundSaveMessage(null);
-  setBackgroundSaveTone(null);
+    if (isBackgroundSaving) return;
+    setIsBackgroundSaving(true);
+    setBackgroundSaveMessage(null);
+    setBackgroundSaveTone(null);
 
-  try {
-    if (!user) {
-      throw new Error("Not logged in");
+    try {
+      if (!user) {
+        throw new Error("Not logged in");
+      }
+      if (!backgroundFiles.length) {
+        throw new Error("Please upload background knowledge files.");
+      }
+
+      const token = await user.getIdToken();
+
+      const filesPayload = await Promise.all(
+        backgroundFiles.map(async (file) => {
+          const buffer = await file.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+          return {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            lastModified: file.lastModified,
+            data: base64,
+          };
+        })
+      );
+
+      const res = await fetch("/api/admin/background-knowledge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ files: filesPayload }),
+      });
+
+      const text = await res.text();
+
+      if (!res.ok) {
+        throw new Error(text || "Save failed");
+      }
+
+      const payload = text ? JSON.parse(text) : {};
+      if (payload.curatedText) {
+        setBackgroundText(payload.curatedText);
+      }
+
+      setBackgroundFiles([]);
+      setBackgroundSaveMessage("Background knowledge saved.");
+      setBackgroundSaveTone("success");
+    } catch (error) {
+      setBackgroundSaveMessage(
+        error instanceof Error ? error.message : "Save failed"
+      );
+      setBackgroundSaveTone("error");
+    } finally {
+      setIsBackgroundSaving(false);
     }
-    if (!backgroundFiles.length) {
-      throw new Error("Please upload background knowledge files.");
-    }
-
-    const token = await user.getIdToken();
-
-    const filesPayload = await Promise.all(
-      backgroundFiles.map(async (file) => {
-        const buffer = await file.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-        return {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          lastModified: file.lastModified,
-          data: base64,
-        };
-      })
-    );
-
-    const res = await fetch("/api/admin/background-knowledge", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ files: filesPayload }),
-    });
-
-    const text = await res.text();
-
-    if (!res.ok) {
-      throw new Error(text || "Save failed");
-    }
-
-    const payload = text ? JSON.parse(text) : {};
-    if (payload.curatedText) {
-      setBackgroundText(payload.curatedText);
-    }
-
-    setBackgroundFiles([]);
-    setBackgroundSaveMessage("Background knowledge saved.");
-    setBackgroundSaveTone("success");
-  } catch (error) {
-    setBackgroundSaveMessage(
-      error instanceof Error ? error.message : "Save failed"
-    );
-    setBackgroundSaveTone("error");
-  } finally {
-    setIsBackgroundSaving(false);
-  }
-};
+  };
 
   const handleSiteImageSave = async () => {
     if (!siteImageFiles.length) {
@@ -297,7 +369,7 @@ export default function Setting() {
           </div>
         </div>
       </section>
-      {isAdmin ? (
+      {isAdmin && (
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold">Administrator settings</h3>
           <p className="mt-2 text-sm text-slate-500">
@@ -305,6 +377,40 @@ export default function Setting() {
             workspace generation.
           </p>
           <div className="mt-6 grid gap-6">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+              <h4 className="text-sm font-semibold text-slate-700">
+                Workspace progress
+              </h4>
+              <p className="mt-2 text-xs text-slate-500">
+                Participants who completed each stage (based on saved workspace
+                summaries).
+              </p>
+              <div className="mt-4 grid gap-2 text-xs text-slate-600">
+                <div className="flex items-center justify-between">
+                  <span>Total participants</span>
+                  <span className="font-semibold text-slate-700">
+                    {participantCount}
+                  </span>
+                </div>
+                {[
+                  { id: "problem", label: "Problem Definition" },
+                  { id: "data", label: "Data Analysis" },
+                  { id: "alternatives", label: "Design/Plan Alternatives" },
+                  { id: "evaluation", label: "Design/Plan Evaluation" },
+                  { id: "report", label: "Design/Plan Decision" },
+                ].map((stage) => (
+                  <div
+                    key={stage.id}
+                    className="flex items-center justify-between"
+                  >
+                    <span>{stage.label}</span>
+                    <span className="font-semibold text-slate-700">
+                      {stageCompletionCounts[stage.id] ?? 0}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
             <div>
               <label className="text-xs font-semibold uppercase text-slate-500">
                 Background knowledge
@@ -354,10 +460,15 @@ export default function Setting() {
                   onClick={handleBackgroundSave}
                   disabled={isBackgroundSaving}
                 >
-                 {isBackgroundSaving ? 
-                 "Saving..." : 
-                 "Generate and save summary"}
+                  {isBackgroundSaving
+                    ? "Saving..."
+                    : "Generate and save summary"}
                 </button>
+                {backgroundLoadMessage && (
+                  <span className="text-xs text-rose-500">
+                    {backgroundLoadMessage}
+                  </span>
+                )}
                 {backgroundSaveMessage && (
                   <span
                     className={`text-xs ${
@@ -410,6 +521,11 @@ export default function Setting() {
                 >
                   Save site images
                 </button>
+                {siteLoadMessage && (
+                  <span className="text-xs text-rose-500">
+                    {siteLoadMessage}
+                  </span>
+                )}
                 {siteSaveMessage && (
                   <span className="text-xs text-emerald-600">
                     {siteSaveMessage}
@@ -417,15 +533,31 @@ export default function Setting() {
                 )}
               </div>
             </div>
+            <div className="border-t border-slate-200 pt-6">
+              <h4 className="text-sm font-semibold">Executive Summary</h4>
+              <p className="mt-2 text-sm text-slate-500">
+                Generate an executive summary from all participants' workspace
+                dialogue summaries when stages are finished.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                  type="button"
+                  onClick={handleExecutiveSummaryGenerate}
+                  disabled={isGeneratingExecutiveSummary}
+                >
+                  {isGeneratingExecutiveSummary
+                    ? "Generating..."
+                    : "Generate executive summary"}
+                </button>
+                {executiveSummaryMessage && (
+                  <span className="text-xs text-slate-500">
+                    {executiveSummaryMessage}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-        </section>
-      ) : (
-        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">Administrator access</h3>
-          <p className="mt-2 text-sm text-slate-500">
-            Sign in with {adminEmail} to manage background knowledge and site
-            images.
-          </p>
         </section>
       )}
     </AppShell>

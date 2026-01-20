@@ -173,6 +173,21 @@ export const loadWorkspaceSummary = async (
   return snapshot.data() as WorkspaceSummary;
 };
 
+export const loadAllWorkspaceSummaries = async (): Promise<
+  Array<{ userId: string; summary: WorkspaceSummary }>
+> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return [];
+  }
+  const db = getFirestore(app);
+  const snapshot = await getDocs(collection(db, "ppssWorkspaceSummaries"));
+  return snapshot.docs.map((docSnap) => ({
+    userId: docSnap.id,
+    summary: docSnap.data() as WorkspaceSummary,
+  }));
+};
+
 export const loadLatestExecutiveSummary = async (): Promise<
   ExecutiveSummary | null
 > => {
@@ -264,18 +279,8 @@ export const saveCurrentSiteImage = async (
   }
   const db = getFirestore(app);
   const storage = getStorage(app);
-  const imageId = `${file.name}-${file.size}-${file.lastModified}`.replace(
-    /[^a-zA-Z0-9._-]/g,
-    "_"
-  );
-  const existingSnapshot = await getDoc(doc(db, "ppssSiteImages", "current"));
-  const existing = existingSnapshot.exists()
-    ? (existingSnapshot.data() as SiteImage)
-    : null;
-  if (existing && existing.imageId === imageId) {
-    return existing;
-  }
-  const storagePath = `ppss-site-images/${imageId}`;
+  const imageId = "current";
+  const storagePath = "ppss-site-image/current";
   await uploadBytes(ref(storage, storagePath), file);
   const downloadUrl = await getDownloadURL(ref(storage, storagePath));
   const payload: SiteImage = {
