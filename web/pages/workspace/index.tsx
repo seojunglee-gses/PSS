@@ -13,6 +13,9 @@ import {
 } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
+import {
+  loadWorkspaceSummary,
+} from "../../lib/firebase";
 
 
 const steps = [
@@ -66,6 +69,7 @@ const defaultEvaluationImages: DesignImage[] = Array.from(
   }));
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 const providerStorageKey = "ppss-active-provider";
+const adminEmail = "test@snu.ac.kr";
 
 type ChatLog = {
   stepId: string;
@@ -744,9 +748,58 @@ export default function Workspace() {
           </p>
           <h3 className="mt-2 text-lg font-semibold">API conversation</h3>
         </div>
-        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[var(--primary)]">
-          {activeProvider}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {user?.email === adminEmail && (
+            <>
+              <button
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                type="button"
+                onClick={async () => {
+                  const nextLocks = {
+                    ...lockedStages,
+                    [activeStep.id]: true,
+                  };
+                  setLockedStages(nextLocks);
+                  await saveStageLocks({
+                    lockedStages: nextLocks,
+                    revisedAfterLock,
+                    updatedBy: user.email ?? user.uid,
+                  });
+                }}
+                disabled={isStageLocked}
+              >
+                🔒 Lock stage
+              </button>
+              <button
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                type="button"
+                onClick={async () => {
+                  const nextLocks = {
+                    ...lockedStages,
+                    [activeStep.id]: false,
+                  };
+                  const nextRevised = {
+                    ...revisedAfterLock,
+                    [activeStep.id]: true,
+                  };
+                  setLockedStages(nextLocks);
+                  setRevisedAfterLock(nextRevised);
+                  await saveStageLocks({
+                    lockedStages: nextLocks,
+                    revisedAfterLock: nextRevised,
+                    updatedBy: user.email ?? user.uid,
+                  });
+                }}
+                disabled={!isStageLocked}
+              >
+                🔓 Reopen stage
+              </button>
+            </>
+          )}
+          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[var(--primary)]">
+            {activeProvider}
+          </span>
+        </div>
       </div>
       {isStageLocked && (
         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
