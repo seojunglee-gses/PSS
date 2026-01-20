@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
 import {
-  loadChatLogsFromStorage,
+  loadChatLogsFromFirestore,
   loadCurrentSiteImage,
   loadGeneratedImages,
+  loadStageLocks,
   saveGeneratedImageFromBase64,
+  saveChatLogsToFirestore,
   saveUserDesignSubmission,
-  saveChatLogsToStorage,
+  saveStageLocks,
   saveWorkspaceSummary,
   sendEvaluationResult,
 } from "../../lib/firebase";
@@ -65,6 +67,7 @@ const defaultEvaluationImages: DesignImage[] = Array.from(
   }));
 const rankingOptions = ["1", "2", "3", "4", "5", "6", "7"];
 const providerStorageKey = "ppss-active-provider";
+const adminEmail = "test@snu.ac.kr";
 
 type ChatLog = {
   stepId: string;
@@ -152,6 +155,10 @@ export default function Workspace() {
   const [savedSummaries, setSavedSummaries] = useState<
     Record<string, string>
   >({});
+  const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
+  const [revisedAfterLock, setRevisedAfterLock] = useState<
+    Record<string, boolean>
+  >({});
 
   useEffect(() => {
     if (!loading && !user) {
@@ -172,6 +179,19 @@ export default function Workspace() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    const loadSavedSummaries = async () => {
+      const summary = await loadWorkspaceSummary(userKey);
+      if (summary?.stageSummaries) {
+        setSavedSummaries(summary.stageSummaries);
+      }
+    };
+    loadSavedSummaries();
+  }, [user, userKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -213,7 +233,7 @@ export default function Workspace() {
       return;
     }
     const loadLogs = async () => {
-      const storedLogs = await loadChatLogsFromStorage<
+      const storedLogs = await loadChatLogsFromFirestore<
         Array<Partial<ChatLog> & { sender?: "Planner" | "ChatGPT" | "user" | "assistant" }>
       >(userKey);
       if (!storedLogs) {
@@ -250,6 +270,23 @@ export default function Workspace() {
     if (!user) {
       return;
     }
+    const loadLocks = async () => {
+      const state = await loadStageLocks();
+      if (!state) {
+        setLockedStages({});
+        setRevisedAfterLock({});
+        return;
+      }
+      setLockedStages(state.lockedStages ?? {});
+      setRevisedAfterLock(state.revisedAfterLock ?? {});
+    };
+    loadLocks();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
     if (typeof window === "undefined") {
       return;
     }
@@ -273,7 +310,7 @@ export default function Workspace() {
     if (!user) {
       return;
     }
-    saveChatLogsToStorage(userKey, chatLogs);
+    saveChatLogsToFirestore(userKey, chatLogs, user.email ?? user.uid);
   }, [chatLogs, user, userKey]);
 
   useEffect(() => {
@@ -424,6 +461,9 @@ export default function Workspace() {
     if (!inputValue.trim()) {
       return;
     }
+    if (lockedStages[activeStep.id]) {
+      return;
+    }
     setErrorMessage(null);
     const stepId = activeStep.id;
     const userMessage = inputValue.trim();
@@ -489,6 +529,10 @@ export default function Workspace() {
   };
 
   const handleCompleteStep = async () => {
+    if (lockedStages[activeStep.id]) {
+      setFinishNotice("This stage is locked. Contact the administrator.");
+      return;
+    }
     setSavedSummaries((prev) => ({
       ...prev,
       [activeStep.id]: stepSummaries[activeStep.id],
@@ -692,6 +736,7 @@ export default function Workspace() {
         }
         return <span key={`text-${segmentIndex}`}>{segment}</span>;
       });
+    const isStageLocked = Boolean(lockedStages[activeStep.id]);
     return (
     <div className="flex h-full flex-col rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between">
@@ -701,10 +746,77 @@ export default function Workspace() {
           </p>
           <h3 className="mt-2 text-lg font-semibold">API conversation</h3>
         </div>
-        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[var(--primary)]">
-          {activeProvider}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {user?.email === adminEmail && (
+            <>
+              <button
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                type="button"
+                onClick={async () => {
+                  const nextLocks = {
+                    ...lockedStages,
+                    [activeStep.id]: true,
+                  };
+                  setLockedStages(nextLocks);
+                  await saveStageLocks({
+                    lockedStages: nextLocks,
+                    revisedAfterLock,
+                    updatedBy: user.email ?? user.uid,
+                  });
+                }}
+                disabled={isStageLocked}
+              >
+                🔒 Lock stage
+              </button>
+              <button
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                type="button"
+                onClick={async () => {
+                  const nextLocks = {
+                    ...lockedStages,
+                    [activeStep.id]: false,
+                  };
+                  const nextRevised = {
+                    ...revisedAfterLock,
+                    [activeStep.id]: true,
+                  };
+                  setLockedStages(nextLocks);
+                  setRevisedAfterLock(nextRevised);
+                  await saveStageLocks({
+                    lockedStages: nextLocks,
+                    revisedAfterLock: nextRevised,
+                    updatedBy: user.email ?? user.uid,
+                  });
+                }}
+                disabled={!isStageLocked}
+              >
+                🔓 Reopen stage
+              </button>
+            </>
+          )}
+          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[var(--primary)]">
+            {activeProvider}
+          </span>
+        </div>
       </div>
+      {isStageLocked && (
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+          <p className="font-semibold text-slate-700">Stage completed</p>
+          <p className="mt-1">
+            🔒 This stage is completed
+            <br />
+            Your responses have been summarized and locked for collaboration
+            consistency.
+            <br />
+            Contact the administrator to reopen this stage.
+          </p>
+          {revisedAfterLock[activeStep.id] && (
+            <p className="mt-2 text-[11px] text-slate-500">
+              Revised after lock.
+            </p>
+          )}
+        </div>
+      )}
       <div className="mt-4 max-h-[420px] flex-1 space-y-4 overflow-auto text-sm text-slate-600">
         {displayedMessages.length === 0 && (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
@@ -741,7 +853,7 @@ export default function Workspace() {
       </div>
       <div className="mt-4 flex items-center gap-2">
         <input
-          className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:border-[var(--primary)] focus:outline-none"
+          className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:border-[var(--primary)] focus:outline-none disabled:bg-slate-100"
           placeholder="Send a prompt to the PPSS assistant..."
           value={inputValue}
           onChange={(event) => setInputValue(event.target.value)}
@@ -751,12 +863,13 @@ export default function Workspace() {
               handleSend();
             }
           }}
+          disabled={isStageLocked}
         />
         <button
           className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
           type="button"
           onClick={handleSend}
-          disabled={isSending}
+          disabled={isSending || isStageLocked}
         >
           {isSending ? "Sending..." : "Send"}
         </button>
