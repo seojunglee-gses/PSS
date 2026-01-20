@@ -21,7 +21,7 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-    if (req.method === "OPTIONS") {
+  if (req.method === "OPTIONS") {
     res.setHeader("Allow", "POST, OPTIONS");
     res.status(200).end();
     return;
@@ -55,7 +55,6 @@ export default async function handler(
         },
       }),
     });
-    ;
 
     if (!response.ok) {
       const errorPayload = await response.json().catch(() => ({}));
@@ -66,10 +65,10 @@ export default async function handler(
     }
 
     const result = await response.json();
-    const content =
-    typeof result.output_text === "string"
-      ? result.output_text
-      : null;
+    const content = result.output
+      ?.find((item: any) => item.type === "message")
+      ?.content?.find((c: any) => c.type === "output_text")
+      ?.text;
     if (!content) {
       res.status(500).json({ error: "No summary content returned." });
       return;
