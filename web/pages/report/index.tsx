@@ -47,7 +47,7 @@ type WorkspaceSummary = {
 
 export default function Report() {
   const { user } = useAuth();
-  const userKey = user?.uid ?? "anonymous";
+  const userKey = user?.uid;
   const [activeStep] = useState(workflowSteps[0]);
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
   const [executiveSummary, setExecutiveSummary] =
@@ -70,7 +70,7 @@ export default function Report() {
   }, [chatLogs]);
 
   const refreshSummaries = useCallback(async () => {
-    if (!user) {
+    if (!userKey) {
       return;
     }
     setLoading(true);
@@ -91,10 +91,10 @@ export default function Report() {
     } finally {
       setLoading(false);
     }
-  }, [user, userKey]);
+  }, [userKey]);
 
   useEffect(() => {
-    if (!user) {
+    if (!userKey) {
       return;
     }
     if (typeof window === "undefined") {
@@ -115,7 +115,7 @@ export default function Report() {
       }
     };
     loadData();
-  }, [user, userKey]);
+  }, [userKey]);
 
 
   return (

@@ -118,7 +118,7 @@ const basePromptsByStep: Record<string, string> = {
 export default function Workspace() {
   const router = useRouter();
   const { user, loading } = useAuth();
-  const userKey = user?.uid ?? "anonymous";
+  const userKey = user?.uid;
   const [activeStep, setActiveStep] = useState(steps[0]);
   const [activeTab, setActiveTab] = useState("Process log");
   const [inputValue, setInputValue] = useState("");
@@ -181,7 +181,7 @@ export default function Workspace() {
   }, []);
 
   useEffect(() => {
-    if (!user) {
+    if (!userKey) {
       return;
     }
     const loadSavedSummaries = async () => {
@@ -191,7 +191,7 @@ export default function Workspace() {
       }
     };
     loadSavedSummaries();
-  }, [user, userKey]);
+  }, [userKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -287,23 +287,6 @@ export default function Workspace() {
     if (!user) {
       return;
     }
-    const loadLocks = async () => {
-      const state = await loadStageLocks();
-      if (!state) {
-        setLockedStages({});
-        setRevisedAfterLock({});
-        return;
-      }
-      setLockedStages(state.lockedStages ?? {});
-      setRevisedAfterLock(state.revisedAfterLock ?? {});
-    };
-    loadLocks();
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
     if (typeof window === "undefined") {
       return;
     }
@@ -324,11 +307,11 @@ export default function Workspace() {
   }, [user, userKey]);
 
   useEffect(() => {
-    if (!user?.uid) {
+    if (!userKey) {
       return;
     }
     saveChatLogsToFirestore(user.uid, chatLogs, user.email ?? user.uid);
-  }, [chatLogs, user?.uid, user?.email]);
+  }, [chatLogs, userKey, user?.email]);
 
   useEffect(() => {
     const loadSiteImage = async () => {
@@ -548,6 +531,10 @@ export default function Workspace() {
   const handleCompleteStep = async () => {
     if (lockedStages[activeStep.id]) {
       setFinishNotice("This stage is locked. Contact the administrator.");
+      return;
+    }
+    if (!userKey) {
+      setFinishNotice("Authentication required.");
       return;
     }
     setSavedSummaries((prev) => ({
