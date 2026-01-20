@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
 import {
-  loadChatLogsFromStorage,
+  loadChatLogsFromFirestore,
   loadLatestExecutiveSummary,
   loadWorkspaceSummary,
   saveWorkspaceSummary,
@@ -69,40 +69,29 @@ export default function Report() {
     }, {});
   }, [chatLogs]);
 
-  const refreshSummaries = useCallback(async (stage = activeStep) => {
+  const refreshSummaries = useCallback(async () => {
     if (!user) {
       return;
     }
     setLoading(true);
     setErrorMessage(null);
     try {
-      const response = await fetch("/api/workspace-summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentStage: activeStep,
-          workspaceInput: groupedUserLogs,
-        }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Summary generation failed.");
+      const summary = await loadWorkspaceSummary(userKey);
+      if (summary) {
+        setWorkspaceSummary(summary);
+      } else {
+        setWorkspaceSummary(null);
       }
-      const payload = (await response.json()) as {
-        workspaceSummary: WorkspaceSummary;
-      };
-      setWorkspaceSummary(payload.workspaceSummary);
-      await saveWorkspaceSummary(userKey, payload.workspaceSummary);
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Unable to refresh summaries. Check API connectivity."
+          : "Unable to load saved summaries."
       );
     } finally {
       setLoading(false);
     }
-  }, [user, activeStep, groupedUserLogs, userKey]);
+  }, [user, userKey]);
 
   useEffect(() => {
     if (!user) {
@@ -112,7 +101,7 @@ export default function Report() {
       return;
     }
     const loadData = async () => {
-      const logs = await loadChatLogsFromStorage<ChatLog[]>(userKey);
+      const logs = await loadChatLogsFromFirestore<ChatLog[]>(userKey);
       if (logs) {
         setChatLogs(logs);
       }
@@ -242,7 +231,7 @@ export default function Report() {
             Workspace Dialogue Summaries
           </h3>
           <p className="mt-2 text-sm text-slate-500">
-            Personalized summaries generated from your dialogue history.
+            Personalized summaries saved when you finish each stage.
           </p>
         </div>
         <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-slate-700">
@@ -256,12 +245,12 @@ export default function Report() {
               onClick={() => refreshSummaries()}
               disabled={loading}
             >
-              {loading ? "Refreshing..." : "Refresh summaries"}
+              {loading ? "Loading..." : "Reload saved summaries"}
             </button>
           </div>
           <p className="mt-3">
             {workspaceSummary?.overallSummary ??
-              "Refresh to generate your overall summary."}
+              "Finish a stage to generate your overall summary."}
           </p>
           {errorMessage && (
             <p className="mt-3 text-xs text-rose-600">{errorMessage}</p>
@@ -280,7 +269,7 @@ export default function Report() {
                   type="button"
                   onClick={() => {
                     setActiveStep(step);
-                    refreshSummaries(step);
+                    refreshSummaries();
                   }}
                   aria-label={`Refresh ${step} summary`}
                   disabled={loading}
@@ -302,7 +291,7 @@ export default function Report() {
               </div>
               <p className="mt-2 text-sm text-slate-600">
                 {workspaceSummary?.stageSummaries[stepIds[index]] ??
-                  "Refresh to generate your stage summary."}
+                  "Finish the stage to generate your summary."}
               </p>
             </div>
           ))}
