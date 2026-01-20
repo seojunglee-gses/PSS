@@ -599,6 +599,30 @@ export default function Setting() {
                 )}
               </div>
             </div>
+            <div className="border-t border-slate-200 pt-6">
+              <h4 className="text-sm font-semibold">Executive Summary</h4>
+              <p className="mt-2 text-sm text-slate-500">
+                Generate an executive summary from all participants' workspace
+                dialogue summaries when stages are finished.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                  type="button"
+                  onClick={handleExecutiveSummaryGenerate}
+                  disabled={isGeneratingExecutiveSummary}
+                >
+                  {isGeneratingExecutiveSummary
+                    ? "Generating..."
+                    : "Generate executive summary"}
+                </button>
+                {executiveSummaryMessage && (
+                  <span className="text-xs text-slate-500">
+                    {executiveSummaryMessage}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         </section>
       )}
