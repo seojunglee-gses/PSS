@@ -109,7 +109,9 @@ export default async function handler(
             }),
           },
         ],
-        response_format: { type: "json_object" },
+        text: {
+          format: { type: "json_object" },
+        }
       }),
     });
 
@@ -122,16 +124,16 @@ export default async function handler(
     }
 
     const result = await response.json();
-    const content = result?.output?.[0]?.content?.[0]?.text;
+    const content =
+      typeof result.output_text === "string"
+        ? result.output_text
+        : null;
+    
     if (!content) {
       res.status(500).json({ error: "No summary content returned." });
       return;
     }
-
-    const parsed = JSON.parse(content) as {
-      keywords: string[];
-      stageSummary: string;
-    };
+    const parsed = JSON.parse(content);
 
     const payload = {
       keywords: parsed.keywords ?? [],
