@@ -48,7 +48,7 @@ type WorkspaceSummary = {
 export default function Report() {
   const { user } = useAuth();
   const userKey = user?.uid ?? "anonymous";
-  const [activeStep, setActiveStep] = useState(workflowSteps[0]);
+  const [activeStep] = useState(workflowSteps[0]);
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
   const [executiveSummary, setExecutiveSummary] =
     useState<ExecutiveSummary | null>(null);
@@ -226,27 +226,45 @@ export default function Report() {
       </section>
 
       <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-        <div>
-          <h3 className="text-lg font-semibold">
-            Workspace Dialogue Summaries
-          </h3>
-          <p className="mt-2 text-sm text-slate-500">
-            Personalized summaries saved when you finish each stage.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold">
+              Workspace Dialogue Summaries
+            </h3>
+            <p className="mt-2 text-sm text-slate-500">
+              Personalized summaries saved when you finish each stage.
+            </p>
+          </div>
+          <button
+            className="rounded-full border border-slate-200 bg-white p-2 text-slate-500 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+            type="button"
+            onClick={() => refreshSummaries()}
+            aria-label="Reload saved summaries"
+            disabled={loading}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M20 12a8 8 0 1 1-2.3-5.7" />
+              <path d="M20 4v6h-6" />
+            </svg>
+          </button>
         </div>
         <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase text-blue-400">
               Overall summary
             </p>
-            <button
-              className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--primary-dark)]"
-              type="button"
-              onClick={() => refreshSummaries()}
-              disabled={loading}
-            >
-              {loading ? "Loading..." : "Reload saved summaries"}
-            </button>
+            <span className="text-xs text-slate-500">
+              {loading ? "Loading..." : "Synced from Firestore"}
+            </span>
           </div>
           <p className="mt-3">
             {workspaceSummary?.overallSummary ??
@@ -262,33 +280,7 @@ export default function Report() {
               key={step}
               className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4"
             >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-slate-700">{step}</p>
-                <button
-                  className="rounded-full border border-slate-200 bg-white p-2 text-slate-500 hover:border-[var(--primary)] hover:text-[var(--primary)]"
-                  type="button"
-                  onClick={() => {
-                    setActiveStep(step);
-                    refreshSummaries();
-                  }}
-                  aria-label={`Refresh ${step} summary`}
-                  disabled={loading}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    aria-hidden="true"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M20 12a8 8 0 1 1-2.3-5.7" />
-                    <path d="M20 4v6h-6" />
-                  </svg>
-                </button>
-              </div>
+              <p className="text-sm font-semibold text-slate-700">{step}</p>
               <p className="mt-2 text-sm text-slate-600">
                 {workspaceSummary?.stageSummaries[stepIds[index]] ??
                   "Finish the stage to generate your summary."}
