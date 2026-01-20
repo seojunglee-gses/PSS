@@ -569,7 +569,19 @@ export default function Workspace() {
           overallSummary: string;
         };
       };
-      await saveWorkspaceSummary(userKey, payload.workspaceSummary);
+      const stageSummary =
+        payload.workspaceSummary.stageSummaries?.[activeStep.id]?.trim() ?? "";
+      const mergedStageSummaries = {
+        ...savedSummaries,
+        ...(stageSummary ? { [activeStep.id]: stageSummary } : {}),
+      };
+      await saveWorkspaceSummary(userKey, {
+        stageSummaries: mergedStageSummaries,
+        overallSummary: payload.workspaceSummary.overallSummary ?? "",
+      });
+      if (stageSummary) {
+        setSavedSummaries(mergedStageSummaries);
+      }
       setFinishNotice("Chat log sent to Report.");
     } catch (error) {
       setFinishNotice(
