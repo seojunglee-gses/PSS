@@ -792,8 +792,11 @@ useEffect(() => {
 
   const handleCompleteStep = async () => {
     if (lockedStages[activeStep.id]) {
-      setFinishNotice("This stage is locked. Contact the administrator.");
-      return;
+      setFinishNotice({
+        status: "error",
+        message: ""This stage is locked.");
+      });
+    return;
     }
     if (!userKey) {
       setFinishNotice("Authentication required.");
