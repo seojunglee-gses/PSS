@@ -531,12 +531,16 @@ useEffect(() => {
     try {
       setIsSending(true);
       const systemPrompt =
-        "Create a new design concept inspired by the uploaded site image and prior workspace discussion. "
-        + "The site image should be used only as contextual reference (e.g., environment, scale, constraints), "
-        + "NOT as a template to preserve composition, camera angle, or layout. "
-        + "You are free to invent a new composition, structure, and visual arrangement. "
-        + "The result should be a distinct design alternative suitable for evaluation.";
-      const imageRecord = await requestGeneratedImage(systemPrompt);
+          "Use the provided site image as the primary visual baseline. "
+          + "Preserve the original camera angle, framing, background, and overall spatial composition. "
+          + "Do NOT redesign the entire scene or change the viewpoint. "
+          + "Based on insights from earlier stages (problem definition and data analysis), "
+          + "introduce a subtle design alternative by adjusting only relevant elements "
+          + "(e.g., structure details, components, materials, or layout refinements) "
+          + "while keeping the original context intact. "
+          + "The result should feel like a reasoned variation of the same scene, "
+          + "suitable for side-by-side comparison in later evaluation.";
+              const imageRecord = await requestGeneratedImage(systemPrompt);
 
       if (!imageRecord?.imageUrl) {
         throw new Error("Failed to generate initial alternative.");
@@ -548,7 +552,6 @@ useEffect(() => {
           stepId: "alternatives",
           provider: activeProvider,
           sender: "assistant",
-          text: "I’ve created an initial design alternative to get us started.",
           label: activeProvider,
           createdAt: new Date().toISOString(),
           imageUrl: imageRecord.imageUrl,
