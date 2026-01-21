@@ -510,6 +510,7 @@ export default function Workspace() {
       note:
         payload.note ??
         "Generated from earlier stage discussions and workspace context.",
+      userId: userKey!,
     });
     if (!saved) {
       throw new Error("Unable to save generated image.");
