@@ -11,8 +11,8 @@ const buildPromptInput = (payload: {
     .map(([key, value]) => `${key}: ${value}`)
     .join("\n");
   const dialogueText = Object.entries(payload.workspaceInput ?? {})
-    .map(([key, value]) => `${key}: ${value.join(" ")}`)
-    .join("\n");
+  .map(([key, value]) => `${key}: ${String(value)}`)
+  .join("\n");
   return `Workspace summary:\n${summaryText}\n\nChat log highlights:\n${dialogueText}`;
 };
 
