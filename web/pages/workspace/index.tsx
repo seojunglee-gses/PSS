@@ -141,6 +141,12 @@ export default function Workspace() {
   const [evaluationImages, setEvaluationImages] = useState<DesignImage[]>(
     defaultEvaluationImages
   );
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [isDraftingPrompt, setIsDraftingPrompt] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [imagePromptMessage, setImagePromptMessage] = useState<string | null>(
+    null
+  );
   const [rankings, setRankings] = useState<Record<string, number>>(() => {
     const initialState: Record<string, number> = {};
     defaultEvaluationImages.forEach((image, index) => {
@@ -306,7 +312,6 @@ export default function Workspace() {
           imageUrl: image.downloadUrl,
         }));
         setAlternativeImages(mapped);
-        setEvaluationImages(mapped);
       }
     };
     loadImages();
@@ -376,17 +381,17 @@ export default function Workspace() {
     }, {});
   };
 
-  const requestGeneratedImage = async () => {
+  const requestGeneratedImage = async (prompt: string) => {
     if (!siteImageConfigured || !siteImageId) {
       return;
     }
-    const response = await fetch("/api/generate-alternative", {
+    const response = await fetch("/api/image/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        siteImageId,
-        workspaceSummary: savedSummaries,
-        workspaceInput: buildWorkspaceInput(),
+        provider: activeProvider,
+        stepId: "alternatives",
+        prompt,
       }),
     });
     if (!response.ok) {
@@ -395,67 +400,21 @@ export default function Workspace() {
     }
     const payload = (await response.json()) as {
       imageId: string;
-      label: string;
-      note: string;
-      base64?: string;
-      downloadUrl?: string;
-      existing: boolean;
+      base64: string;
     };
-    if (payload.existing && payload.downloadUrl) {
-      setAlternativeImages((prev) => {
-        const exists = prev.some((image) => image.id === payload.imageId);
-        if (exists) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            id: payload.imageId,
-            label: payload.label,
-            note: payload.note,
-            imageUrl: payload.downloadUrl,
-          },
-        ];
-      });
-      setEvaluationImages((prev) => {
-        const exists = prev.some((image) => image.id === payload.imageId);
-        if (exists) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            id: payload.imageId,
-            label: payload.label,
-            note: payload.note,
-            imageUrl: payload.downloadUrl,
-          },
-        ];
-      });
-      return;
-    }
     if (!payload.base64) {
       throw new Error("No image data returned.");
     }
     const saved = await saveGeneratedImageFromBase64({
       imageId: payload.imageId,
       base64: payload.base64,
-      label: payload.label,
-      note: payload.note,
+      label: `Alternative ${alternativeImages.length + 1}`,
+      note: prompt,
     });
     if (!saved) {
       throw new Error("Unable to save generated image.");
     }
     setAlternativeImages((prev) => [
-      ...prev,
-      {
-        id: saved.imageId,
-        label: saved.label,
-        note: saved.note,
-        imageUrl: saved.downloadUrl,
-      },
-    ]);
-    setEvaluationImages((prev) => [
       ...prev,
       {
         id: saved.imageId,
@@ -519,13 +478,6 @@ export default function Workspace() {
         },
       ]);
 
-      if (stepId === "alternatives") {
-        if (!siteImageConfigured) {
-          setShowSiteImageWarning(true);
-          return;
-        }
-        await requestGeneratedImage();
-      }
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -598,6 +550,71 @@ export default function Workspace() {
       );
     } finally {
       setIsSummarizing(false);
+    }
+  };
+
+  const handleDraftImagePrompt = async () => {
+    if (activeStep.id !== "alternatives") {
+      return;
+    }
+    if (!alternativesDialogue.trim()) {
+      setImagePromptMessage("Add some dialogue to draft a prompt.");
+      return;
+    }
+    setIsDraftingPrompt(true);
+    setImagePromptMessage(null);
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: activeProvider,
+          model: chatModel,
+          stepId: "alternatives",
+          message: `Draft a concise image prompt for a planning alternative based on this dialogue: ${alternativesDialogue}`,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Prompt drafting failed.");
+      }
+      const payload = (await response.json()) as { reply: string };
+      setImagePrompt(payload.reply.trim());
+    } catch (error) {
+      setImagePromptMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to draft the image prompt."
+      );
+    } finally {
+      setIsDraftingPrompt(false);
+    }
+  };
+
+  const handleGenerateImage = async () => {
+    if (activeStep.id !== "alternatives") {
+      return;
+    }
+    if (!siteImageConfigured) {
+      setShowSiteImageWarning(true);
+      return;
+    }
+    if (!imagePrompt.trim()) {
+      setImagePromptMessage("Image prompt is required.");
+      return;
+    }
+    setIsGeneratingImage(true);
+    setImagePromptMessage(null);
+    try {
+      await requestGeneratedImage(imagePrompt.trim());
+    } catch (error) {
+      setImagePromptMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to generate image."
+      );
+    } finally {
+      setIsGeneratingImage(false);
     }
   };
 
@@ -684,8 +701,12 @@ export default function Workspace() {
     });
   }, [evaluationResults, evaluationImages]);
 
-  const combinedDialogueSummary = useMemo(
-    () => chatLogs.map((log) => log.text).join(" "),
+  const alternativesDialogue = useMemo(
+    () =>
+      chatLogs
+        .filter((log) => log.stepId === "alternatives")
+        .map((log) => log.text)
+        .join(" "),
     [chatLogs]
   );
 
@@ -693,27 +714,18 @@ export default function Workspace() {
     if (activeStep.id !== "alternatives") {
       return;
     }
-    if (alternativeImages.length > 0) {
+    if (!alternativesDialogue.trim()) {
       return;
     }
-    if (!combinedDialogueSummary) {
+    if (imagePrompt || isDraftingPrompt) {
       return;
     }
-    if (!siteImageConfigured) {
-      return;
-    }
-    requestGeneratedImage().catch((error) => {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to generate design alternatives."
-      );
-    });
+    handleDraftImagePrompt().catch(() => null);
   }, [
     activeStep.id,
-    alternativeImages.length,
-    combinedDialogueSummary,
-    siteImageConfigured,
+    alternativesDialogue,
+    imagePrompt,
+    isDraftingPrompt,
   ]);
 
   const topPreference = useMemo(() => {
@@ -1079,16 +1091,53 @@ export default function Workspace() {
       {activeStep.id === "alternatives" && (
         <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Design/Plan Alternatives</h3>
+            <h3 className="text-lg font-semibold">Image Gallery</h3>
             <p className="mt-2 text-sm text-slate-500">
-              Compare ChatGPT-generated alternatives and capture visual
-              references for each plan.
+              Draft an image prompt, generate alternatives, and select the
+              design you want to submit.
             </p>
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-700">
+                  Image prompt draft
+                </p>
+                <button
+                  className="text-xs font-semibold text-slate-500 hover:text-[var(--primary)]"
+                  type="button"
+                  onClick={handleDraftImagePrompt}
+                  disabled={isDraftingPrompt}
+                >
+                  {isDraftingPrompt ? "Drafting..." : "Regenerate draft"}
+                </button>
+              </div>
+              <textarea
+                className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600"
+                rows={4}
+                value={imagePrompt}
+                onChange={(event) => setImagePrompt(event.target.value)}
+                placeholder="Draft prompt will appear here."
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)] disabled:cursor-not-allowed disabled:opacity-70"
+                  type="button"
+                  onClick={handleGenerateImage}
+                  disabled={isGeneratingImage}
+                >
+                  {isGeneratingImage ? "Generating image..." : "Generate Image"}
+                </button>
+                {imagePromptMessage && (
+                  <span className="text-xs text-slate-500">
+                    {imagePromptMessage}
+                  </span>
+                )}
+              </div>
+            </div>
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {alternativeImages.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  Generated images will appear here after the first dialogue
-                  summary is used to draft alternatives.
+                  Generated images will appear here once you click Generate
+                  Image.
                 </div>
               ) : (
                 alternativeImages.map((item) => (
@@ -1134,8 +1183,7 @@ export default function Workspace() {
                 Submit selected design
               </button>
               <p className="text-xs text-slate-500">
-                Selected designs will automatically move into the evaluation
-                candidate list.
+                Submit a selected design to move it to the evaluation list.
               </p>
             </div>
           </div>
