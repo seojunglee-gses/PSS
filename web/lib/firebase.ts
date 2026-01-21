@@ -393,8 +393,15 @@ export const saveCurrentSiteImage = async (
   const db = getFirestore(app);
   const storage = getStorage(app);
   const imageId = "current";
-  const storagePath = "ppss-site-image/current";
-  await uploadBytes(ref(storage, storagePath), file);
+  const ext =
+  file.type === "image/png"
+    ? "png"
+    : file.type === "image/jpeg"
+      ? "jpg"
+      : "png";
+
+const storagePath = `ppss-site-image/current.${ext}`;
+
   const downloadUrl = await getDownloadURL(ref(storage, storagePath));
   const payload: SiteImage = {
     imageId,
@@ -409,21 +416,15 @@ export const saveCurrentSiteImage = async (
 
 export const loadCurrentSiteImage = async (): Promise<SiteImage | null> => {
   const app = getFirebaseApp();
-  if (!app) {
+  if (!app) return null;
+
+  const db = getFirestore(app);
+  const snapshot = await getDoc(doc(db, "ppssSiteImages", "current"));
+  if (!snapshot.exists()) {
     return null;
   }
-  const storage = getStorage(app);
-  try {
-    const storagePath = "ppss-site-image/current";
-    const downloadUrl = await getDownloadURL(ref(storage, storagePath));
-    return {
-      imageId: "current",
-      storagePath,
-      downloadUrl,
-    };
-  } catch {
-    return null;
-  }
+
+  return snapshot.data() as SiteImage;
 };
 
 export const saveGeneratedImageFromBase64 = async (payload: {
