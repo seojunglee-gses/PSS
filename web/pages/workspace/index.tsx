@@ -682,9 +682,10 @@ export default function Workspace() {
               sender: "assistant",
               text:
                 intent === "image_edit"
-                  ? "Updated the selected revision based on your request."
-                  : "Updated the latest revision based on your request."
-                : "Generated a new concept image.",
+                  ? selectedAlternative
+                    ? "Updated the selected revision based on your request."
+                    : "Updated the latest revision based on your request."
+                  : "Generated a new concept image.",
               label: activeProvider,
               createdAt: new Date().toISOString(),
               imageUrl: imageRecord.imageUrl,
