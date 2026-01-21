@@ -702,17 +702,20 @@ useEffect(() => {
         );
         if (intent === "image_generate" || intent === "image_edit") {
           if (isLoadingAlternatives) {
-            throw new Error("Image generation already in progress.");
+            setErrorMessage("Image generation already in progress.");
+            return;
           }
          if (intent === "image_generate" && !siteImageConfigured) {
             setShowSiteImageWarning(true);
-            throw new Error("Image generation requires a site image.");
+            setErrorMessage("Image generation requires a site image.");
+           return;
           }
           if (
             intent === "image_edit" &&
             !(selectedAlternative || lastGeneratedImageId)
           ) {
-            throw new Error("Select or generate an image before editing.");
+            setErrorMessage("Select or generate an image before editing.");
+            return;
           }
 
         
@@ -729,7 +732,8 @@ useEffect(() => {
           );
         
           if (!imageRecord?.imageUrl) {
-            throw new Error("Unable to generate the image.");
+            setErrorMessage("Unable to generate the image.");
+            return;
           }
 
           setChatLogs((prev) => [
