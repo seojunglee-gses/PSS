@@ -60,8 +60,8 @@ export default async function handler(
     Rules:
     - Use the provided site image as the base.
     - Keep camera angle, background, and global layout unchanged.
-    - Propose ONE grounded design alternative.
     - Respect physical feasibility and material behavior.
+    - Please emphasize the very unique points from the dialogue in this prompt and files that can clearly appear and be seen in the image and also design that other stakeholders might not have. Mention specific elements in the dialogues to generate images. Mention the specific elements in the dialogue to generate images.
     
     Background knowledge (MUST FOLLOW):
     ${backgroundText ?? "None"}
