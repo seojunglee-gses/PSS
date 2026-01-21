@@ -480,6 +480,7 @@ export default function Workspace() {
       base64: payload.base64,
       label: `Alternative ${alternativeImages.length + 1}`,
       note: prompt,
+      userId: user.uid,
     });
     if (!saved) {
       throw new Error("Unable to save generated image.");
