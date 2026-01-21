@@ -1234,17 +1234,21 @@ useEffect(() => {
             </div>
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {groupedAlternativeImages.length === 0 ? (
-               <div className="relative h-10 w-10">
-                  <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
-                  <div className="absolute inset-0 rounded-full border-4 border-[var(--primary)] border-t-transparent animate-spin" />
-                </div>
+                <div className="relative h-10 w-10">
                   {isLoadingAlternatives ? (
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="h-8 w-8 rounded-full border-4 border-slate-300 border-t-[var(--primary)] animate-spin" />
-                      <span>Generating design alternatives…</span>
-                    </div>
+                    <>
+                      <div className="relative h-10 w-10">
+                        <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
+                        <div className="absolute inset-0 rounded-full border-4 border-[var(--primary)] border-t-transparent animate-spin" />
+                      </div>
+                      <span className="text-sm text-slate-500">
+                        Generating design alternatives…
+                      </span>
+                    </>
                   ) : (
-                    "Generated images will appear here once you request them in the chat."
+                    <span className="flex flex-col items-center gap-3">
+                      Generated images will appear here once you request them in the chat.
+                    </span>
                   )}
                 </div>
               ) : (
