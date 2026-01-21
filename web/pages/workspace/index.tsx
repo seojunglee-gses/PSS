@@ -186,29 +186,51 @@ function buildInitialAlternativePrompt(params: {
 }) {
   const { chatLogs } = params;
 
-  const priorDiscussion = chatLogs
-    .filter((log) => log.stepId !== "alternatives")
-    .map((log) => log.text)
-    .filter(Boolean)
-    .slice(-10)
-    .join("\n");
-
-  return `
-Use the provided site image as a fixed visual context.
-
-Preserve the overall environment, camera viewpoint, and spatial layout.
-Do NOT change the background structure, camera angle, or scene composition.
-
-Based on the prior workspace discussion below, introduce a single design alternative
-by modifying elements within the existing scene (e.g. configuration, components, layout details).
-
-Prior discussion:
-${priorDiscussion}
-
-The result should feel like a grounded alternative derived from analysis,
-not a completely new scene.
-`.trim();
-}
+  function buildInitialAlternativePrompt(params: {
+    chatLogs: ChatLog[];
+  }) {
+    const context = params.chatLogs
+      .filter(
+        (log) =>
+          log.stepId === "problem" || log.stepId === "data"
+      )
+      .map((log) => log.text)
+      .filter(Boolean)
+      .slice(-5)
+      .join(" ");
+  
+    return `
+  Use the provided site image as a fixed visual context.
+  
+  Preserve the overall environment, camera viewpoint, and spatial layout.
+  Do NOT change the background structure or camera angle.
+  
+  Introduce a design alternative by adjusting elements within the existing scene
+  based on the following conceptual context (do not render text literally):
+  
+  "${context}"
+  
+  Focus on physical, spatial, and visual changes only.
+  Do NOT include text, diagrams, charts, or abstract concepts.
+  `.trim();
+  }
+  
+    return `
+  Use the provided site image as a fixed visual context.
+  
+  Preserve the overall environment, camera viewpoint, and spatial layout.
+  Do NOT change the background structure, camera angle, or scene composition.
+  
+  Based on the prior workspace discussion below, introduce a single design alternative
+  by modifying elements within the existing scene (e.g. configuration, components, layout details).
+  
+  Prior discussion:
+  ${priorDiscussion}
+  
+  The result should feel like a grounded alternative derived from analysis,
+  not a completely new scene.
+  `.trim();
+  }
 
 export default function Workspace() {
   const router = useRouter();
@@ -412,6 +434,14 @@ export default function Workspace() {
         })),
     [chatLogs]
   );
+  
+  const hasAnyAlternativeImage = useMemo(
+    () =>
+      chatLogs.some(
+        (log) => log.stepId === "alternatives" && Boolean(log.imageUrl)
+      ),
+    [chatLogs]
+  );
 
   useEffect(() => {
     if (activeStep.id !== "alternatives") {
@@ -424,7 +454,7 @@ export default function Workspace() {
       return;
     }
 
-  setIsLoadingAlternatives(alternativeImages.length === 0);
+  setIsLoadingAlternatives(!hasAnyAlternativeImage);
   }, [activeStep.id, hasLoadedChatLogs, alternativeImages.length]);
 
   useEffect(() => {
@@ -548,16 +578,13 @@ export default function Workspace() {
 useEffect(() => {
   if (!userKey) return;
   if (!hasLoadedChatLogs) return;
-  if (alternativeImages.length > 0) return;
+  if (hasAnyAlternativeImage) return;
 
   const generateInitialAlternative = async () => {
     try {
       setIsSending(true);
 
-      const prompt = buildInitialAlternativePrompt({
-        chatLogs,
-      });
-
+      const prompt = buildInitialAlternativePrompt({chatLogs,});
       const imageRecord = await requestGeneratedImage(prompt);
       if (!imageRecord?.imageUrl) return;
 
