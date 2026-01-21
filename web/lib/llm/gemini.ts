@@ -19,7 +19,7 @@ export const callGemini = async ({
   const client = new GoogleGenerativeAI(apiKey);
 
   const generativeModel = client.getGenerativeModel({
-    model: `models/${model ?? "gemini-1.5-flash"}`,
+    model: `models/${model ?? "gemini-2.5-flash"}`,
     systemInstruction: systemText,
     
   });
