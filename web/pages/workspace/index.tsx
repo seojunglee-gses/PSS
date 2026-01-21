@@ -621,48 +621,6 @@ export default function Workspace() {
     setLastGeneratedImageId(saved.imageId);
     return imageRecord;
   };
-
-useEffect(() => {
-  if (!userKey) return;
-  if (!hasLoadedChatLogs) return;
-  if (alternativeImages.length > 0) return;
-
-  const generateInitialAlternative = async () => {
-    try {
-      setIsSending(true);
-
-      const prompt = buildInitialAlternativePrompt({chatLogs,});
-      const imageRecord = await requestGeneratedImage(prompt);
-      if (!imageRecord?.imageUrl) return;
-
-      setChatLogs((prev) => [
-        ...prev,
-        {
-          stepId: "alternatives",
-          provider: activeProvider,
-          sender: "assistant",
-          text: "Initial design alternative generated from prior discussion.",
-          label: activeProvider,
-          createdAt: new Date().toISOString(),
-          imageUrl: imageRecord.imageUrl,
-          imageId: imageRecord.id,
-          imageLabel: imageRecord.label,
-          imageNote: imageRecord.note,
-        },
-      ]);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  generateInitialAlternative();
-}, [
-  activeStep.id,
-  alternativeImages.length,
-  userKey,
-]);
   
   const handleSend = async () => {
     if (!inputValue.trim()) {
