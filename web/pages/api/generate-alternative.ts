@@ -54,12 +54,6 @@ export default async function handler(
 
 
     const promptInput = buildPromptInput({ workspaceSummary, workspaceInput });
-    const prompt = (await callLLM({
-      provider: normalizedProvider,
-      model:
-        normalizedProvider === "gemini"
-          ? "gemini-2.5-flash"
-          : "gpt-5-mini",
     const systemText = `
     You are an expert industrial designer and engineer.
     You write a single concise prompt for an image-edit model.
