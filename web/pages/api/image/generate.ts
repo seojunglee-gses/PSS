@@ -58,9 +58,16 @@ export default async function handler(
     const buffer = Buffer.from(arrayBuffer);
     const imageBase64 = buffer.toString("base64");
 
+    const effectivePrompt = baseImageId
+      ? `You are editing the provided image.
+    Preserve the original composition, layout, and camera angle.
+    Apply only the following modifications:
+    ${prompt}`
+      : prompt;
+
     const base64 = await generateImage({
       provider: normalizedProvider,
-      prompt,
+      prompt: effectivePrompt,
       imageBuffer: buffer,
       imageBase64,
       mimeType,
