@@ -810,8 +810,9 @@ useEffect(() => {
       ...prev,
       [activeStep.id]: stepSummaries[activeStep.id],
     }));
-    setFinishNotice("Chat log sent to Report. Updating summaries...");
     setIsSummarizing(true);
+    setFinishNotice("Chat log sent to Report. Updating summaries...");
+    
     try {
       const response = await fetch("/api/workspace-summary", {
         method: "POST",
@@ -858,8 +859,10 @@ useEffect(() => {
       );
     } finally {
       setIsSummarizing(false);
+      setTimeout(() => {
+        setFinishNotice(null);
+      }, 3000);
     }
-  };
 
   const handleRankingChange = (imageId: string, value: string) => {
     setRankings((prev) => ({
@@ -1183,7 +1186,10 @@ useEffect(() => {
         </div>
       )}
       {finishNotice && (
-        <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
+      <div className="mt-3 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
+        {isSummarizing && (
+          <div className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-300 border-t-transparent" />
+        )}
           {finishNotice}
         </div>
       )}
