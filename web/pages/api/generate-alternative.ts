@@ -38,19 +38,28 @@ export default async function handler(
       return;
     }
 
-    const { workspaceSummary, workspaceInput } = req.body as {
+    const { workspaceSummary, workspaceInput, provider } = req.body as {
       workspaceSummary: Record<string, string>;
       workspaceInput: Record<string, string[]>;
+      provider?: "openai" | "gemini";
     };
+
+    const normalizedProvider =
+      provider === "gemini" ? "gemini" : "openai";
+
 
     const promptInput = buildPromptInput({ workspaceSummary, workspaceInput });
     const prompt = (await callLLM({
-      provider: "openai",
-      model: "gpt-5-mini",
+      provider: normalizedProvider,
+      model:
+        normalizedProvider === "gemini"
+          ? "gemini-1.5-flash"
+          : "gpt-5-mini",
       systemText:
         "You write a single concise prompt for an image-edit model. Use the site image as the base context and propose one grounded design alternative. Keep the camera angle and background structure unchanged. Output only the prompt text, no extra formatting.",
       userText: promptInput,
     })).trim();
+
     if (!prompt) {
       res.status(500).json({ error: "Prompt generation failed." });
       return;
@@ -78,6 +87,67 @@ export default async function handler(
       return;
     }
     const imageBlob = await imageResponse.blob();
+
+    let base64: string | undefined;
+
+    if (normalizedProvider === "openai") {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
+        return;
+      }
+    
+      const formData = new FormData();
+      formData.append("model", "gpt-image-1");
+      formData.append("prompt", prompt);
+      formData.append("image", imageBlob, "site-image.png");
+      formData.append("size", "1024x1024");
+    
+      const response = await fetch("https://api.openai.com/v1/images/edits", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: formData,
+      });
+    
+      const result = await response.json();
+      base64 = result.data?.[0]?.b64_json;
+    
+    } else {
+      // ✅ Gemini 2.5 image
+      const geminiKey = process.env.GEMINI_API_KEY;
+      if (!geminiKey) {
+        res.status(500).json({ error: "GEMINI_API_KEY is not configured." });
+        return;
+      }
+    
+      const imageArrayBuffer = await imageBlob.arrayBuffer();
+      const imageBase64 = Buffer.from(imageArrayBuffer).toString("base64");
+    
+      const { GoogleGenerativeAI } = await import("@google/generative-ai");
+      const client = new GoogleGenerativeAI(geminiKey);
+    
+      const model = client.getGenerativeModel({
+        model: "gemini-2.5-flash-image",
+      });
+    
+      const result = await model.generateContent([
+        { text: prompt },
+        {
+          inlineData: {
+            mimeType: imageBlob.type || "image/png",
+            data: imageBase64,
+          },
+        },
+      ]);
+
+  const parts = result.response.candidates?.[0]?.content?.parts ?? [];
+  const imagePart = parts.find((p: any) => p.inlineData);
+
+  base64 = imagePart?.inlineData?.data;
+}
+
     const formData = new FormData();
     formData.append("model", "gpt-image-1");
     formData.append("prompt", prompt);
@@ -100,7 +170,6 @@ export default async function handler(
       return;
     }
 
-    const result = await response.json();
     const base64 = result.data?.[0]?.b64_json as string | undefined;
     if (!base64) {
       res.status(500).json({ error: "No image data returned." });
