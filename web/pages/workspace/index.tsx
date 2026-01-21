@@ -531,10 +531,11 @@ useEffect(() => {
     try {
       setIsSending(true);
       const systemPrompt =
-        "Use the provided base image as the primary visual reference.Preserve the original composition, background, camera angle, and overall layout."
-        + "Apply localized design modifications that reflect insights from the prior workspace discussion and earlier stages."
-        + "Do NOT introduce a new scene, background, or dramatic stylistic change. The result should look like a realistic alternative that could be directly compared side-by-side with the original image.";
-
+        "Create a new design concept inspired by the uploaded site image and prior workspace discussion. "
+        + "The site image should be used only as contextual reference (e.g., environment, scale, constraints), "
+        + "NOT as a template to preserve composition, camera angle, or layout. "
+        + "You are free to invent a new composition, structure, and visual arrangement. "
+        + "The result should be a distinct design alternative suitable for evaluation.";
       const imageRecord = await requestGeneratedImage(systemPrompt);
 
       if (!imageRecord?.imageUrl) {
