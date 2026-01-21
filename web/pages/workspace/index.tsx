@@ -1414,46 +1414,11 @@ useEffect(() => {
              {groupedAlternativeImages.length === 0 && !isLoadingAlternatives && (
                <div className="flex flex-col items-center justify-center gap-3 py-6">
                  <span className="text-sm text-slate-500 text-center">
-                   Generated images will appear here once you request them in the chat.
+                   Generated images will appear here
                  </span>
                </div>
              )}
-                groupedAlternativeImages.map((group) => (
-                  <div key={group.revisionLabel} className="space-y-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                      {group.revisionLabel}
-                    </p>
-                    {group.images.map((item) => (
-                      <div
-                        key={item.id}
-                        className={`rounded-2xl border p-4 ${
-                          selectedAlternative === item.id
-                            ? "border-[var(--primary)] bg-blue-50"
-                            : "border-slate-200 bg-slate-50"
-                        }`}
-                      >
-                        <button
-                          className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
-                          type="button"
-                          aria-label={`Preview ${item.label}`}
-                          onClick={() => {
-                            setSelectedImage(item.id);
-                            setSelectedAlternative(item.id);
-                          }}
-                        >
-                          {item.imageUrl && (
-                            <img
-                              src={item.imageUrl}
-                              alt={item.label}
-                              className="h-full w-full object-contain"
-                            />
-                          )}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ))
-              )}
+
             </div>
             <div className="mt-6 flex flex-wrap gap-3">
               <button
