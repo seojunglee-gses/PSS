@@ -17,14 +17,26 @@ export const callGemini = async ({
   }
 
   const client = new GoogleGenerativeAI(apiKey);
+
   const generativeModel = client.getGenerativeModel({
-    model: model || "gemini-1.5-flash",
+    model: `models/${model ?? "gemini-1.5-flash"}`,
     systemInstruction: systemText,
+    
   });
-  const result = await generativeModel.generateContent(userText);
+
+  const result = await generativeModel.generateContent({
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: userText }],
+      },
+    ],
+  });
+
   const text = result.response.text();
   if (!text) {
-    throw new Error("No reply returned.");
+    throw new Error("No reply returned from Gemini.");
   }
+
   return text;
 };
