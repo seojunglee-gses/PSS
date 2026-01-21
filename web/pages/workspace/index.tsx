@@ -14,6 +14,7 @@ import {
 } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
+import { loadGeneratedImages } from "../../lib/firebase";
 
 const getChatModelByProvider = (provider: string) => {
   if (provider.toLowerCase() === "gemini") {
@@ -381,6 +382,43 @@ export default function Workspace() {
     loadLogs();
   }, [user?.uid]);
 
+useEffect(() => {
+  if (!userKey) return;
+  if (!hasLoadedChatLogs) return;
+
+  const restoreGeneratedImages = async () => {
+    const images = await loadGeneratedImages(userKey);
+    if (!images.length) return;
+
+    setChatLogs((prev) => {
+      const existingImageIds = new Set(
+        prev.filter((l) => l.imageId).map((l) => l.imageId)
+      );
+
+      const restoredLogs = images
+        .filter((img) => !existingImageIds.has(img.imageId))
+        .map((img) => ({
+          stepId: "alternatives",
+          provider: activeProvider,
+          sender: "assistant" as const,
+          text: "Previously generated design alternative.",
+          label: activeProvider,
+          createdAt: img.createdAt,
+          imageUrl: img.downloadUrl,
+          imageId: img.imageId,
+          imageLabel: img.label,
+          imageNote: img.note,
+        }));
+
+      return [...prev, ...restoredLogs].sort((a, b) =>
+        a.createdAt.localeCompare(b.createdAt)
+      );
+    });
+  };
+
+  restoreGeneratedImages();
+}, [userKey, hasLoadedChatLogs]);
+  
   useEffect(() => {
     if (!user) {
       return;
