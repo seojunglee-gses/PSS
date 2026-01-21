@@ -556,7 +556,6 @@ useEffect(() => {
 
       const prompt = buildInitialAlternativePrompt({
         chatLogs,
-        siteImageConfigured,
       });
 
       const imageRecord = await requestGeneratedImage(prompt);
