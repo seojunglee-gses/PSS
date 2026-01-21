@@ -584,7 +584,6 @@ useEffect(() => {
       useEffect(() => {
     if (activeStep.id !== "alternatives") return;
     if (!hasLoadedChatLogs) return;
-          if (isLoadingAlternatives) return;
     if (hasInitializedAlternatives) return;
     if (alternativeImages.length > 0) {
     setHasInitializedAlternatives(true);
@@ -863,7 +862,7 @@ useEffect(() => {
         setFinishNotice(null);
       }, 3000);
     }
-
+  };
   const handleRankingChange = (imageId: string, value: string) => {
     setRankings((prev) => ({
       ...prev,
