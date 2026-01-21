@@ -462,8 +462,8 @@ export default function Workspace() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: getChatModelByProvider(activeProvider),
-          model: chatModel,
+          provider: activeProvider,
+          model:  getChatModelByProvider(activeProvider),
           stepId,
           message: userMessage,
         }),
