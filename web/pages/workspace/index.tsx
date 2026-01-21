@@ -584,6 +584,7 @@ useEffect(() => {
       useEffect(() => {
     if (activeStep.id !== "alternatives") return;
     if (!hasLoadedChatLogs) return;
+          if (isLoadingAlternatives) return;
     if (hasInitializedAlternatives) return;
     if (alternativeImages.length > 0) {
     setHasInitializedAlternatives(true);
@@ -668,7 +669,9 @@ useEffect(() => {
     return imageRecord;
   };
   
-  const handleSend = async () => {
+  if (isLoadingAlternatives) return;
+    const handleSend = async () => {
+    
     if (!inputValue.trim()) {
       return;
     }
@@ -699,6 +702,9 @@ useEffect(() => {
           Boolean(lastGeneratedImageId)
         );
         if (intent === "image_generate" || intent === "image_edit") {
+          if (isLoadingAlternatives) {
+            throw new Error("Image generation already in progress.");
+          }
          if (intent === "image_generate" && !siteImageConfigured) {
             setShowSiteImageWarning(true);
             throw new Error("Image generation requires a site image.");
@@ -1165,9 +1171,10 @@ useEffect(() => {
           className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
           type="button"
           onClick={handleSend}
-          disabled={isSending || isStageLocked}
+          disabled={isSending || isStageLocked || isLoadingAlternatives}
         >
-          {isSending ? "Sending..." : "Send"}
+          {isLoadingAlternatives ? "Generating…" 
+          :isSending ? "Sending..." : "Send"}
         </button>
       </div>
       {errorMessage && (
@@ -1350,6 +1357,16 @@ useEffect(() => {
               concept image. Generated images will appear inline in the chat
               history and in the gallery below.
             </div>
+            {isLoadingAlternatives && (
+              <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
+                <div className="relative h-4 w-4">
+                  <div className="absolute inset-0 rounded-full border-2 border-slate-300" />
+                  <div className="absolute inset-0 rounded-full border-2 border-[var(--primary)] border-t-transparent animate-spin" />
+                </div>
+                Generating a new design…
+              </div>
+            )}
+
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {groupedAlternativeImages.length === 0 ? (
                <div className="flex flex-col items-center justify-center gap-3 py-6">
