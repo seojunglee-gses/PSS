@@ -472,7 +472,7 @@ export default function Workspace() {
     throw new Error("Authentication required.");
   }
 
-  const uid: string = userKey;
+  const uid = userKey;
 
   const response = await fetch("/api/image/generate", {
     method: "POST",
@@ -979,8 +979,6 @@ useEffect(() => {
             <br />
             Your responses have been summarized and locked for collaboration
             consistency.
-            <br />
-            Contact the administrator to reopen this stage.
           </p>
           {revisedAfterLock[activeStep.id] && (
             <p className="mt-2 text-[11px] text-slate-500">
@@ -1240,7 +1238,7 @@ useEffect(() => {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {groupedAlternativeImages.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  {isLoadingAlternatives
+                  {isAlternativesLoading
                     ? "Loading your gallery..."
                     : "Generated images will appear here once you request them in the chat."}
                 </div>
