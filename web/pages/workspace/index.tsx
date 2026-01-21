@@ -16,6 +16,16 @@ import {
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
 
+const getChatModelByProvider = (provider: string) => {
+  if (provider.toLowerCase() === "gemini") {
+    return "gemini-1.5-flash";
+  }
+  if (provider.toLowerCase() === "deepseek") {
+    return "deepseek-chat";
+  }
+  return "gpt-5-mini"; // openai default
+};
+
 const steps = [
   {
     id: "problem",
