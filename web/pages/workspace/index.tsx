@@ -517,34 +517,21 @@ export default function Workspace() {
   };
 
 useEffect(() => {
-  if (activeStep.id !== "alternatives") {
-    return;
-  }
-  if (alternativeImages.length > 0) {
-    return;
-  }
-  if (!userKey) {
-    return;
-  }
+  if (!userKey) return;
+  if (!hasLoadedChatLogs) return;
+  if (alternativeImages.length > 0) return;
 
   const generateInitialAlternative = async () => {
     try {
       setIsSending(true);
-      const systemPrompt =
-          "Use the provided site image as the primary visual baseline. "
-          + "Preserve the original camera angle, framing, background, and overall spatial composition. "
-          + "Do NOT redesign the entire scene or change the viewpoint. "
-          + "Based on insights from earlier stages (problem definition and data analysis), "
-          + "introduce a subtle design alternative by adjusting only relevant elements "
-          + "(e.g., structure details, components, materials, or layout refinements) "
-          + "while keeping the original context intact. "
-          + "The result should feel like a reasoned variation of the same scene, "
-          + "suitable for side-by-side comparison in later evaluation.";
-              const imageRecord = await requestGeneratedImage(systemPrompt);
 
-      if (!imageRecord?.imageUrl) {
-        throw new Error("Failed to generate initial alternative.");
-      }
+      const prompt = buildInitialAlternativePrompt({
+        chatLogs,
+        siteImageConfigured,
+      });
+
+      const imageRecord = await requestGeneratedImage(prompt);
+      if (!imageRecord?.imageUrl) return;
 
       setChatLogs((prev) => [
         ...prev,
@@ -552,7 +539,7 @@ useEffect(() => {
           stepId: "alternatives",
           provider: activeProvider,
           sender: "assistant",
-          text: "",
+          text: "Initial design alternative generated from prior discussion.",
           label: activeProvider,
           createdAt: new Date().toISOString(),
           imageUrl: imageRecord.imageUrl,
@@ -561,13 +548,8 @@ useEffect(() => {
           imageNote: imageRecord.note,
         },
       ]);
-    } catch (err) {
-      console.error(err);
-      setErrorMessage(
-        err instanceof Error
-          ? err.message
-          : "Unable to generate initial alternative."
-      );
+    } catch (e) {
+      console.error(e);
     } finally {
       setIsSending(false);
     }
