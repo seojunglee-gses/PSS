@@ -1,11 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { loadCurrentSiteImage } from "../../../lib/firebase";
+import { loadCurrentSiteImage, loadGeneratedImage } from "../../../lib/firebase";
 import { generateImage } from "../../../lib/images";
 
 type ImageRequest = {
   provider?: string;
   stepId?: string;
   prompt?: string;
+  baseImageId?: string;
+  userId?: string;
 };
 
 export default async function handler(
@@ -17,13 +19,18 @@ export default async function handler(
     return;
   }
 
-  const { provider, stepId, prompt } = req.body as ImageRequest;
+  const { provider, stepId, prompt, baseImageId, userId } =
+    req.body as ImageRequest;
   if (stepId !== "alternatives") {
     res.status(400).json({ error: "Image generation is only for step 3." });
     return;
   }
   if (!prompt) {
     res.status(400).json({ error: "Prompt is required." });
+    return;
+  }
+  if (baseImageId && !userId) {
+    res.status(400).json({ error: "User context is required for edits." });
     return;
   }
 
@@ -35,12 +42,23 @@ export default async function handler(
         : "openai";
 
   try {
-    const siteImage = await loadCurrentSiteImage();
-    if (!siteImage?.downloadUrl) {
-      res.status(400).json({ error: "Site image is not configured." });
+    const baseImage = baseImageId
+      ? await loadGeneratedImage(baseImageId)
+      : await loadCurrentSiteImage();
+    if (baseImageId && userId && baseImage?.userId !== userId) {
+      res.status(403).json({ error: "Base image is not available." });
       return;
     }
-    const imageResponse = await fetch(siteImage.downloadUrl);
+    const baseImageUrl = baseImage?.downloadUrl;
+    if (!baseImageUrl) {
+      res.status(400).json({
+        error: baseImageId
+          ? "Base image is not available."
+          : "Site image is not configured.",
+      });
+      return;
+    }
+    const imageResponse = await fetch(baseImageUrl);
     if (!imageResponse.ok) {
       res.status(500).json({ error: "Unable to load site image." });
       return;
