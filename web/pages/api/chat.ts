@@ -32,18 +32,25 @@ export default async function handler(
       ? `You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.\n\nBackground knowledge (stable system context for all planning stages):\n${curatedBackground}`
       : "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.";
     const normalizedProvider =
-      provider?.toLowerCase() === "gemini"
-        ? "gemini"
-        : provider?.toLowerCase() === "deepseek"
-          ? "deepseek"
-          : "openai";
+    provider?.toLowerCase() === "gemini"
+      ? "gemini"
+      : provider?.toLowerCase() === "deepseek"
+        ? "deepseek"
+        : "openai";
+  
+    const resolvedModel =
+      normalizedProvider === "gemini"
+        ? "gemini-1.5-flash"
+        : normalizedProvider === "deepseek"
+          ? "deepseek-chat"
+          : model ?? "gpt-5-mini";
+    
     const reply = await callLLM({
       provider: normalizedProvider,
-      model,
+      model: resolvedModel,
       systemText,
       userText: `Stage: ${stepId ?? "unknown"}\nUser: ${message}`,
     });
-
     res.status(200).json({
       provider: normalizedProvider,
       model,
