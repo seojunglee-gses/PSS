@@ -577,7 +577,7 @@ useEffect(() => {
   }, [
     activeProvider,
     alternativeImages.length,
-    buildWorkspaceInput,
+    buildImageGenerationInput,
     savedSummaries,
   ]);
 
@@ -668,8 +668,7 @@ useEffect(() => {
     return imageRecord;
   };
   
-  if (isLoadingAlternatives) return;
-    const handleSend = async () => {
+  const handleSend = async () => {
     
     if (!inputValue.trim()) {
       return;
