@@ -1347,9 +1347,6 @@ useEffect(() => {
             </div>
             {isLoadingAlternatives && (
             <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-              <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-[var(--primary)]" />
-              Generating a new alternative…
-            </div>
           )}
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {groupedAlternativeImages.length === 0 ? (
