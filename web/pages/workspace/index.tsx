@@ -462,7 +462,7 @@ export default function Workspace() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: activeProvider,
+          provider: getChatModelByProvider(activeProvider),
           model: chatModel,
           stepId,
           message: userMessage,
@@ -575,7 +575,7 @@ export default function Workspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider: activeProvider,
-          model: chatModel,
+          model: getChatModelByProvider(activeProvider),
           stepId: "alternatives",
           message: `Draft a concise image prompt for a planning alternative based on this dialogue: ${alternativesDialogue}`,
         }),
