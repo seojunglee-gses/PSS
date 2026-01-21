@@ -1,8 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
 import { loadCurrentSiteImage, loadGeneratedImage } from "../../lib/firebase";
+import { callLLM } from "../../lib/llm";
 
-const buildPrompt = (payload: {
+const buildPromptInput = (payload: {
   workspaceSummary?: Record<string, string>;
   workspaceInput?: Record<string, string[]>;
 }) => {
@@ -12,7 +13,7 @@ const buildPrompt = (payload: {
   const dialogueText = Object.entries(payload.workspaceInput ?? {})
     .map(([key, value]) => `${key}: ${value.join(" ")}`)
     .join("\n");
-  return `Generate a design alternative image grounded in the site photo. Use the site image as the base context and overlay a plausible planning alternative.\n\nWorkspace summary:\n${summaryText}\n\nChat log highlights:\n${dialogueText}`;
+  return `Workspace summary:\n${summaryText}\n\nChat log highlights:\n${dialogueText}`;
 };
 
 export default async function handler(
@@ -42,7 +43,18 @@ export default async function handler(
       workspaceInput: Record<string, string[]>;
     };
 
-    const prompt = buildPrompt({ workspaceSummary, workspaceInput });
+    const promptInput = buildPromptInput({ workspaceSummary, workspaceInput });
+    const prompt = (await callLLM({
+      provider: "openai",
+      model: "gpt-5-mini",
+      systemText:
+        "You write a single concise prompt for an image-edit model. Use the site image as the base context and propose one grounded design alternative. Keep the camera angle and background structure unchanged. Output only the prompt text, no extra formatting.",
+      userText: promptInput,
+    })).trim();
+    if (!prompt) {
+      res.status(500).json({ error: "Prompt generation failed." });
+      return;
+    }
     const imageId = crypto
       .createHash("sha256")
       .update(`${currentSiteImage.imageId}-${prompt}`)
