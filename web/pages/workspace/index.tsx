@@ -157,6 +157,7 @@ type DesignImage = {
   label: string;
   note: string;
   imageUrl?: string;
+  createdAt?: string;
 };
 
 const roleDescriptions: Record<string, string> = {
@@ -376,6 +377,7 @@ export default function Workspace() {
           label: image.label,
           note: image.note,
           imageUrl: image.downloadUrl,
+          createdAt: image.createdAt,
         }));
         setAlternativeImages(mapped);
       }
@@ -489,6 +491,7 @@ export default function Workspace() {
       label: saved.label,
       note: saved.note,
       imageUrl: saved.downloadUrl,
+      createdAt: saved.createdAt,
     };
     setAlternativeImages((prev) => [...prev, imageRecord]);
     setLastGeneratedImageId(saved.imageId);
@@ -699,6 +702,7 @@ export default function Workspace() {
     await saveUserDesignSubmission(userKey, selected.id);
     setSelectedAlternative(null);
     setShowSubmitNotice("Your selected design has been submitted.");
+    await handleCompleteStep();
   };
 
   const handleSubmitRankings = async () => {
@@ -745,6 +749,16 @@ export default function Workspace() {
       };
     });
   }, [evaluationResults, evaluationImages]);
+
+  const groupedAlternativeImages = useMemo(() => {
+    const sorted = [...alternativeImages].sort((a, b) =>
+      (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
+    );
+    return sorted.map((image, index) => ({
+      revisionLabel: `Revision ${index + 1}`,
+      images: [image],
+    }));
+  }, [alternativeImages]);
 
   useEffect(() => {
     if (activeStep.id !== "alternatives") {
@@ -1141,38 +1155,45 @@ export default function Workspace() {
               history and in the gallery below.
             </div>
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              {alternativeImages.length === 0 ? (
+              {groupedAlternativeImages.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
                   Generated images will appear here once you request them in the
                   chat.
                 </div>
               ) : (
-                alternativeImages.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`rounded-2xl border p-4 ${
-                      selectedAlternative === item.id
-                        ? "border-[var(--primary)] bg-blue-50"
-                        : "border-slate-200 bg-slate-50"
-                    }`}
-                  >
-                    <button
-                      className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
-                      type="button"
-                      aria-label={`Preview ${item.label}`}
-                      onClick={() => {
-                        setSelectedImage(item.id);
-                        setSelectedAlternative(item.id);
-                      }}
-                    >
-                      {item.imageUrl && (
-                        <img
-                          src={item.imageUrl}
-                          alt={item.label}
-                          className="h-full w-full object-contain"
-                        />
-                      )}
-                    </button>
+                groupedAlternativeImages.map((group) => (
+                  <div key={group.revisionLabel} className="space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                      {group.revisionLabel}
+                    </p>
+                    {group.images.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`rounded-2xl border p-4 ${
+                          selectedAlternative === item.id
+                            ? "border-[var(--primary)] bg-blue-50"
+                            : "border-slate-200 bg-slate-50"
+                        }`}
+                      >
+                        <button
+                          className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                          type="button"
+                          aria-label={`Preview ${item.label}`}
+                          onClick={() => {
+                            setSelectedImage(item.id);
+                            setSelectedAlternative(item.id);
+                          }}
+                        >
+                          {item.imageUrl && (
+                            <img
+                              src={item.imageUrl}
+                              alt={item.label}
+                              className="h-full w-full object-contain"
+                            />
+                          )}
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 ))
               )}
@@ -1184,7 +1205,7 @@ export default function Workspace() {
                 onClick={handleSubmitAlternative}
                 disabled={!selectedAlternative}
               >
-                Submit selected design
+                submit your best design
               </button>
               <p className="text-xs text-slate-500">
                 Submit a selected design to move it to the evaluation list.
