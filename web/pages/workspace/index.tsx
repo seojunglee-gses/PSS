@@ -172,25 +172,6 @@ const roleDescriptions: Record<string, string> = {
     "Review compliance, safety, and policy alignment across all steps.",
 };
 
-const buildImageGenerationInput = useCallback(() => {
-  const MAX_MESSAGES = 6;
-
-  const relevantLogs = chatLogs
-    .filter(
-      (log) =>
-        log.stepId === "problem" ||
-        log.stepId === "data"
-    )
-    .slice(-MAX_MESSAGES)
-    .map((log) => log.text);
-
-  return {
-    problemSummary: savedSummaries.problem ?? "",
-    dataSummary: savedSummaries.data ?? "",
-    recentDiscussion: relevantLogs.join(" "),
-  };
-}, [chatLogs, savedSummaries]);
-
 const basePromptsByStep: Record<string, string> = {
   data: "What stands out to you in this data?",
   alternatives:
@@ -277,6 +258,26 @@ export default function Workspace() {
   const [savedSummaries, setSavedSummaries] = useState<
     Record<string, string>
   >({});
+
+  const buildImageGenerationInput = useCallback(() => {
+  const MAX_MESSAGES = 6;
+
+  const relevantLogs = chatLogs
+    .filter(
+      (log) =>
+        log.stepId === "problem" ||
+        log.stepId === "data"
+    )
+    .slice(-MAX_MESSAGES)
+    .map((log) => log.text);
+
+  return {
+    problemSummary: savedSummaries.problem ?? "",
+    dataSummary: savedSummaries.data ?? "",
+    recentDiscussion: relevantLogs.join(" "),
+  };
+}, [chatLogs, savedSummaries]);
+  
   const [completedStages, setCompletedStages] = useState<string[]>([]);
   const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
   const [revisedAfterLock, setRevisedAfterLock] = useState<
