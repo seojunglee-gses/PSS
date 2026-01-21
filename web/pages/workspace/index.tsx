@@ -1234,24 +1234,24 @@ useEffect(() => {
             </div>
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {groupedAlternativeImages.length === 0 ? (
-                <div className="relative h-10 w-10">
-                  {isLoadingAlternatives ? (
-                    <>
-                      <div className="relative h-10 w-10">
-                        <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
-                        <div className="absolute inset-0 rounded-full border-4 border-[var(--primary)] border-t-transparent animate-spin" />
-                      </div>
-                      <span className="text-sm text-slate-500">
-                        Generating design alternatives…
-                      </span>
-                    </>
-                  ) : (
-                    <span className="flex flex-col items-center gap-3">
-                      Generated images will appear here once you request them in the chat.
+               <div className="flex flex-col items-center justify-center gap-3 py-6">
+                {isLoadingAlternatives ? (
+                  <>
+                    <div className="relative h-10 w-10">
+                      <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
+                      <div className="absolute inset-0 rounded-full border-4 border-[var(--primary)] border-t-transparent animate-spin" />
+                    </div>
+                    <span className="text-sm text-slate-500">
+                      Generating design alternatives…
                     </span>
-                  )}
-                </div>
-              ) : (
+                  </>
+                ) : (
+                  <span className="text-sm text-slate-500 text-center">
+                    Generated images will appear here once you request them in the chat.
+                  </span>
+                )}
+              </div>
+            ) : (
                 groupedAlternativeImages.map((group) => (
                   <div key={group.revisionLabel} className="space-y-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
