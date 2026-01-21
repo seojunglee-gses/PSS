@@ -7,6 +7,8 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  query,
+  where,
 } from "firebase/firestore";
 import {
   getStorage,
@@ -80,6 +82,7 @@ type GeneratedImage = {
   storagePath: string;
   downloadUrl: string;
   createdAt: string;
+  userId?: string;
 };
 
 const firebaseConfig = {
@@ -432,6 +435,7 @@ export const saveGeneratedImageFromBase64 = async (payload: {
   base64: string;
   label: string;
   note: string;
+  userId: string;
 }): Promise<GeneratedImage | null> => {
   const app = getFirebaseApp();
   if (!app) {
@@ -461,18 +465,26 @@ export const saveGeneratedImageFromBase64 = async (payload: {
     storagePath,
     downloadUrl,
     createdAt,
+    userId: payload.userId,
   };
   await setDoc(doc(db, "ppssGeneratedImages", payload.imageId), record);
   return record;
 };
 
-export const loadGeneratedImages = async (): Promise<GeneratedImage[]> => {
+export const loadGeneratedImages = async (
+  userId: string
+): Promise<GeneratedImage[]> => {
   const app = getFirebaseApp();
   if (!app) {
     return [];
   }
   const db = getFirestore(app);
-  const snapshot = await getDocs(collection(db, "ppssGeneratedImages"));
+  const snapshot = await getDocs(
+    query(
+      collection(db, "ppssGeneratedImages"),
+      where("userId", "==", userId)
+    )
+  );
   return snapshot.docs
     .map((docSnap) => docSnap.data() as GeneratedImage)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));

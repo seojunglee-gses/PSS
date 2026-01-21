@@ -199,6 +199,7 @@ export default function Workspace() {
   const [showSubmitNotice, setShowSubmitNotice] = useState<null | string>(null);
   const [finishNotice, setFinishNotice] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
@@ -384,6 +385,22 @@ export default function Workspace() {
   );
 
   useEffect(() => {
+    if (activeStep.id !== "alternatives") {
+      setIsLoadingAlternatives(false);
+      return;
+    }
+    if (alternativeImages.length > 0) {
+      setIsLoadingAlternatives(false);
+      return;
+    }
+    if (!hasLoadedChatLogs) {
+      setIsLoadingAlternatives(true);
+      return;
+    }
+    setIsLoadingAlternatives(false);
+  }, [activeStep.id, alternativeImages.length, hasLoadedChatLogs]);
+
+  useEffect(() => {
     if (!userKey) {
       return;
     }
@@ -448,26 +465,31 @@ export default function Workspace() {
   };
 
   const requestGeneratedImage = async (
-    prompt: string,
-    baseImageId?: string
+  prompt: string,
+  baseImageId?: string
   ) => {
-    if (!baseImageId && (!siteImageConfigured || !siteImageId)) {
-      throw new Error("Site image is not configured.");
-    }
-    const response = await fetch("/api/image/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: activeProvider,
-        stepId: "alternatives",
-        prompt,
-        baseImageId,
+  if (!userKey) {
+    throw new Error("Authentication required.");
+  }
+
+  const uid = userKey;
+
+  const response = await fetch("/api/image/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: activeProvider,
+      stepId: "alternatives",
+      prompt,
+      baseImageId,
+      userId: uid,
       }),
     });
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(payload?.error ?? "Image generation failed.");
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error ?? "Image generation failed.");
     }
+        
     const payload = (await response.json()) as {
       imageId: string;
       base64: string;
@@ -480,6 +502,7 @@ export default function Workspace() {
       base64: payload.base64,
       label: `Alternative ${alternativeImages.length + 1}`,
       note: prompt,
+      userId: uid,
     });
     if (!saved) {
       throw new Error("Unable to save generated image.");
@@ -495,6 +518,66 @@ export default function Workspace() {
     return imageRecord;
   };
 
+useEffect(() => {
+  if (activeStep.id !== "alternatives") {
+    return;
+  }
+  if (alternativeImages.length > 0) {
+    return;
+  }
+  if (!userKey) {
+    return;
+  }
+
+  const generateInitialAlternative = async () => {
+    try {
+      setIsSending(true);
+      const systemPrompt =
+        "Use the provided base image as the visual reference. Incorporate insights from the prior workspace discussion and the generated report summary."
+        + "The design should visually reflect the key concerns, constraints, and priorities that were identified earlier (such as stability, feasibility, risk mitigation, or operational clarity)."
+        + "Generate a new design alternative that responds to those findings rather than starting from scratch."
+        + "The result should feel like a reasoned alternative derived from analysis, suitable for direct comparison with other options in the evaluation stage.";
+
+      const imageRecord = await requestGeneratedImage(systemPrompt);
+
+      if (!imageRecord?.imageUrl) {
+        throw new Error("Failed to generate initial alternative.");
+      }
+
+      setChatLogs((prev) => [
+        ...prev,
+        {
+          stepId: "alternatives",
+          provider: activeProvider,
+          sender: "assistant",
+          text: "I’ve created an initial design alternative to get us started.",
+          label: activeProvider,
+          createdAt: new Date().toISOString(),
+          imageUrl: imageRecord.imageUrl,
+          imageId: imageRecord.id,
+          imageLabel: imageRecord.label,
+          imageNote: imageRecord.note,
+        },
+      ]);
+    } catch (err) {
+      console.error(err);
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : "Unable to generate initial alternative."
+      );
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  generateInitialAlternative();
+}, [
+  activeStep.id,
+  alternativeImages.length,
+  userKey,
+]);
+  
   const handleSend = async () => {
     if (!inputValue.trim()) {
       return;
@@ -759,10 +842,6 @@ export default function Workspace() {
       images: [image],
     }));
   }, [alternativeImages]);
-  const isAlternativesLoading =
-    activeStep.id === "alternatives" &&
-    !hasLoadedChatLogs &&
-    alternativeImages.length === 0;
 
   useEffect(() => {
     if (activeStep.id !== "alternatives") {
@@ -900,8 +979,6 @@ export default function Workspace() {
             <br />
             Your responses have been summarized and locked for collaboration
             consistency.
-            <br />
-            Contact the administrator to reopen this stage.
           </p>
           {revisedAfterLock[activeStep.id] && (
             <p className="mt-2 text-[11px] text-slate-500">
