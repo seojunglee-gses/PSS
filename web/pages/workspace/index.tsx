@@ -496,6 +496,64 @@ export default function Workspace() {
     return imageRecord;
   };
 
+useEffect(() => {
+  if (activeStep.id !== "alternatives") {
+    return;
+  }
+  if (alternativeImages.length > 0) {
+    return;
+  }
+  if (!userKey) {
+    return;
+  }
+
+  const generateInitialAlternative = async () => {
+    try {
+      setIsSending(true);
+      const systemPrompt =
+        "Generate an initial design alternative based on the prior discussion. " +
+        "This should serve as a starting point for refinement.";
+
+      const imageRecord = await requestGeneratedImage(systemPrompt);
+
+      if (!imageRecord?.imageUrl) {
+        throw new Error("Failed to generate initial alternative.");
+      }
+
+      setChatLogs((prev) => [
+        ...prev,
+        {
+          stepId: "alternatives",
+          provider: activeProvider,
+          sender: "assistant",
+          text: "I’ve created an initial design alternative to get us started.",
+          label: activeProvider,
+          createdAt: new Date().toISOString(),
+          imageUrl: imageRecord.imageUrl,
+          imageId: imageRecord.id,
+          imageLabel: imageRecord.label,
+          imageNote: imageRecord.note,
+        },
+      ]);
+    } catch (err) {
+      console.error(err);
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : "Unable to generate initial alternative."
+      );
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  generateInitialAlternative();
+}, [
+  activeStep.id,
+  alternativeImages.length,
+  userKey,
+]);
+  
   const handleSend = async () => {
     if (!inputValue.trim()) {
       return;
