@@ -861,9 +861,11 @@ useEffect(() => {
     } finally {
       setIsSummarizing(false);
       setTimeout(() => {
-        window.setTimeout(() => setFinishNotice(null);}, 3000);
+        window.setTimeout(() => 
+          setFinishNotice(null);
+        }, 3000);
     }
-  };
+    
   const handleRankingChange = (imageId: string, value: string) => {
     setRankings((prev) => ({
       ...prev,
