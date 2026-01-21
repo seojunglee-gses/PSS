@@ -1,10 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { loadBackgroundKnowledge } from "../../lib/firebase";
+import { callLLM } from "../../lib/llm";
 
 type ChatRequest = {
   model?: string;
   stepId?: string;
   message?: string;
+  provider?: string;
 };
 
 export default async function handler(
@@ -16,13 +18,7 @@ export default async function handler(
     return;
   }
 
-  const { model, message, stepId } = req.body as ChatRequest;
-  const apiKey = process.env.OPENAI_API_KEY;
-
-  if (!apiKey) {
-    res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
-    return;
-  }
+  const { model, message, stepId, provider } = req.body as ChatRequest;
 
   if (!message) {
     res.status(400).json({ error: "Message is required." });
@@ -35,58 +31,24 @@ export default async function handler(
     const systemText = curatedBackground
       ? `You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.\n\nBackground knowledge (stable system context for all planning stages):\n${curatedBackground}`
       : "You are a PPSS assistant. Provide concise, helpful responses aligned with the current workflow stage. Do not repeat the user's message.";
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: model || "gpt-4.1-mini",
-        input: [
-          {
-            role: "system",
-            content: [
-              {
-                type: "input_text",
-                text: systemText,
-              },
-            ],
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: `Stage: ${stepId ?? "unknown"}\nUser: ${message}`,
-              },
-            ],
-          },
-        ],
-      }),
+    const normalizedProvider =
+      provider?.toLowerCase() === "gemini"
+        ? "gemini"
+        : provider?.toLowerCase() === "deepseek"
+          ? "deepseek"
+          : "openai";
+    const reply = await callLLM({
+      provider: normalizedProvider,
+      model,
+      systemText,
+      userText: `Stage: ${stepId ?? "unknown"}\nUser: ${message}`,
     });
 
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => ({}));
-      res.status(500).json({
-        error: errorPayload?.error?.message ?? "LLM request failed.",
-      });
-      return;
-    }
-
-    const result = await response.json();
-
-    const content = result.output
-      ?.find((item: any) => item.type === "message")
-      ?.content?.find((c: any) => c.type === "output_text")
-      ?.text;
-    
-    if (!content) {
-      res.status(500).json({ error: "No reply returned." });
-      return;
-    }
-
-    res.status(200).json({ reply: content });
+    res.status(200).json({
+      provider: normalizedProvider,
+      model,
+      reply,
+    });
   } catch (error) {
     res.status(500).json({
       error: error instanceof Error ? error.message : "Unexpected error.",

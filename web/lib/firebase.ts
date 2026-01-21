@@ -6,9 +6,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  limit,
-  orderBy,
-  query,
   setDoc,
 } from "firebase/firestore";
 import {
@@ -28,12 +25,14 @@ type EvaluationPayload = {
 type WorkspaceSummary = {
   stageSummaries: Record<string, string>;
   overallSummary: string;
+  completedStages?: string[];
   updatedAt?: string;
 };
 
 type ExecutiveSummary = {
   keywords: string[];
   currentStage: string;
+  stageId?: string;
   stageSummaries: {
     problemDefinition: string;
     dataAnalysis: string;
@@ -232,25 +231,64 @@ export const loadAllWorkspaceSummaries = async (): Promise<
   }));
 };
 
-export const loadLatestExecutiveSummary = async (): Promise<
-  ExecutiveSummary | null
+export const loadLatestExecutiveSummariesByStage = async (): Promise<
+  Pick<ExecutiveSummary, "keywords" | "stageSummaries"> | null
 > => {
   const app = getFirebaseApp();
   if (!app) {
     return null;
   }
   const db = getFirestore(app);
-  const execQuery = query(
-    collection(db, "ppssExecutiveSummaries"),
-    orderBy("createdAt", "desc"),
-    limit(1)
-  );
-  const snapshot = await getDocs(execQuery);
-  const docSnapshot = snapshot.docs[0];
-  if (!docSnapshot) {
+  const snapshot = await getDocs(collection(db, "ppssExecutiveSummaries"));
+  if (snapshot.empty) {
     return null;
   }
-  return docSnapshot.data() as ExecutiveSummary;
+  const perStage: Record<string, ExecutiveSummary> = {};
+  snapshot.docs.forEach((docSnap) => {
+    const data = docSnap.data() as ExecutiveSummary;
+    if (!data.stageId) {
+      return;
+    }
+    const existing = perStage[data.stageId];
+    if (!existing || (data.createdAt ?? "") > (existing.createdAt ?? "")) {
+      perStage[data.stageId] = data;
+    }
+  });
+
+  const keywords = Array.from(
+    new Set(
+      Object.values(perStage).flatMap((entry) => entry.keywords ?? [])
+    )
+  ).slice(0, 5);
+
+  const stageSummaries = {
+    problemDefinition: "",
+    dataAnalysis: "",
+    designAlternatives: "",
+    designEvaluation: "",
+    decision: "",
+  };
+
+  if (perStage.problem?.stageSummaries?.problemDefinition) {
+    stageSummaries.problemDefinition =
+      perStage.problem.stageSummaries.problemDefinition;
+  }
+  if (perStage.data?.stageSummaries?.dataAnalysis) {
+    stageSummaries.dataAnalysis = perStage.data.stageSummaries.dataAnalysis;
+  }
+  if (perStage.alternatives?.stageSummaries?.designAlternatives) {
+    stageSummaries.designAlternatives =
+      perStage.alternatives.stageSummaries.designAlternatives;
+  }
+  if (perStage.evaluation?.stageSummaries?.designEvaluation) {
+    stageSummaries.designEvaluation =
+      perStage.evaluation.stageSummaries.designEvaluation;
+  }
+  if (perStage.report?.stageSummaries?.decision) {
+    stageSummaries.decision = perStage.report.stageSummaries.decision;
+  }
+
+  return { keywords, stageSummaries };
 };
 
 export const loadStageLocks = async (): Promise<StageLockState | null> => {

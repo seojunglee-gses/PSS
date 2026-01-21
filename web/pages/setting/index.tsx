@@ -53,7 +53,7 @@ export default function Setting() {
   >({});
   const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
   const [isGeneratingExecutiveSummary, setIsGeneratingExecutiveSummary] =
-    useState(false);
+    useState<Record<string, boolean>>({});
   const [executiveSummaryMessage, setExecutiveSummaryMessage] = useState<
     Record<string, string>
   >({});
@@ -114,16 +114,16 @@ export default function Setting() {
         return;
       }
       const counts = summaries.reduce<Record<string, number>>((acc, entry) => {
-        Object.entries(entry.summary.stageSummaries ?? {}).forEach(
-          ([stage, summary]) => {
-            if (summary && summary.trim()) {
-              acc[stage] = (acc[stage] ?? 0) + 1;
-            }
-          }
-        );
+        const completedStages = entry.summary.completedStages ?? [];
+        completedStages.forEach((stage) => {
+          acc[stage] = (acc[stage] ?? 0) + 1;
+        });
         return acc;
       }, {});
-      setParticipantCount(summaries.length);
+      const totalParticipants = summaries.filter(
+        (entry) => (entry.summary.completedStages ?? []).length > 0
+      ).length;
+      setParticipantCount(totalParticipants);
       setStageCompletionCounts(counts);
     };
     loadWorkspaceProgress();
@@ -159,7 +159,10 @@ export default function Setting() {
       return;
     }
     try {
-      setIsGeneratingExecutiveSummary(true);
+      setIsGeneratingExecutiveSummary((prev) => ({
+        ...prev,
+        [stageId]: true,
+      }));
       setExecutiveSummaryMessage((prev) => ({
         ...prev,
         [stageId]: "",
@@ -190,7 +193,10 @@ export default function Setting() {
             : "Unable to generate executive summary.",
       }));
     } finally {
-      setIsGeneratingExecutiveSummary(false);
+      setIsGeneratingExecutiveSummary((prev) => ({
+        ...prev,
+        [stageId]: false,
+      }));
     }
   };
 
@@ -498,9 +504,9 @@ export default function Setting() {
                         onClick={() =>
                           handleExecutiveSummaryGenerate(stage.id)
                         }
-                        disabled={isGeneratingExecutiveSummary}
+                        disabled={isGeneratingExecutiveSummary[stage.id]}
                       >
-                        {isGeneratingExecutiveSummary
+                        {isGeneratingExecutiveSummary[stage.id]
                           ? "Generating..."
                           : "Generate executive summary"}
                       </button>
