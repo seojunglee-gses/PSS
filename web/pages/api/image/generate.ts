@@ -7,6 +7,7 @@ type ImageRequest = {
   stepId?: string;
   prompt?: string;
   baseImageId?: string;
+  userId?: string;
 };
 
 export default async function handler(
@@ -18,13 +19,18 @@ export default async function handler(
     return;
   }
 
-  const { provider, stepId, prompt, baseImageId } = req.body as ImageRequest;
+  const { provider, stepId, prompt, baseImageId, userId } =
+    req.body as ImageRequest;
   if (stepId !== "alternatives") {
     res.status(400).json({ error: "Image generation is only for step 3." });
     return;
   }
   if (!prompt) {
     res.status(400).json({ error: "Prompt is required." });
+    return;
+  }
+  if (baseImageId && !userId) {
+    res.status(400).json({ error: "User context is required for edits." });
     return;
   }
 
@@ -39,6 +45,10 @@ export default async function handler(
     const baseImage = baseImageId
       ? await loadGeneratedImage(baseImageId)
       : await loadCurrentSiteImage();
+    if (baseImageId && userId && baseImage?.userId !== userId) {
+      res.status(403).json({ error: "Base image is not available." });
+      return;
+    }
     const baseImageUrl = baseImage?.downloadUrl;
     if (!baseImageUrl) {
       res.status(400).json({

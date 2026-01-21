@@ -370,7 +370,10 @@ export default function Workspace() {
       return;
     }
     const loadImages = async () => {
-      const generated = await loadGeneratedImages();
+      if (!user?.uid) {
+        return;
+      }
+      const generated = await loadGeneratedImages(user.uid);
       if (generated.length) {
         const mapped = generated.map((image) => ({
           id: image.imageId,
@@ -453,6 +456,9 @@ export default function Workspace() {
     prompt: string,
     baseImageId?: string
   ) => {
+    if (!user?.uid) {
+      throw new Error("Authentication required.");
+    }
     if (!baseImageId && (!siteImageConfigured || !siteImageId)) {
       throw new Error("Site image is not configured.");
     }
@@ -464,6 +470,7 @@ export default function Workspace() {
         stepId: "alternatives",
         prompt,
         baseImageId,
+        userId: user.uid,
       }),
     });
     if (!response.ok) {
@@ -482,6 +489,7 @@ export default function Workspace() {
       base64: payload.base64,
       label: `Alternative ${alternativeImages.length + 1}`,
       note: prompt,
+      userId: user.uid,
     });
     if (!saved) {
       throw new Error("Unable to save generated image.");
