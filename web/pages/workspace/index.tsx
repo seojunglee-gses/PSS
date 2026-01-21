@@ -552,6 +552,7 @@ useEffect(() => {
           stepId: "alternatives",
           provider: activeProvider,
           sender: "assistant",
+          text: "",
           label: activeProvider,
           createdAt: new Date().toISOString(),
           imageUrl: imageRecord.imageUrl,
