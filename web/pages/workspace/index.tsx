@@ -578,6 +578,9 @@ export default function Workspace() {
     prompt: string,
     baseImageId?: string
   ) => {
+    if (!userKey) {
+      throw new Error("Authentication required.");
+    }
     if (!baseImageId && (!siteImageConfigured || !siteImageId)) {
       throw new Error("Site image is not configured.");
     }
