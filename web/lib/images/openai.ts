@@ -5,7 +5,7 @@ type OpenAIImageRequest = {
 };
 
 const bufferToBlob = (buffer: Buffer, mimeType: string) =>
-  new Blob([buffer], { type: mimeType });
+  new Blob([new Uint8Array(buffer)], { type: mimeType });
 
 export const generateOpenAIImage = async ({
   prompt,
