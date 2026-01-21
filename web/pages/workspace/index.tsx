@@ -156,6 +156,7 @@ export default function Workspace() {
   const [savedSummaries, setSavedSummaries] = useState<
     Record<string, string>
   >({});
+  const [completedStages, setCompletedStages] = useState<string[]>([]);
   const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
   const [revisedAfterLock, setRevisedAfterLock] = useState<
     Record<string, boolean>
@@ -190,6 +191,7 @@ export default function Workspace() {
       if (summary?.stageSummaries) {
         setSavedSummaries(summary.stageSummaries);
       }
+      setCompletedStages(summary?.completedStages ?? []);
     };
     loadSavedSummaries();
   }, [userKey]);
@@ -575,13 +577,18 @@ export default function Workspace() {
         ...savedSummaries,
         ...(stageSummary ? { [activeStep.id]: stageSummary } : {}),
       };
+      const nextCompletedStages = Array.from(
+        new Set([...completedStages, activeStep.id])
+      );
       await saveWorkspaceSummary(userKey, {
         stageSummaries: mergedStageSummaries,
         overallSummary: payload.workspaceSummary.overallSummary ?? "",
+        completedStages: nextCompletedStages,
       });
       if (stageSummary) {
         setSavedSummaries(mergedStageSummaries);
       }
+      setCompletedStages(nextCompletedStages);
       setFinishNotice("Chat log sent to Report.");
     } catch (error) {
       setFinishNotice(

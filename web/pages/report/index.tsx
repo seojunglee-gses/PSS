@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
 import {
@@ -41,6 +41,47 @@ type ExecutiveSummary = {
 type WorkspaceSummary = {
   stageSummaries: Record<string, string>;
   overallSummary: string;
+  completedStages?: string[];
+};
+
+const extractConclusion = (summary?: string) => {
+  if (!summary) {
+    return summary;
+  }
+  const lines = summary.split(/\n+/);
+  const conclusionLine = lines.find((line) =>
+    /^(conclusion|결론)\s*[:：]/i.test(line.trim())
+  );
+  if (conclusionLine) {
+    return conclusionLine.replace(/^(conclusion|결론)\s*[:：]\s*/i, "");
+  }
+  return summary;
+};
+
+const renderFormattedSummary = (summary?: string) => {
+  if (!summary) {
+    return null;
+  }
+  return summary.split(/\n+/).map((line, lineIndex) => {
+    const parts = line
+      .split(/(\*\*[^*]+\*\*)/g)
+      .filter(Boolean)
+      .map((part, partIndex) => {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          return (
+            <strong key={`${lineIndex}-${partIndex}`}>
+              {part.slice(2, -2)}
+            </strong>
+          );
+        }
+        return <span key={`${lineIndex}-${partIndex}`}>{part}</span>;
+      });
+    return (
+      <p key={lineIndex} className="text-sm text-slate-600 leading-relaxed">
+        {parts}
+      </p>
+    );
+  });
 };
 
 const extractConclusion = (summary?: string) => {
@@ -94,6 +135,14 @@ export default function Report() {
     useState<WorkspaceSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const completedStageSet = useMemo(
+    () => new Set(workspaceSummary?.completedStages ?? []),
+    [workspaceSummary?.completedStages]
+  );
+  const isStageCompleted = useCallback(
+    (stageId: string) => completedStageSet.has(stageId),
+    [completedStageSet]
+  );
 
   const refreshSummaries = useCallback(async () => {
     if (!userKey) {
@@ -340,7 +389,8 @@ export default function Report() {
             >
               <p className="text-sm font-semibold text-slate-700">{step}</p>
               <div className="mt-2 space-y-2">
-                {workspaceSummary?.stageSummaries[stepIds[index]]
+                {isStageCompleted(stepIds[index]) &&
+                workspaceSummary?.stageSummaries[stepIds[index]]
                   ? renderFormattedSummary(
                       extractConclusion(
                         workspaceSummary?.stageSummaries[stepIds[index]]

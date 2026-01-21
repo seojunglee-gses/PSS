@@ -26,30 +26,6 @@ const buildSystemPrompt = (backgroundKnowledge?: string) =>
 const buildPrompt = (payload: unknown) =>
   `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"keywords\": [\"...\"],\n  \"conclusion\": \"...\"\n}\n\nRules:\n- Conclusion reflects all participants' workspace dialogue summaries for the requested stage.\n- Keywords should capture the top 5 themes people care about most. Return exactly 5 keywords.\n- Keep output concise and structured.`;
 
-function extractOutputText(result: any): string | null {
-  if (typeof result?.output_text === "string" && result.output_text.trim()) {
-    return result.output_text.trim();
-  }
-  const output = result?.output;
-  if (!Array.isArray(output)) return null;
-
-  for (const item of output) {
-    const contents = item?.content;
-    if (!Array.isArray(contents)) continue;
-
-    for (const block of contents) {
-      if (
-        (block.type === "output_text" || block.type === "text") &&
-        typeof block.text === "string" &&
-        block.text.trim()
-      ) {
-        return block.text.trim();
-      }
-    }
-  }
-  return null;
-}
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
