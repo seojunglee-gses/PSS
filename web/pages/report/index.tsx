@@ -44,20 +44,6 @@ type WorkspaceSummary = {
   completedStages?: string[];
 };
 
-const extractConclusion = (summary?: string) => {
-  if (!summary) {
-    return summary;
-  }
-  const lines = summary.split(/\n+/);
-  const conclusionLine = lines.find((line) =>
-    /^(conclusion|결론)\s*[:：]/i.test(line.trim())
-  );
-  if (conclusionLine) {
-    return conclusionLine.replace(/^(conclusion|결론)\s*[:：]\s*/i, "");
-  }
-  return summary;
-};
-
 const renderFormattedSummary = (summary?: string) => {
   if (!summary) {
     return null;
