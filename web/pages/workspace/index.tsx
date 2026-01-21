@@ -794,7 +794,7 @@ useEffect(() => {
     if (lockedStages[activeStep.id]) {
       setFinishNotice({
         status: "error",
-        message: "This stage is locked.");
+        message: "This stage is locked.",
       });
     return;
     }
