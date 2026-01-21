@@ -851,7 +851,7 @@ useEffect(() => {
       setCompletedStages(nextCompletedStages);
       setFinishNotice({ status: "success", message: "Upload complete. Report updated." });
     } catch (error) {
-      setFinishNotice(
+      setFinishNotice({
         status: "error",
         message:
            error instanceof Error
@@ -1368,9 +1368,35 @@ useEffect(() => {
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              {groupedAlternativeImages.map((img) => (
-               <AlternativeImageCard key={img.imageId} image={img} />
-             ))}
+             {groupedAlternativeImages.map((group) =>
+               group.images.map((item) => (
+                 <div
+                   key={item.id}
+                   className={`rounded-2xl border p-4 ${
+                     selectedAlternative === item.id
+                       ? "border-[var(--primary)] bg-blue-50"
+                       : "border-slate-200 bg-slate-50"
+                   }`}
+                 >
+                   <button
+                     className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                     type="button"
+                     onClick={() => {
+                       setSelectedImage(item.id);
+                       setSelectedAlternative(item.id);
+                     }}
+                   >
+                     {item.imageUrl && (
+                       <img
+                         src={item.imageUrl}
+                         alt={item.label}
+                         className="h-full w-full object-contain"
+                       />
+                     )}
+                   </button>
+                 </div>
+               ))
+             )}
             
              {isLoadingAlternatives && (
                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
