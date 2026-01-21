@@ -3,7 +3,6 @@ import AppShell from "../../components/AppShell";
 import {
   loadChatLogsFromFirestore,
   loadCurrentSiteImage,
-  loadGeneratedImages,
   loadStageLocks,
   loadWorkspaceSummary,
   saveGeneratedImageFromBase64,
@@ -24,6 +23,60 @@ const getChatModelByProvider = (provider: string) => {
     return "deepseek-chat";
   }
   return "gpt-5-mini"; // openai default
+};
+
+type Stage3Intent = "text_reasoning" | "image_generate" | "image_edit";
+
+const getStage3Intent = (
+  message: string,
+  hasRecentImage: boolean
+): Stage3Intent => {
+  const normalized = message.toLowerCase();
+  const editHints = [
+    "edit",
+    "modify",
+    "change",
+    "adjust",
+    "tweak",
+    "update",
+    "refine",
+    "background",
+    "color",
+    "palette",
+    "lighting",
+    "contrast",
+    "layout",
+    "composition",
+    "tone",
+    "style",
+    "texture",
+    "material",
+    "add",
+    "remove",
+    "increase",
+    "decrease",
+  ];
+  const generateHints = [
+    "generate",
+    "create",
+    "design",
+    "visualize",
+    "render",
+    "illustrate",
+    "mockup",
+    "concept",
+    "alternative",
+    "image",
+    "picture",
+  ];
+
+  if (hasRecentImage && editHints.some((hint) => normalized.includes(hint))) {
+    return "image_edit";
+  }
+  if (generateHints.some((hint) => normalized.includes(hint))) {
+    return "image_generate";
+  }
+  return "text_reasoning";
 };
 
 const steps = [
@@ -86,6 +139,10 @@ type ChatLog = {
   text: string;
   label: string;
   createdAt: string;
+  imageUrl?: string;
+  imageId?: string;
+  imageLabel?: string;
+  imageNote?: string;
 };
 
 function normalizeSender(
@@ -102,6 +159,7 @@ type DesignImage = {
   label: string;
   note: string;
   imageUrl?: string;
+  createdAt?: string;
 };
 
 const roleDescriptions: Record<string, string> = {
@@ -145,17 +203,12 @@ export default function Workspace() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
   const [siteImageId, setSiteImageId] = useState<string | null>(null);
-  const [alternativeImages, setAlternativeImages] = useState<DesignImage[]>([]);
   const [evaluationImages, setEvaluationImages] = useState<DesignImage[]>(
     defaultEvaluationImages
   );
-  const [imagePrompt, setImagePrompt] = useState("");
-  const [hasDraftedPrompt, setHasDraftedPrompt] = useState(false);
-  const [isDraftingPrompt, setIsDraftingPrompt] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [imagePromptMessage, setImagePromptMessage] = useState<string | null>(
-    null
-  );
+  const [lastGeneratedImageId, setLastGeneratedImageId] = useState<
+    string | null
+  >(null);
   const [rankings, setRankings] = useState<Record<string, number>>(() => {
     const initialState: Record<string, number> = {};
     defaultEvaluationImages.forEach((image, index) => {
@@ -263,20 +316,32 @@ export default function Workspace() {
         .map((log, index) => {
           const sender = normalizeSender(log.sender);
 
-          if (!sender || !log.stepId || !log.text || !log.provider) {
+          if (!sender || !log.stepId || !log.provider) {
             return null;
           }
           const label =
             log.label ?? (sender === "assistant" ? log.provider : role);
           const createdAt =
             log.createdAt ?? new Date(Date.now() + index).toISOString();
+          const text = log.text ?? "";
+          const imageUrl = log.imageUrl;
+          const imageId = log.imageId;
+          const imageLabel = log.imageLabel;
+          const imageNote = log.imageNote;
+          if (!text && !imageUrl) {
+            return null;
+          }
           return {
             stepId: log.stepId,
             provider: log.provider,
             sender,
-            text: log.text,
+            text,
             label,
             createdAt,
+            imageUrl,
+            imageId,
+            imageLabel,
+            imageNote,
           } as ChatLog;
         })
         .filter((log): log is ChatLog => Boolean(log))
@@ -304,27 +369,19 @@ export default function Workspace() {
     loadLocks();
   }, [user]);
 
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-    if (typeof window === "undefined") {
-      return;
-    }
-    const loadImages = async () => {
-      const generated = await loadGeneratedImages();
-      if (generated.length) {
-        const mapped = generated.map((image) => ({
-          id: image.imageId,
-          label: image.label,
-          note: image.note,
-          imageUrl: image.downloadUrl,
-        }));
-        setAlternativeImages(mapped);
-      }
-    };
-    loadImages();
-  }, [user, userKey]);
+  const alternativeImages = useMemo(
+    () =>
+      chatLogs
+        .filter((log) => log.stepId === "alternatives" && log.imageUrl)
+        .map((log) => ({
+          id: log.imageId ?? `image-${log.createdAt}`,
+          label: log.imageLabel ?? "Generated alternative",
+          note: log.imageNote ?? "",
+          imageUrl: log.imageUrl,
+          createdAt: log.createdAt,
+        })),
+    [chatLogs]
+  );
 
   useEffect(() => {
     if (!userKey) {
@@ -390,9 +447,12 @@ export default function Workspace() {
     }, {});
   };
 
-  const requestGeneratedImage = async (prompt: string) => {
-    if (!siteImageConfigured || !siteImageId) {
-      return;
+  const requestGeneratedImage = async (
+    prompt: string,
+    baseImageId?: string
+  ) => {
+    if (!baseImageId && (!siteImageConfigured || !siteImageId)) {
+      throw new Error("Site image is not configured.");
     }
     const response = await fetch("/api/image/generate", {
       method: "POST",
@@ -401,6 +461,7 @@ export default function Workspace() {
         provider: activeProvider,
         stepId: "alternatives",
         prompt,
+        baseImageId,
       }),
     });
     if (!response.ok) {
@@ -423,15 +484,15 @@ export default function Workspace() {
     if (!saved) {
       throw new Error("Unable to save generated image.");
     }
-    setAlternativeImages((prev) => [
-      ...prev,
-      {
-        id: saved.imageId,
-        label: saved.label,
-        note: saved.note,
-        imageUrl: saved.downloadUrl,
-      },
-    ]);
+    const imageRecord = {
+      id: saved.imageId,
+      label: saved.label,
+      note: saved.note,
+      imageUrl: saved.downloadUrl,
+      createdAt: saved.createdAt,
+    };
+    setLastGeneratedImageId(saved.imageId);
+    return imageRecord;
   };
 
   const handleSend = async () => {
@@ -459,12 +520,54 @@ export default function Workspace() {
     setInputValue("");
 
     try {
+      if (stepId === "alternatives") {
+        const intent = getStage3Intent(
+          userMessage,
+          Boolean(lastGeneratedImageId)
+        );
+        if (intent === "image_generate" || intent === "image_edit") {
+          if (intent === "image_generate" && !siteImageConfigured) {
+            setShowSiteImageWarning(true);
+            throw new Error("Image generation requires a site image.");
+          }
+          if (intent === "image_edit" && !lastGeneratedImageId) {
+            throw new Error("Generate an image before requesting an edit.");
+          }
+          const imageRecord = await requestGeneratedImage(
+            userMessage,
+            intent === "image_edit" ? lastGeneratedImageId ?? undefined : undefined
+          );
+          if (!imageRecord?.imageUrl) {
+            throw new Error("Unable to generate the image.");
+          }
+          setChatLogs((prev) => [
+            ...prev,
+            {
+              stepId,
+              provider: activeProvider,
+              sender: "assistant",
+              text:
+                intent === "image_edit"
+                  ? "Updated the latest concept based on your request."
+                  : "Generated a new concept image.",
+              label: activeProvider,
+              createdAt: new Date().toISOString(),
+              imageUrl: imageRecord.imageUrl,
+              imageId: imageRecord.id,
+              imageLabel: imageRecord.label,
+              imageNote: imageRecord.note,
+            },
+          ]);
+          return;
+        }
+      }
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider: activeProvider,
-          model:  getChatModelByProvider(activeProvider),
+          model: getChatModelByProvider(activeProvider),
           stepId,
           message: userMessage,
         }),
@@ -486,7 +589,6 @@ export default function Workspace() {
           createdAt: new Date().toISOString(),
         },
       ]);
-
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -560,75 +662,6 @@ export default function Workspace() {
     }
   };
 
-  const handleDraftImagePrompt = async () => {
-    if (activeStep.id !== "alternatives") {
-      return;
-    }
-    if (hasDraftedPrompt) {
-      return;
-    }
-    if (!alternativesDialogue.trim()) {
-      setImagePromptMessage("Add some dialogue to draft a prompt.");
-      return;
-    }
-    setIsDraftingPrompt(true);
-    setImagePromptMessage(null);
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider: activeProvider,
-          model: getChatModelByProvider(activeProvider),
-          stepId: "alternatives",
-          message: `Draft a concise image prompt for a planning alternative based on this dialogue: ${alternativesDialogue}`,
-        }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Prompt drafting failed.");
-      }
-      const payload = (await response.json()) as { reply: string };
-      setImagePrompt(payload.reply.trim());
-      setHasDraftedPrompt(true);
-    } catch (error) {
-      setImagePromptMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to draft the image prompt."
-      );
-    } finally {
-      setIsDraftingPrompt(false);
-    }
-  };
-
-  const handleGenerateImage = async () => {
-    if (activeStep.id !== "alternatives") {
-      return;
-    }
-    if (!siteImageConfigured) {
-      setShowSiteImageWarning(true);
-      return;
-    }
-    if (!imagePrompt.trim()) {
-      setImagePromptMessage("Image prompt is required.");
-      return;
-    }
-    setIsGeneratingImage(true);
-    setImagePromptMessage(null);
-    try {
-      await requestGeneratedImage(imagePrompt.trim());
-    } catch (error) {
-      setImagePromptMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to generate image."
-      );
-    } finally {
-      setIsGeneratingImage(false);
-    }
-  };
-
   const handleRankingChange = (imageId: string, value: string) => {
     setRankings((prev) => ({
       ...prev,
@@ -654,7 +687,7 @@ export default function Workspace() {
     if (!selected) {
       return;
     }
-    
+
     setEvaluationImages((prev) => {
       const exists = prev.some((image) => image.id === selected.id);
       if (exists) {
@@ -669,6 +702,7 @@ export default function Workspace() {
     await saveUserDesignSubmission(userKey, selected.id);
     setSelectedAlternative(null);
     setShowSubmitNotice("Your selected design has been submitted.");
+    await handleCompleteStep();
   };
 
   const handleSubmitRankings = async () => {
@@ -716,23 +750,28 @@ export default function Workspace() {
     });
   }, [evaluationResults, evaluationImages]);
 
-  const alternativesDialogue = useMemo(
-    () =>
-      chatLogs
-        .filter((log) => log.stepId === "alternatives")
-        .map((log) => log.text)
-        .join(" "),
-    [chatLogs]
-  );
-const hasDraftedImagePrompt = useRef(false);
- useEffect(() => {
-  if (activeStep.id !== "alternatives") return;
-  if (!alternativesDialogue.trim()) return;
-  if (hasDraftedImagePrompt.current) return;
+  const groupedAlternativeImages = useMemo(() => {
+    const sorted = [...alternativeImages].sort((a, b) =>
+      (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
+    );
+    return sorted.map((image, index) => ({
+      revisionLabel: `Revision ${index + 1}`,
+      images: [image],
+    }));
+  }, [alternativeImages]);
+  const isAlternativesLoading =
+    activeStep.id === "alternatives" &&
+    !hasLoadedChatLogs &&
+    alternativeImages.length === 0;
 
-  hasDraftedImagePrompt.current = true;
-  handleDraftImagePrompt().catch(() => null);
-}, [activeStep.id, alternativesDialogue]);
+  useEffect(() => {
+    if (activeStep.id !== "alternatives") {
+      setLastGeneratedImageId(null);
+      return;
+    }
+    const latest = alternativeImages[alternativeImages.length - 1];
+    setLastGeneratedImageId(latest?.id ?? null);
+  }, [activeStep.id, alternativeImages]);
 
   const topPreference = useMemo(() => {
     const ranked = aggregatedResults.filter((result) => result.average > 0);
@@ -773,6 +812,7 @@ const hasDraftedImagePrompt = useRef(false);
               text: basePrompt,
               sender: "assistant" as const,
               label: activeProvider,
+              imageUrl: undefined,
             },
           ]
         : []),
@@ -896,9 +936,20 @@ const hasDraftedImagePrompt = useRef(false);
               <p className="text-xs font-semibold uppercase text-slate-400">
                 {message.label}
               </p>
-              <p className="mt-2 whitespace-pre-line">
-                {formatMessage(message.text)}
-              </p>
+              {message.text && (
+                <p className="mt-2 whitespace-pre-line">
+                  {formatMessage(message.text)}
+                </p>
+              )}
+              {message.imageUrl && (
+                <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <img
+                    src={message.imageUrl}
+                    alt="Generated concept"
+                    className="h-48 w-full object-cover"
+                  />
+                </div>
+              )}
             </div>
           );
         })}
@@ -1099,83 +1150,55 @@ const hasDraftedImagePrompt = useRef(false);
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">Image Gallery</h3>
             <p className="mt-2 text-sm text-slate-500">
-              Draft an image prompt, generate alternatives, and select the
-              design you want to submit.
+              Generate alternatives in the chat, then select the design you
+              want to submit.
             </p>
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-700">
-                  Image prompt draft
-                </p>
-                <button
-                  className="text-xs font-semibold text-slate-500 hover:text-[var(--primary)]"
-                  type="button"
-                  onClick={handleDraftImagePrompt}
-                  disabled={isDraftingPrompt || hasDraftedPrompt}
-                >
-                  {isDraftingPrompt
-                    ? "Drafting..."
-                    : hasDraftedPrompt
-                    ? "Draft complete"
-                    : "Draft prompt"}
-                </button>
-              </div>
-              <textarea
-                className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600"
-                rows={4}
-                value={imagePrompt}
-                onChange={(event) => setImagePrompt(event.target.value)}
-                placeholder="Draft prompt will appear here."
-              />
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <button
-                  className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)] disabled:cursor-not-allowed disabled:opacity-70"
-                  type="button"
-                  onClick={handleGenerateImage}
-                  disabled={isGeneratingImage}
-                >
-                  {isGeneratingImage ? "Generating image..." : "Generate Image"}
-                </button>
-                {imagePromptMessage && (
-                  <span className="text-xs text-slate-500">
-                    {imagePromptMessage}
-                  </span>
-                )}
-              </div>
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              Use the chat panel to request new alternatives or edit the latest
+              concept image. Generated images will appear inline in the chat
+              history and in the gallery below.
             </div>
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              {alternativeImages.length === 0 ? (
+              {groupedAlternativeImages.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  Generated images will appear here once you click Generate
-                  Image.
+                  {isAlternativesLoading
+                    ? "Loading your gallery..."
+                    : "Generated images will appear here once you request them in the chat."}
                 </div>
               ) : (
-                alternativeImages.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`rounded-2xl border p-4 ${
-                      selectedAlternative === item.id
-                        ? "border-[var(--primary)] bg-blue-50"
-                        : "border-slate-200 bg-slate-50"
-                    }`}
-                  >
-                    <button
-                      className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
-                      type="button"
-                      aria-label={`Preview ${item.label}`}
-                      onClick={() => {
-                        setSelectedImage(item.id);
-                        setSelectedAlternative(item.id);
-                      }}
-                    >
-                      {item.imageUrl && (
-                        <img
-                          src={item.imageUrl}
-                          alt={item.label}
-                          className="h-full w-full object-contain"
-                        />
-                      )}
-                    </button>
+                groupedAlternativeImages.map((group) => (
+                  <div key={group.revisionLabel} className="space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                      {group.revisionLabel}
+                    </p>
+                    {group.images.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`rounded-2xl border p-4 ${
+                          selectedAlternative === item.id
+                            ? "border-[var(--primary)] bg-blue-50"
+                            : "border-slate-200 bg-slate-50"
+                        }`}
+                      >
+                        <button
+                          className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                          type="button"
+                          aria-label={`Preview ${item.label}`}
+                          onClick={() => {
+                            setSelectedImage(item.id);
+                            setSelectedAlternative(item.id);
+                          }}
+                        >
+                          {item.imageUrl && (
+                            <img
+                              src={item.imageUrl}
+                              alt={item.label}
+                              className="h-full w-full object-contain"
+                            />
+                          )}
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 ))
               )}
@@ -1187,7 +1210,7 @@ const hasDraftedImagePrompt = useRef(false);
                 onClick={handleSubmitAlternative}
                 disabled={!selectedAlternative}
               >
-                Submit selected design
+                submit your best design
               </button>
               <p className="text-xs text-slate-500">
                 Submit a selected design to move it to the evaluation list.
