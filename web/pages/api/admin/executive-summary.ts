@@ -2,6 +2,25 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
 import { loadBackgroundKnowledge } from "../../../lib/firebase";
 
+function extractOutputText(result: any): string | null {
+  if (!result?.output || !Array.isArray(result.output)) {
+    return null;
+  }
+
+  for (const item of result.output) {
+    if (item.type === "message" && Array.isArray(item.content)) {
+      for (const content of item.content) {
+        if (content.type === "output_text" && typeof content.text === "string") {
+          return content.text;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+
 type WorkspaceSummary = {
   stageSummaries: Record<string, string>;
   overallSummary: string;
