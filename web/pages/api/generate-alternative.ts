@@ -151,7 +151,7 @@ export default async function handler(
     res.status(200).json({
       imageId,
       label: "Generated Concept",
-      note: "Generated with the current site image and recent workspace context.",
+      prompt,
       base64,
       existing: false,
     });
