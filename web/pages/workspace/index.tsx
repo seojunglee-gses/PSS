@@ -1580,9 +1580,15 @@ useEffect(() => {
         </section>
       )}
       {selectedImage && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4">
-          <div className="w-full max-w-4xl rounded-3xl bg-white p-6 shadow-xl">
-            <div className="flex items-start justify-between">
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4"
+          onClick={() => setSelectedImage(null)}
+        >
+          <div
+            className="w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-3xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-start justify-between border-b bg-white px-6 py-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
                   Design preview
@@ -1599,26 +1605,28 @@ useEffect(() => {
                 Close
               </button>
             </div>
-            <div className="mt-6">
+      
+            <div className="max-h-[calc(90vh-96px)] overflow-y-auto px-6 py-6">
               {selectedImageItem?.imageUrl ? (
                 <img
                   src={selectedImageItem.imageUrl}
                   alt="Selected concept"
-                  className="max-h-[80vh] w-full rounded-2xl bg-slate-50 object-contain"
-                  loading="eager"
+                  className="max-h-[60vh] w-full rounded-2xl bg-slate-50 object-contain"
                 />
               ) : (
                 <div className="h-80 rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-100 via-white to-slate-100" />
               )}
+      
+              {selectedImageItem?.note && (
+                <p className="mt-4 whitespace-pre-wrap text-sm text-slate-500">
+                  {selectedImageItem.note}
+                </p>
+              )}
             </div>
-            {selectedImageItem?.note && (
-              <p className="mt-4 text-sm text-slate-500">
-                {selectedImageItem.note}
-              </p>
-            )}
           </div>
         </div>
       )}
+
       {showSiteImageWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
