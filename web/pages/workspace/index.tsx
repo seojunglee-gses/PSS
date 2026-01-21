@@ -3,7 +3,6 @@ import AppShell from "../../components/AppShell";
 import {
   loadChatLogsFromFirestore,
   loadCurrentSiteImage,
-  loadGeneratedImages,
   loadStageLocks,
   loadWorkspaceSummary,
   saveGeneratedImageFromBase64,
@@ -141,6 +140,9 @@ type ChatLog = {
   label: string;
   createdAt: string;
   imageUrl?: string;
+  imageId?: string;
+  imageLabel?: string;
+  imageNote?: string;
 };
 
 function normalizeSender(
@@ -201,7 +203,6 @@ export default function Workspace() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
   const [siteImageId, setSiteImageId] = useState<string | null>(null);
-  const [alternativeImages, setAlternativeImages] = useState<DesignImage[]>([]);
   const [evaluationImages, setEvaluationImages] = useState<DesignImage[]>(
     defaultEvaluationImages
   );
@@ -324,6 +325,9 @@ export default function Workspace() {
             log.createdAt ?? new Date(Date.now() + index).toISOString();
           const text = log.text ?? "";
           const imageUrl = log.imageUrl;
+          const imageId = log.imageId;
+          const imageLabel = log.imageLabel;
+          const imageNote = log.imageNote;
           if (!text && !imageUrl) {
             return null;
           }
@@ -335,6 +339,9 @@ export default function Workspace() {
             label,
             createdAt,
             imageUrl,
+            imageId,
+            imageLabel,
+            imageNote,
           } as ChatLog;
         })
         .filter((log): log is ChatLog => Boolean(log))
@@ -362,31 +369,19 @@ export default function Workspace() {
     loadLocks();
   }, [user]);
 
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-    if (typeof window === "undefined") {
-      return;
-    }
-    const loadImages = async () => {
-      if (!user?.uid) {
-        return;
-      }
-      const generated = await loadGeneratedImages(user.uid);
-      if (generated.length) {
-        const mapped = generated.map((image) => ({
-          id: image.imageId,
-          label: image.label,
-          note: image.note,
-          imageUrl: image.downloadUrl,
-          createdAt: image.createdAt,
-        }));
-        setAlternativeImages(mapped);
-      }
-    };
-    loadImages();
-  }, [user, userKey]);
+  const alternativeImages = useMemo(
+    () =>
+      chatLogs
+        .filter((log) => log.stepId === "alternatives" && log.imageUrl)
+        .map((log) => ({
+          id: log.imageId ?? `image-${log.createdAt}`,
+          label: log.imageLabel ?? "Generated alternative",
+          note: log.imageNote ?? "",
+          imageUrl: log.imageUrl,
+          createdAt: log.createdAt,
+        })),
+    [chatLogs]
+  );
 
   useEffect(() => {
     if (!userKey) {
@@ -456,9 +451,6 @@ export default function Workspace() {
     prompt: string,
     baseImageId?: string
   ) => {
-    if (!user?.uid) {
-      throw new Error("Authentication required.");
-    }
     if (!baseImageId && (!siteImageConfigured || !siteImageId)) {
       throw new Error("Site image is not configured.");
     }
@@ -470,7 +462,6 @@ export default function Workspace() {
         stepId: "alternatives",
         prompt,
         baseImageId,
-        userId: user.uid,
       }),
     });
     if (!response.ok) {
@@ -501,7 +492,6 @@ export default function Workspace() {
       imageUrl: saved.downloadUrl,
       createdAt: saved.createdAt,
     };
-    setAlternativeImages((prev) => [...prev, imageRecord]);
     setLastGeneratedImageId(saved.imageId);
     return imageRecord;
   };
@@ -564,6 +554,9 @@ export default function Workspace() {
               label: activeProvider,
               createdAt: new Date().toISOString(),
               imageUrl: imageRecord.imageUrl,
+              imageId: imageRecord.id,
+              imageLabel: imageRecord.label,
+              imageNote: imageRecord.note,
             },
           ]);
           return;
