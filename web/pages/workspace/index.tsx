@@ -181,38 +181,6 @@ const basePromptsByStep: Record<string, string> = {
     "From your perspective, what is the most important issue in this project?",
 };
 
-function buildInitialAlternativePrompt(params: {
-  chatLogs: ChatLog[];
-}) {
-  const { chatLogs } = params;
-
-  const priorDiscussion = chatLogs
-    .filter(
-      (log) =>
-        log.stepId === "problem" || log.stepId === "data"
-    )
-    .map((log) => log.text)
-    .filter(Boolean)
-    .slice(-5)
-    .join(" ");
-
-  return `
-Use the provided site image as a fixed visual context.
-
-Preserve the overall environment, camera viewpoint, and spatial layout.
-Do NOT change the background structure, camera angle, or scene composition.
-
-Based on the prior workspace discussion below, introduce a single design alternative
-by modifying elements within the existing scene (e.g. configuration, components, layout details).
-
-Prior discussion:
-"${priorDiscussion}"
-
-The result should feel like a grounded alternative derived from analysis,
-not a completely new scene.
-`.trim();
-}
-
 export default function Workspace() {
   const router = useRouter();
   const { user, loading } = useAuth();
