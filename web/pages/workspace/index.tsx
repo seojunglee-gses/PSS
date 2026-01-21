@@ -1160,7 +1160,7 @@ const hasDraftedImagePrompt = useRef(false);
                     }`}
                   >
                     <button
-                      className="h-40 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                      className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
                       type="button"
                       aria-label={`Preview ${item.label}`}
                       onClick={() => {
@@ -1353,7 +1353,7 @@ const hasDraftedImagePrompt = useRef(false);
       )}
       {selectedImage && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4">
-          <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-4xl rounded-3xl bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
@@ -1376,7 +1376,8 @@ const hasDraftedImagePrompt = useRef(false);
                 <img
                   src={selectedImageItem.imageUrl}
                   alt="Selected concept"
-                  className="max-h-[70vh] w-full rounded-2xl bg-slate-50 object-contain"
+                  className="max-h-[80vh] w-full rounded-2xl bg-slate-50 object-contain"
+                  loading="eager"
                 />
               ) : (
                 <div className="h-80 rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-100 via-white to-slate-100" />
