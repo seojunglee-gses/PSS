@@ -21,7 +21,7 @@ export const callOpenAI = async ({
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: model || "gpt-4.1-mini",
+      model: model || "gpt-5-mini",
       input: [
         {
           role: "system",

@@ -84,6 +84,46 @@ const renderFormattedSummary = (summary?: string) => {
   });
 };
 
+const extractConclusion = (summary?: string) => {
+  if (!summary) {
+    return summary;
+  }
+  const lines = summary.split(/\n+/);
+  const conclusionLine = lines.find((line) =>
+    /^(conclusion|결론)\s*[:：]/i.test(line.trim())
+  );
+  if (conclusionLine) {
+    return conclusionLine.replace(/^(conclusion|결론)\s*[:：]\s*/i, "");
+  }
+  return summary;
+};
+
+const renderFormattedSummary = (summary?: string) => {
+  if (!summary) {
+    return null;
+  }
+  return summary.split(/\n+/).map((line, lineIndex) => {
+    const parts = line
+      .split(/(\*\*[^*]+\*\*)/g)
+      .filter(Boolean)
+      .map((part, partIndex) => {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          return (
+            <strong key={`${lineIndex}-${partIndex}`}>
+              {part.slice(2, -2)}
+            </strong>
+          );
+        }
+        return <span key={`${lineIndex}-${partIndex}`}>{part}</span>;
+      });
+    return (
+      <p key={lineIndex} className="text-sm text-slate-600 leading-relaxed">
+        {parts}
+      </p>
+    );
+  });
+};
+
 export default function Report() {
   const { user } = useAuth();
   const userKey = user?.uid;
