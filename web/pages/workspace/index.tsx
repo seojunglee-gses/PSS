@@ -646,50 +646,50 @@ export default function Workspace() {
           Boolean(lastGeneratedImageId)
         );
         if (intent === "image_generate" || intent === "image_edit") {
-  if (intent === "image_generate" && !siteImageConfigured) {
-    setShowSiteImageWarning(true);
-    throw new Error("Image generation requires a site image.");
-  }
-  if (intent === "image_edit" && !lastGeneratedImageId) {
-    throw new Error("Generate an image before requesting an edit.");
-  }
+          if (intent === "image_generate" && !siteImageConfigured) {
+            setShowSiteImageWarning(true);
+            throw new Error("Image generation requires a site image.");
+          }
+          if (intent === "image_edit" && !lastGeneratedImageId) {
+            throw new Error("Generate an image before requesting an edit.");
+          }
+        
+          setIsLoadingAlternatives(true);
 
-  setIsLoadingAlternatives(true);
+          const imageRecord = await requestGeneratedImage(
+            userMessage,
+            intent === "image_edit"
+              ? lastGeneratedImageId ?? undefined
+              : undefined
+          );
+        
+          if (!imageRecord?.imageUrl) {
+            throw new Error("Unable to generate the image.");
+          }
 
-  const imageRecord = await requestGeneratedImage(
-    userMessage,
-    intent === "image_edit"
-      ? lastGeneratedImageId ?? undefined
-      : undefined
-  );
-
-  if (!imageRecord?.imageUrl) {
-    throw new Error("Unable to generate the image.");
-  }
-
-  setChatLogs((prev) => [
-    ...prev,
-    {
-      stepId,
-      provider: activeProvider,
-      sender: "assistant",
-      text:
-        intent === "image_edit"
-          ? "Updated the latest concept based on your request."
-          : "Generated a new concept image.",
-      label: activeProvider,
-      createdAt: new Date().toISOString(),
-      imageUrl: imageRecord.imageUrl,
-      imageId: imageRecord.id,
-      imageLabel: imageRecord.label,
-      imageNote: imageRecord.note,
-    },
-  ]);
-
-  setIsLoadingAlternatives(false);
-
-  return;
-}
+          setChatLogs((prev) => [
+            ...prev,
+            {
+              stepId,
+              provider: activeProvider,
+              sender: "assistant",
+              text:
+                intent === "image_edit"
+                  ? "Updated the latest concept based on your request."
+                  : "Generated a new concept image.",
+              label: activeProvider,
+              createdAt: new Date().toISOString(),
+              imageUrl: imageRecord.imageUrl,
+              imageId: imageRecord.id,
+              imageLabel: imageRecord.label,
+              imageNote: imageRecord.note,
+            },
+          ]);
+        
+          setIsLoadingAlternatives(false); 
+          return;
+        }
+      }
 
       const response = await fetch("/api/chat", {
         method: "POST",
