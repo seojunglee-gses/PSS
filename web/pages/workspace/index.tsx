@@ -199,6 +199,7 @@ export default function Workspace() {
   const [showSubmitNotice, setShowSubmitNotice] = useState<null | string>(null);
   const [finishNotice, setFinishNotice] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
@@ -382,6 +383,22 @@ export default function Workspace() {
         })),
     [chatLogs]
   );
+
+  useEffect(() => {
+    if (activeStep.id !== "alternatives") {
+      setIsLoadingAlternatives(false);
+      return;
+    }
+    if (alternativeImages.length > 0) {
+      setIsLoadingAlternatives(false);
+      return;
+    }
+    if (!hasLoadedChatLogs) {
+      setIsLoadingAlternatives(true);
+      return;
+    }
+    setIsLoadingAlternatives(false);
+  }, [activeStep.id, alternativeImages.length, hasLoadedChatLogs]);
 
   useEffect(() => {
     if (!userKey) {
@@ -1223,8 +1240,9 @@ useEffect(() => {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {groupedAlternativeImages.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  Generated images will appear here once you request them in the
-                  chat.
+                  {isLoadingAlternatives
+                    ? "Loading your gallery..."
+                    : "Generated images will appear here once you request them in the chat."}
                 </div>
               ) : (
                 groupedAlternativeImages.map((group) => (
