@@ -104,8 +104,6 @@ type DesignImage = {
   imageUrl?: string;
 };
 
-const chatModel = "gpt-5-mini";
-
 const roleDescriptions: Record<string, string> = {
   "The Public":
     "Focus on community impact and public-facing outcomes during each stage.",
