@@ -451,6 +451,7 @@ export default function Workspace() {
     prompt: string,
     baseImageId?: string
   ) => {
+    
     if (!baseImageId && (!siteImageConfigured || !siteImageId)) {
       throw new Error("Site image is not configured.");
     }
@@ -480,7 +481,7 @@ export default function Workspace() {
       base64: payload.base64,
       label: `Alternative ${alternativeImages.length + 1}`,
       note: prompt,
-      userId: user.uid,
+      userId: userKey,
     });
     if (!saved) {
       throw new Error("Unable to save generated image.");
