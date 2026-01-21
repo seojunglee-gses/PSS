@@ -635,6 +635,10 @@ export default function Workspace() {
       [imageId]: Number(value),
     }));
   };
+  const selectedImageItem = selectedImage
+    ? evaluationImages.find((image) => image.id === selectedImage) ||
+      alternativeImages.find((image) => image.id === selectedImage)
+    : undefined;
 
   const handleSubmitAlternative = async () => {
     if (!selectedAlternative) {
@@ -1156,8 +1160,9 @@ const hasDraftedImagePrompt = useRef(false);
                     }`}
                   >
                     <button
-                      className="h-32 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                      className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
                       type="button"
+                      aria-label={`Preview ${item.label}`}
                       onClick={() => {
                         setSelectedImage(item.id);
                         setSelectedAlternative(item.id);
@@ -1167,14 +1172,10 @@ const hasDraftedImagePrompt = useRef(false);
                         <img
                           src={item.imageUrl}
                           alt={item.label}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-contain"
                         />
                       )}
                     </button>
-                    <p className="mt-3 text-sm font-semibold text-slate-700">
-                      {item.label}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">{item.note}</p>
                   </div>
                 ))
               )}
@@ -1352,17 +1353,14 @@ const hasDraftedImagePrompt = useRef(false);
       )}
       {selectedImage && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4">
-          <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-4xl rounded-3xl bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
                   Design preview
                 </p>
                 <h3 className="mt-2 text-xl font-semibold">
-                  {(
-                    evaluationImages.find((image) => image.id === selectedImage) ||
-                    alternativeImages.find((image) => image.id === selectedImage)
-                  )?.label ?? "Design concept"}
+                  {selectedImageItem?.label ?? "Design concept"}
                 </h3>
               </div>
               <button
@@ -1374,31 +1372,22 @@ const hasDraftedImagePrompt = useRef(false);
               </button>
             </div>
             <div className="mt-6">
-              {(
-                evaluationImages.find((image) => image.id === selectedImage) ||
-                alternativeImages.find((image) => image.id === selectedImage)
-              )?.imageUrl ? (
+              {selectedImageItem?.imageUrl ? (
                 <img
-                  src={
-                    (
-                      evaluationImages.find(
-                        (image) => image.id === selectedImage
-                      ) ||
-                      alternativeImages.find(
-                        (image) => image.id === selectedImage
-                      )
-                    )?.imageUrl
-                  }
+                  src={selectedImageItem.imageUrl}
                   alt="Selected concept"
-                  className="h-80 w-full rounded-2xl object-cover"
+                  className="max-h-[80vh] w-full rounded-2xl bg-slate-50 object-contain"
+                  loading="eager"
                 />
               ) : (
                 <div className="h-80 rounded-2xl border border-slate-200 bg-gradient-to-br from-blue-100 via-white to-slate-100" />
               )}
             </div>
-            <p className="mt-4 text-sm text-slate-500">
-              Inspect the design concept in detail before assigning a ranking.
-            </p>
+            {selectedImageItem?.note && (
+              <p className="mt-4 text-sm text-slate-500">
+                {selectedImageItem.note}
+              </p>
+            )}
           </div>
         </div>
       )}
