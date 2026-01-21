@@ -490,7 +490,7 @@ export default function Workspace() {
     const payload = (await response.json()) as {
       imageId: string;
       label?: string;
-      note?: string;
+      prompt?: string;
       base64?: string;
     };
     if (!payload.base64) {
@@ -500,9 +500,7 @@ export default function Workspace() {
       imageId: payload.imageId,
       base64: payload.base64,
       label: payload.label ?? `Alternative ${alternativeImages.length + 1}`,
-      note:
-        payload.note ??
-        "Generated from earlier stage discussions and workspace context.",
+      note: payload.prompt!,
       userId: userKey!,
     });
     if (!saved) {
