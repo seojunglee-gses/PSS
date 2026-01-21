@@ -18,7 +18,7 @@ import { useRouter } from "next/router";
 
 const getChatModelByProvider = (provider: string) => {
   if (provider.toLowerCase() === "gemini") {
-    return "gemini-2.0-flash";
+    return "gemini-1.5-flash";
   }
   if (provider.toLowerCase() === "deepseek") {
     return "deepseek-chat";
