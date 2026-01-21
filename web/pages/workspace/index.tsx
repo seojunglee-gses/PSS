@@ -625,7 +625,7 @@ export default function Workspace() {
 useEffect(() => {
   if (!userKey) return;
   if (!hasLoadedChatLogs) return;
-  if (hasAnyAlternativeImage) return;
+  if (alternativeImages.length > 0) return;
 
   const generateInitialAlternative = async () => {
     try {
