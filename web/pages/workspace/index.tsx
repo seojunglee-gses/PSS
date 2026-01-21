@@ -655,35 +655,44 @@ export default function Workspace() {
           if (intent === "image_edit" && !lastGeneratedImageId) {
             throw new Error("Generate an image before requesting an edit.");
           }
-          const imageRecord = await requestGeneratedImage(
-            userMessage,
-            intent === "image_edit" ? lastGeneratedImageId ?? undefined : undefined
-          );
-          if (!imageRecord?.imageUrl) {
-            throw new Error("Unable to generate the image.");
-          }
-          setChatLogs((prev) => [
-            ...prev,
-            {
-              stepId,
-              provider: activeProvider,
-              sender: "assistant",
-              text:
-                intent === "image_edit"
-                  ? "Updated the latest concept based on your request."
-                  : "Generated a new concept image.",
-              label: activeProvider,
-              createdAt: new Date().toISOString(),
-              imageUrl: imageRecord.imageUrl,
-              imageId: imageRecord.id,
-              imageLabel: imageRecord.label,
-              imageNote: imageRecord.note,
-            },
-          ]);
-          return;
-        }
-      }
+          
+  setIsLoadingAlternatives(true);
 
+  try {
+    const imageRecord = await requestGeneratedImage(
+      userMessage,
+      intent === "image_edit"
+        ? lastGeneratedImageId ?? undefined
+        : undefined
+    );
+
+    if (!imageRecord?.imageUrl) {
+      throw new Error("Unable to generate the image.");
+    }
+
+    setChatLogs((prev) => [
+      ...prev,
+      {
+        stepId,
+        provider: activeProvider,
+        sender: "assistant",
+        text:
+          intent === "image_edit"
+            ? "Updated the latest concept based on your request."
+            : "Generated a new concept image.",
+        label: activeProvider,
+        createdAt: new Date().toISOString(),
+        imageUrl: imageRecord.imageUrl,
+        imageId: imageRecord.id,
+        imageLabel: imageRecord.label,
+        imageNote: imageRecord.note,
+      },
+    ]);
+  } finally {
+    setIsLoadingAlternatives(false);
+  }
+  return;
+}
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1280,6 +1289,12 @@ export default function Workspace() {
               concept image. Generated images will appear inline in the chat
               history and in the gallery below.
             </div>
+            {isLoadingAlternatives && alternativeImages.length > 0 && (
+            <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-300 border-t-[var(--primary)]" />
+              Generating a new alternative…
+            </div>
+          )}
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {groupedAlternativeImages.length === 0 ? (
                <div className="flex flex-col items-center justify-center gap-3 py-6">
