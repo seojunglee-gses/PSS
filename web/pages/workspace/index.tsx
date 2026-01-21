@@ -516,8 +516,10 @@ useEffect(() => {
     try {
       setIsSending(true);
       const systemPrompt =
-        "Generate an initial design alternative based on the prior discussion. " +
-        "This should serve as a starting point for refinement.";
+        "Use the provided base image as the visual reference. Incorporate insights from the prior workspace discussion and the generated report summary."
+        + "The design should visually reflect the key concerns, constraints, and priorities that were identified earlier (such as stability, feasibility, risk mitigation, or operational clarity)."
+        + "Generate a new design alternative that responds to those findings rather than starting from scratch."
+        + "The result should feel like a reasoned alternative derived from analysis, suitable for direct comparison with other options in the evaluation stage.";
 
       const imageRecord = await requestGeneratedImage(systemPrompt);
 
