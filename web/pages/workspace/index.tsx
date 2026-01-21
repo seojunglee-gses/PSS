@@ -448,27 +448,26 @@ export default function Workspace() {
   };
 
   const requestGeneratedImage = async (
-    prompt: string,
-    baseImageId?: string
+  prompt: string,
+  baseImageId?: string
   ) => {
-    
-    if (!baseImageId && (!siteImageConfigured || !siteImageId)) {
-      throw new Error("Site image is not configured.");
-    }
-    const response = await fetch("/api/image/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: activeProvider,
-        stepId: "alternatives",
-        prompt,
-        baseImageId,
+  if (!userKey) {
+    throw new Error("Authentication required.");
+  }
+
+  const uid: string = userKey;
+
+  const response = await fetch("/api/image/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: activeProvider,
+      stepId: "alternatives",
+      prompt,
+      baseImageId,
       }),
     });
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(payload?.error ?? "Image generation failed.");
-    }
+    
     const payload = (await response.json()) as {
       imageId: string;
       base64: string;
@@ -481,7 +480,7 @@ export default function Workspace() {
       base64: payload.base64,
       label: `Alternative ${alternativeImages.length + 1}`,
       note: prompt,
-      userId: userKey,
+      userId: uid,
     });
     if (!saved) {
       throw new Error("Unable to save generated image.");
