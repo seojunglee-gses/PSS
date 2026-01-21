@@ -176,7 +176,7 @@ const roleDescriptions: Record<string, string> = {
 const basePromptsByStep: Record<string, string> = {
   data: "What stands out to you in this data?",
   alternatives:
-    "Based on our talks, I generated images you might like. How do you think?",
+    "",
   evaluation: "Which design seems interesting and why?",
   report:
     "From your perspective, what is the most important issue in this project?",
@@ -198,7 +198,8 @@ export default function Workspace() {
   );
   const [showSiteImageWarning, setShowSiteImageWarning] = useState(false);
   const [showSubmitNotice, setShowSubmitNotice] = useState<null | string>(null);
-  const [finishNotice, setFinishNotice] = useState<string | null>(null);
+  type FinishNotice = { status: "uploading" | "success" | "error"; message: string };
+  const [finishNotice, setFinishNotice] = useState<FinishNotice | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const [hasInitializedAlternatives, setHasInitializedAlternatives] = useState(false);
@@ -473,16 +474,6 @@ useEffect(() => {
     };
     loadSiteImage();
   }, []);
-
-  useEffect(() => {
-    if (!finishNotice) {
-      return;
-    }
-    const timeout = window.setTimeout(() => {
-      setFinishNotice(null);
-    }, 3000);
-    return () => window.clearTimeout(timeout);
-  }, [finishNotice]);
 
   useEffect(() => {
     setRankings((prev) => {
@@ -813,7 +804,7 @@ useEffect(() => {
       [activeStep.id]: stepSummaries[activeStep.id],
     }));
     setIsSummarizing(true);
-    setFinishNotice("Chat log sent to Report. Updating summaries...");
+    setFinishNotice({ status: "uploading", message: "Uploading chat logs to Report..." });
     
     try {
       const response = await fetch("/api/workspace-summary", {
@@ -852,18 +843,19 @@ useEffect(() => {
         setSavedSummaries(mergedStageSummaries);
       }
       setCompletedStages(nextCompletedStages);
-      setFinishNotice("Chat log sent to Report.");
+      setFinishNotice({ status: "success", message: "Upload complete. Report updated." });
     } catch (error) {
       setFinishNotice(
-        error instanceof Error
-          ? `Chat log sent, summary update failed: ${error.message}`
-          : "Chat log sent, summary update failed."
-      );
+        status: "error",
+        message:
+           error instanceof Error
+            ? `Upload failed: ${error.message}`
+            : "Upload failed.",
+        });
     } finally {
       setIsSummarizing(false);
       setTimeout(() => {
-        setFinishNotice(null);
-      }, 3000);
+        window.setTimeout(() => setFinishNotice(null), 3000);
     }
   };
   const handleRankingChange = (imageId: string, value: string) => {
@@ -906,7 +898,6 @@ useEffect(() => {
     await saveUserDesignSubmission(userKey, selected.id);
     setHasInitializedAlternatives(true);
     setSelectedAlternative(null);
-    setShowSubmitNotice("Your selected design has been submitted.");
     await handleCompleteStep();
   };
 
@@ -1120,11 +1111,6 @@ useEffect(() => {
             needs.
           </div>
         )}
-        {activeStep.id === "alternatives" && stepLogs.length > 0 && (
-          <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
-            Based on our conversation, I generated design images for review.
-          </div>
-        )}
         {displayedMessages.map((message, index) => {
           const isAssistant = message.sender === "assistant";
           return (
@@ -1188,12 +1174,21 @@ useEffect(() => {
         </div>
       )}
       {finishNotice && (
-      <div className="mt-3 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
-        {isSummarizing && (
-          <div className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-300 border-t-transparent" />
-        )}
-          {finishNotice}
-        </div>
+        <div
+          className={`mt-3 flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs ${
+            finishNotice.status === "uploading" || finishNotice.status === "error"
+              ? "border-rose-200 bg-rose-50 text-rose-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}
+        >
+      {isSummarizing && (
+         <div className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-300 border-t-transparent" />
+      )}
+      {finishNotice.status === "uploading" && (
+        <div className="h-3 w-3 animate-spin rounded-full border-2 border-rose-300 border-t-transparent" />
+      )}
+        {finishNotice.message}  
+      </div>
       )}
       <button
         className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
@@ -1365,36 +1360,30 @@ useEffect(() => {
               concept image. Generated images will appear inline in the chat
               history and in the gallery below.
             </div>
-            {isLoadingAlternatives && (
-              <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
-                <div className="relative h-4 w-4">
-                  <div className="absolute inset-0 rounded-full border-2 border-slate-300" />
-                  <div className="absolute inset-0 rounded-full border-2 border-[var(--primary)] border-t-transparent animate-spin" />
-                </div>
-                Generating a new design…
-              </div>
-            )}
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
-              {groupedAlternativeImages.length === 0 ? (
+              {groupedAlternativeImages.map((img) => (
+               <AlternativeImageCard key={img.imageId} image={img} />
+             ))}
+            
+             {isLoadingAlternatives && (
+               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                 <div className="h-44 w-full rounded-xl border border-slate-200 bg-white flex items-center justify-center">
+                   <div className="flex items-center gap-3 text-sm text-slate-500">
+                     <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-transparent" />
+                     Generating new design…
+                   </div>
+                 </div>
+               </div>
+             )}
+            
+             {groupedAlternativeImages.length === 0 && !isLoadingAlternatives && (
                <div className="flex flex-col items-center justify-center gap-3 py-6">
-                {isLoadingAlternatives ? (
-                  <>
-                    <div className="relative h-10 w-10">
-                      <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
-                      <div className="absolute inset-0 rounded-full border-4 border-[var(--primary)] border-t-transparent animate-spin" />
-                    </div>
-                    <span className="text-sm text-slate-500">
-                      Generating design alternatives…
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-sm text-slate-500 text-center">
-                    Generated images will appear here once you request them in the chat.
-                  </span>
-                )}
-              </div>
-            ) : (
+                 <span className="text-sm text-slate-500 text-center">
+                   Generated images will appear here once you request them in the chat.
+                 </span>
+               </div>
+             )}
                 groupedAlternativeImages.map((group) => (
                   <div key={group.revisionLabel} className="space-y-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
