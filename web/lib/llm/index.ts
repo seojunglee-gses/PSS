@@ -15,7 +15,7 @@ function resolveModel(provider: Provider, model?: string): string {
   switch (provider) {
     case "gemini":
       if (!model || !model.startsWith("gemini-")) {
-        return "gemini-1.5-flash";
+        return "gemini-3-flash-preview";
       }
       return model;
 
@@ -27,7 +27,7 @@ function resolveModel(provider: Provider, model?: string): string {
 
     case "openai":
     default:
-      return model ?? "gpt-4.1-mini";
+      return model ?? "gpt-5-mini";
   }
 }
 
