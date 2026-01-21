@@ -44,32 +44,6 @@ type WorkspaceSummary = {
   completedStages?: string[];
 };
 
-const renderFormattedSummary = (summary?: string) => {
-  if (!summary) {
-    return null;
-  }
-  return summary.split(/\n+/).map((line, lineIndex) => {
-    const parts = line
-      .split(/(\*\*[^*]+\*\*)/g)
-      .filter(Boolean)
-      .map((part, partIndex) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-          return (
-            <strong key={`${lineIndex}-${partIndex}`}>
-              {part.slice(2, -2)}
-            </strong>
-          );
-        }
-        return <span key={`${lineIndex}-${partIndex}`}>{part}</span>;
-      });
-    return (
-      <p key={lineIndex} className="text-sm text-slate-600 leading-relaxed">
-        {parts}
-      </p>
-    );
-  });
-};
-
 const extractConclusion = (summary?: string) => {
   if (!summary) {
     return summary;

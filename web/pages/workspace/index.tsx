@@ -529,9 +529,7 @@ export default function Workspace() {
         ...savedSummaries,
         ...(stageSummary ? { [activeStep.id]: stageSummary } : {}),
       };
-      const nextCompletedStages = Array.from(
-        new Set([...completedStages, activeStep.id])
-      );
+      const nextCompletedStages = Object.keys(mergedStageSummaries);
       await saveWorkspaceSummary(userKey, {
         stageSummaries: mergedStageSummaries,
         overallSummary: payload.workspaceSummary.overallSummary ?? "",
