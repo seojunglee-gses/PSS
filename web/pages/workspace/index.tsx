@@ -389,16 +389,14 @@ export default function Workspace() {
       setIsLoadingAlternatives(false);
       return;
     }
-    if (alternativeImages.length > 0) {
-      setIsLoadingAlternatives(false);
-      return;
-    }
+  
     if (!hasLoadedChatLogs) {
       setIsLoadingAlternatives(true);
       return;
     }
-    setIsLoadingAlternatives(false);
-  }, [activeStep.id, alternativeImages.length, hasLoadedChatLogs]);
+
+  setIsLoadingAlternatives(alternativeImages.length === 0);
+  }, [activeStep.id, hasLoadedChatLogs, alternativeImages.length]);
 
   useEffect(() => {
     if (!userKey) {
@@ -533,10 +531,9 @@ useEffect(() => {
     try {
       setIsSending(true);
       const systemPrompt =
-        "Use the provided base image as the visual reference. Incorporate insights from the prior workspace discussion and the generated report summary."
-        + "The design should visually reflect the key concerns, constraints, and priorities that were identified earlier (such as stability, feasibility, risk mitigation, or operational clarity)."
-        + "Generate a new design alternative that responds to those findings rather than starting from scratch."
-        + "The result should feel like a reasoned alternative derived from analysis, suitable for direct comparison with other options in the evaluation stage.";
+        "Use the provided base image as the primary visual reference.Preserve the original composition, background, camera angle, and overall layout."
+        + "Apply localized design modifications that reflect insights from the prior workspace discussion and earlier stages."
+        + "Do NOT introduce a new scene, background, or dramatic stylistic change. The result should look like a realistic alternative that could be directly compared side-by-side with the original image.";
 
       const imageRecord = await requestGeneratedImage(systemPrompt);
 
@@ -1237,10 +1234,18 @@ useEffect(() => {
             </div>
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {groupedAlternativeImages.length === 0 ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  {isLoadingAlternatives
-                    ? "Loading your gallery..."
-                    : "Generated images will appear here once you request them in the chat."}
+               <div className="relative h-10 w-10">
+                  <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
+                  <div className="absolute inset-0 rounded-full border-4 border-[var(--primary)] border-t-transparent animate-spin" />
+                </div>
+                  {isLoadingAlternatives ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="h-8 w-8 rounded-full border-4 border-slate-300 border-t-[var(--primary)] animate-spin" />
+                      <span>Generating design alternatives…</span>
+                    </div>
+                  ) : (
+                    "Generated images will appear here once you request them in the chat."
+                  )}
                 </div>
               ) : (
                 groupedAlternativeImages.map((group) => (
