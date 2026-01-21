@@ -465,9 +465,14 @@ export default function Workspace() {
       stepId: "alternatives",
       prompt,
       baseImageId,
+      userId: uid,
       }),
     });
-    
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error ?? "Image generation failed.");
+    }
+        
     const payload = (await response.json()) as {
       imageId: string;
       base64: string;
