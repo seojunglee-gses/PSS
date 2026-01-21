@@ -465,26 +465,31 @@ export default function Workspace() {
   };
 
   const requestGeneratedImage = async (
-    prompt: string,
-    baseImageId?: string
+  prompt: string,
+  baseImageId?: string
   ) => {
-    if (!baseImageId && (!siteImageConfigured || !siteImageId)) {
-      throw new Error("Site image is not configured.");
-    }
-    const response = await fetch("/api/image/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: activeProvider,
-        stepId: "alternatives",
-        prompt,
-        baseImageId,
+  if (!userKey) {
+    throw new Error("Authentication required.");
+  }
+
+  const uid: string = userKey;
+
+  const response = await fetch("/api/image/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: activeProvider,
+      stepId: "alternatives",
+      prompt,
+      baseImageId,
+      userId: uid,
       }),
     });
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(payload?.error ?? "Image generation failed.");
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error ?? "Image generation failed.");
     }
+        
     const payload = (await response.json()) as {
       imageId: string;
       base64: string;
@@ -497,6 +502,7 @@ export default function Workspace() {
       base64: payload.base64,
       label: `Alternative ${alternativeImages.length + 1}`,
       note: prompt,
+      userId: uid,
     });
     if (!saved) {
       throw new Error("Unable to save generated image.");
@@ -512,6 +518,64 @@ export default function Workspace() {
     return imageRecord;
   };
 
+useEffect(() => {
+  if (activeStep.id !== "alternatives") {
+    return;
+  }
+  if (alternativeImages.length > 0) {
+    return;
+  }
+  if (!userKey) {
+    return;
+  }
+
+  const generateInitialAlternative = async () => {
+    try {
+      setIsSending(true);
+      const systemPrompt =
+        "Generate an initial design alternative based on the prior discussion. " +
+        "This should serve as a starting point for refinement.";
+
+      const imageRecord = await requestGeneratedImage(systemPrompt);
+
+      if (!imageRecord?.imageUrl) {
+        throw new Error("Failed to generate initial alternative.");
+      }
+
+      setChatLogs((prev) => [
+        ...prev,
+        {
+          stepId: "alternatives",
+          provider: activeProvider,
+          sender: "assistant",
+          text: "I’ve created an initial design alternative to get us started.",
+          label: activeProvider,
+          createdAt: new Date().toISOString(),
+          imageUrl: imageRecord.imageUrl,
+          imageId: imageRecord.id,
+          imageLabel: imageRecord.label,
+          imageNote: imageRecord.note,
+        },
+      ]);
+    } catch (err) {
+      console.error(err);
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : "Unable to generate initial alternative."
+      );
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  generateInitialAlternative();
+}, [
+  activeStep.id,
+  alternativeImages.length,
+  userKey,
+]);
+  
   const handleSend = async () => {
     if (!inputValue.trim()) {
       return;
