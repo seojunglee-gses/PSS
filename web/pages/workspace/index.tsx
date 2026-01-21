@@ -799,7 +799,10 @@ useEffect(() => {
     return;
     }
     if (!userKey) {
-      setFinishNotice("Authentication required.");
+      setFinishNotice({
+        status: "error",
+        message: "Authentication required.",
+        });
       return;
     }
     setSavedSummaries((prev) => ({
