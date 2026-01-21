@@ -150,6 +150,7 @@ export default function Workspace() {
     defaultEvaluationImages
   );
   const [imagePrompt, setImagePrompt] = useState("");
+  const [hasDraftedPrompt, setHasDraftedPrompt] = useState(false);
   const [isDraftingPrompt, setIsDraftingPrompt] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [imagePromptMessage, setImagePromptMessage] = useState<string | null>(
@@ -563,6 +564,9 @@ export default function Workspace() {
     if (activeStep.id !== "alternatives") {
       return;
     }
+    if (hasDraftedPrompt) {
+      return;
+    }
     if (!alternativesDialogue.trim()) {
       setImagePromptMessage("Add some dialogue to draft a prompt.");
       return;
@@ -586,6 +590,7 @@ export default function Workspace() {
       }
       const payload = (await response.json()) as { reply: string };
       setImagePrompt(payload.reply.trim());
+      setHasDraftedPrompt(true);
     } catch (error) {
       setImagePromptMessage(
         error instanceof Error
@@ -723,7 +728,7 @@ export default function Workspace() {
     if (!alternativesDialogue.trim()) {
       return;
     }
-    if (imagePrompt || isDraftingPrompt) {
+    if (imagePrompt || isDraftingPrompt || hasDraftedPrompt) {
       return;
     }
     handleDraftImagePrompt().catch(() => null);
@@ -731,6 +736,7 @@ export default function Workspace() {
     activeStep.id,
     alternativesDialogue,
     imagePrompt,
+    hasDraftedPrompt,
     isDraftingPrompt,
   ]);
 
@@ -1111,9 +1117,13 @@ export default function Workspace() {
                   className="text-xs font-semibold text-slate-500 hover:text-[var(--primary)]"
                   type="button"
                   onClick={handleDraftImagePrompt}
-                  disabled={isDraftingPrompt}
+                  disabled={isDraftingPrompt || hasDraftedPrompt}
                 >
-                  {isDraftingPrompt ? "Drafting..." : "Regenerate draft"}
+                  {isDraftingPrompt
+                    ? "Drafting..."
+                    : hasDraftedPrompt
+                    ? "Draft complete"
+                    : "Draft prompt"}
                 </button>
               </div>
               <textarea
