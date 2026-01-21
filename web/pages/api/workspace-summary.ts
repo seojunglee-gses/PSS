@@ -15,7 +15,7 @@ const buildSystemPrompt = (backgroundKnowledge?: string) =>
     : systemPromptBase;
 
 const buildPrompt = (payload: unknown) =>
-  `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"workspaceSummary\": {\n    \"stageSummaries\": {\n      \"problem\": \"...\",\n      \"data\": \"...\",\n      \"alternatives\": \"...\",\n      \"evaluation\": \"...\",\n      \"report\": \"...\"\n    },\n    \"overallSummary\": \"...\"\n  }\n}\n\nRules:\n- Workspace summary is ONLY the current user's dialogues grouped by stage.\n- Provide stage-specific insights and a concise overall summary.\n- Use abstract insights, not raw quotes.`;
+  `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"workspaceSummary\": {\n    \"stageSummaries\": {\n      \"problem\": \"...\",\n      \"data\": \"...\",\n      \"alternatives\": \"...\",\n      \"evaluation\": \"...\",\n      \"report\": \"...\"\n    },\n    \"overallSummary\": \"...\"\n  }\n}\n\nRules:\n- Workspace summary is ONLY the current user's dialogues grouped by stage.\n- Provide stage-specific conclusions and a concise overall conclusion.\n- Each stage summary must be written as a conclusion-only statement (no other sections).\n- Use abstract insights, not raw quotes.`;
 
 export default async function handler(
   req: NextApiRequest,

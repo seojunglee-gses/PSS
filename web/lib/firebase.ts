@@ -258,7 +258,7 @@ export const loadLatestExecutiveSummariesByStage = async (): Promise<
     new Set(
       Object.values(perStage).flatMap((entry) => entry.keywords ?? [])
     )
-  );
+  ).slice(0, 5);
 
   const stageSummaries = {
     problemDefinition: "",

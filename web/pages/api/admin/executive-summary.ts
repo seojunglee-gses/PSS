@@ -24,7 +24,7 @@ const buildSystemPrompt = (backgroundKnowledge?: string) =>
     : systemPromptBase;
 
 const buildPrompt = (payload: unknown) =>
-  `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"keywords\": [\"...\"],\n  \"stageSummary\": \"...\"\n}\n\nRules:\n- Stage summary reflects all participants' workspace dialogue summaries for the requested stage.\n- Keywords should capture recurring themes across accumulated dialogues.\n- Keep output concise and structured.`;
+  `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"keywords\": [\"...\"],\n  \"conclusion\": \"...\"\n}\n\nRules:\n- Conclusion reflects all participants' workspace dialogue summaries for the requested stage.\n- Keywords should capture the top 5 themes people care about most. Return exactly 5 keywords.\n- Keep output concise and structured.`;
 
 function extractOutputText(result: any): string | null {
   if (typeof result?.output_text === "string" && result.output_text.trim()) {
@@ -158,11 +158,17 @@ export default async function handler(
     if (!content) {
       throw new Error("No summary content returned.");
     }
-    
-    const parsed = JSON.parse(content);
+
+    const parsed = JSON.parse(content) as {
+      keywords: string[];
+      conclusion: string;
+    };
+    const keywords = Array.isArray(parsed.keywords)
+      ? parsed.keywords.slice(0, 5)
+      : [];
 
     const payload = {
-      keywords: parsed.keywords ?? [],
+      keywords,
       currentStage: stage.label,
       stageId: stage.id,
       stageSummaries: {
@@ -172,19 +178,19 @@ export default async function handler(
         designEvaluation: "",
         decision: "",
         ...(stage.id === "problem"
-          ? { problemDefinition: parsed.stageSummary ?? "" }
+          ? { problemDefinition: parsed.conclusion ?? "" }
           : {}),
         ...(stage.id === "data"
-          ? { dataAnalysis: parsed.stageSummary ?? "" }
+          ? { dataAnalysis: parsed.conclusion ?? "" }
           : {}),
         ...(stage.id === "alternatives"
-          ? { designAlternatives: parsed.stageSummary ?? "" }
+          ? { designAlternatives: parsed.conclusion ?? "" }
           : {}),
         ...(stage.id === "evaluation"
-          ? { designEvaluation: parsed.stageSummary ?? "" }
+          ? { designEvaluation: parsed.conclusion ?? "" }
           : {}),
         ...(stage.id === "report"
-          ? { decision: parsed.stageSummary ?? "" }
+          ? { decision: parsed.conclusion ?? "" }
           : {}),
       },
       createdAt: new Date().toISOString(),

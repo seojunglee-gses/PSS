@@ -43,6 +43,20 @@ type WorkspaceSummary = {
   overallSummary: string;
 };
 
+const extractConclusion = (summary?: string) => {
+  if (!summary) {
+    return summary;
+  }
+  const lines = summary.split(/\n+/);
+  const conclusionLine = lines.find((line) =>
+    /^(conclusion|결론)\s*[:：]/i.test(line.trim())
+  );
+  if (conclusionLine) {
+    return conclusionLine.replace(/^(conclusion|결론)\s*[:：]\s*/i, "");
+  }
+  return summary;
+};
+
 const renderFormattedSummary = (summary?: string) => {
   if (!summary) {
     return null;
@@ -214,7 +228,9 @@ export default function Report() {
             <div className="mt-2 space-y-2">
               {executiveSummary?.stageSummaries.problemDefinition
                 ? renderFormattedSummary(
-                    executiveSummary.stageSummaries.problemDefinition
+                    extractConclusion(
+                      executiveSummary.stageSummaries.problemDefinition
+                    )
                   )
                 : "Refresh to generate stakeholder comparisons."}
             </div>
@@ -226,7 +242,9 @@ export default function Report() {
             <div className="mt-2 space-y-2">
               {executiveSummary?.stageSummaries.dataAnalysis
                 ? renderFormattedSummary(
-                    executiveSummary.stageSummaries.dataAnalysis
+                    extractConclusion(
+                      executiveSummary.stageSummaries.dataAnalysis
+                    )
                   )
                 : "Refresh to generate lessons learned."}
             </div>
@@ -238,7 +256,9 @@ export default function Report() {
             <div className="mt-2 space-y-2">
               {executiveSummary?.stageSummaries.designAlternatives
                 ? renderFormattedSummary(
-                    executiveSummary.stageSummaries.designAlternatives
+                    extractConclusion(
+                      executiveSummary.stageSummaries.designAlternatives
+                    )
                   )
                 : "Refresh to generate design intent keywords."}
             </div>
@@ -250,7 +270,9 @@ export default function Report() {
             <div className="mt-2 space-y-2">
               {executiveSummary?.stageSummaries.designEvaluation
                 ? renderFormattedSummary(
-                    executiveSummary.stageSummaries.designEvaluation
+                    extractConclusion(
+                      executiveSummary.stageSummaries.designEvaluation
+                    )
                   )
                 : "Refresh to generate evaluation feedback."}
             </div>
@@ -301,7 +323,9 @@ export default function Report() {
           </div>
           <div className="mt-3 space-y-2">
             {workspaceSummary?.overallSummary
-              ? renderFormattedSummary(workspaceSummary.overallSummary)
+              ? renderFormattedSummary(
+                  extractConclusion(workspaceSummary.overallSummary)
+                )
               : "Finish a stage to generate your overall summary."}
           </div>
           {errorMessage && (
@@ -318,7 +342,9 @@ export default function Report() {
               <div className="mt-2 space-y-2">
                 {workspaceSummary?.stageSummaries[stepIds[index]]
                   ? renderFormattedSummary(
-                      workspaceSummary?.stageSummaries[stepIds[index]]
+                      extractConclusion(
+                        workspaceSummary?.stageSummaries[stepIds[index]]
+                      )
                     )
                   : "Finish the stage to generate your summary."}
               </div>
