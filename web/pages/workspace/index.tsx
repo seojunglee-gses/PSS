@@ -152,6 +152,7 @@ export default function Workspace() {
     Array<Record<string, number>>
   >([]);
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
+  const [hasLoadedChatLogs, setHasLoadedChatLogs] = useState(false);
   const [savedSummaries, setSavedSummaries] = useState<
     Record<string, string>
   >({});
@@ -233,10 +234,12 @@ export default function Workspace() {
       return;
     }
     const loadLogs = async () => {
+      setHasLoadedChatLogs(false);
       const storedLogs = await loadChatLogsFromFirestore<
         Array<Partial<ChatLog> & { sender?: "Planner" | "ChatGPT" | "user" | "assistant" }>
       >(user.uid);
       if (!storedLogs) {
+        setHasLoadedChatLogs(true);
         return;
       }
       const normalized = storedLogs
@@ -262,6 +265,7 @@ export default function Workspace() {
         .filter((log): log is ChatLog => Boolean(log))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       setChatLogs(normalized);
+      setHasLoadedChatLogs(true);
     };
     loadLogs();
   }, [user?.uid]);
@@ -310,8 +314,11 @@ export default function Workspace() {
     if (!userKey) {
       return;
     }
+    if (!hasLoadedChatLogs) {
+      return;
+    }
     saveChatLogsToFirestore(user.uid, chatLogs, user.email ?? user.uid);
-  }, [chatLogs, userKey, user?.email]);
+  }, [chatLogs, userKey, user?.email, hasLoadedChatLogs, user?.uid]);
 
   useEffect(() => {
     const loadSiteImage = async () => {
@@ -562,7 +569,19 @@ export default function Workspace() {
           overallSummary: string;
         };
       };
-      await saveWorkspaceSummary(userKey, payload.workspaceSummary);
+      const stageSummary =
+        payload.workspaceSummary.stageSummaries?.[activeStep.id]?.trim() ?? "";
+      const mergedStageSummaries = {
+        ...savedSummaries,
+        ...(stageSummary ? { [activeStep.id]: stageSummary } : {}),
+      };
+      await saveWorkspaceSummary(userKey, {
+        stageSummaries: mergedStageSummaries,
+        overallSummary: payload.workspaceSummary.overallSummary ?? "",
+      });
+      if (stageSummary) {
+        setSavedSummaries(mergedStageSummaries);
+      }
       setFinishNotice("Chat log sent to Report.");
     } catch (error) {
       setFinishNotice(
