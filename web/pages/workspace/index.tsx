@@ -1238,7 +1238,7 @@ useEffect(() => {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {groupedAlternativeImages.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                  {isAlternativesLoading
+                  {isLoadingAlternatives
                     ? "Loading your gallery..."
                     : "Generated images will appear here once you request them in the chat."}
                 </div>
