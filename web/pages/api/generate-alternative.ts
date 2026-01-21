@@ -148,34 +148,6 @@ export default async function handler(
   base64 = imagePart?.inlineData?.data;
 }
 
-    const formData = new FormData();
-    formData.append("model", "gpt-image-1");
-    formData.append("prompt", prompt);
-    formData.append("image", imageBlob, "site-image.png");
-    formData.append("size", "1024x1024");
-
-    const response = await fetch("https://api.openai.com/v1/images/edits", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorPayload = await response.json().catch(() => ({}));
-      res.status(500).json({
-        error: errorPayload?.error?.message ?? "Image generation failed.",
-      });
-      return;
-    }
-
-    const base64 = result.data?.[0]?.b64_json as string | undefined;
-    if (!base64) {
-      res.status(500).json({ error: "No image data returned." });
-      return;
-    }
-
     res.status(200).json({
       imageId,
       label: "Generated Concept",
