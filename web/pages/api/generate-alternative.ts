@@ -53,7 +53,7 @@ export default async function handler(
       provider: normalizedProvider,
       model:
         normalizedProvider === "gemini"
-          ? "gemini-1.5-flash"
+          ? "gemini-2.5-flash"
           : "gpt-5-mini",
       systemText:
         "You write a single concise prompt for an image-edit model. Use the site image as the base context and propose one grounded design alternative. Keep the camera angle and background structure unchanged. Output only the prompt text, no extra formatting.",
