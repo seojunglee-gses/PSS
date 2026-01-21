@@ -1345,9 +1345,6 @@ useEffect(() => {
               concept image. Generated images will appear inline in the chat
               history and in the gallery below.
             </div>
-            {isLoadingAlternatives && (
-            <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-          )}
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               {groupedAlternativeImages.length === 0 ? (
                <div className="flex flex-col items-center justify-center gap-3 py-6">
