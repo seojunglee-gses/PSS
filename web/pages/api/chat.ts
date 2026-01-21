@@ -40,7 +40,7 @@ export default async function handler(
   
     const resolvedModel =
       normalizedProvider === "gemini"
-        ? "gemini-1.5-flash"
+        ? "gemini-2.5-flash"
         : normalizedProvider === "deepseek"
           ? "deepseek-chat"
           : model ?? "gpt-5-mini";
