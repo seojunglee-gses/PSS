@@ -646,21 +646,28 @@ export default function Workspace() {
           Boolean(lastGeneratedImageId)
         );
         if (intent === "image_generate" || intent === "image_edit") {
-          if (intent === "image_generate" && !siteImageConfigured) {
+         if (intent === "image_generate" && !siteImageConfigured) {
             setShowSiteImageWarning(true);
             throw new Error("Image generation requires a site image.");
           }
-          if (intent === "image_edit" && !lastGeneratedImageId) {
-            throw new Error("Generate an image before requesting an edit.");
+          if (
+            intent === "image_edit" &&
+            !(selectedAlternative || lastGeneratedImageId)
+          ) {
+            throw new Error("Select or generate an image before editing.");
           }
+
         
           setIsLoadingAlternatives(true);
 
+          const baseId =
+            intent === "image_edit"
+              ? selectedAlternative ?? lastGeneratedImageId ?? undefined
+              : undefined;
+          
           const imageRecord = await requestGeneratedImage(
             userMessage,
-            intent === "image_edit"
-              ? lastGeneratedImageId ?? undefined
-              : undefined
+            baseId
           );
         
           if (!imageRecord?.imageUrl) {
@@ -675,8 +682,9 @@ export default function Workspace() {
               sender: "assistant",
               text:
                 intent === "image_edit"
-                  ? "Updated the latest concept based on your request."
-                  : "Generated a new concept image.",
+                  ? "Updated the selected revision based on your request."
+                  : "Updated the latest revision based on your request."
+                : "Generated a new concept image.",
               label: activeProvider,
               createdAt: new Date().toISOString(),
               imageUrl: imageRecord.imageUrl,
