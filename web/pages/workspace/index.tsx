@@ -720,25 +720,15 @@ export default function Workspace() {
         .join(" "),
     [chatLogs]
   );
+const hasDraftedImagePrompt = useRef(false);
+ useEffect(() => {
+  if (activeStep.id !== "alternatives") return;
+  if (!alternativesDialogue.trim()) return;
+  if (hasDraftedImagePrompt.current) return;
 
-  useEffect(() => {
-    if (activeStep.id !== "alternatives") {
-      return;
-    }
-    if (!alternativesDialogue.trim()) {
-      return;
-    }
-    if (imagePrompt || isDraftingPrompt || hasDraftedPrompt) {
-      return;
-    }
-    handleDraftImagePrompt().catch(() => null);
-  }, [
-    activeStep.id,
-    alternativesDialogue,
-    imagePrompt,
-    hasDraftedPrompt,
-    isDraftingPrompt,
-  ]);
+  hasDraftedImagePrompt.current = true;
+  handleDraftImagePrompt().catch(() => null);
+}, [activeStep.id, alternativesDialogue]);
 
   const topPreference = useMemo(() => {
     const ranked = aggregatedResults.filter((result) => result.average > 0);
