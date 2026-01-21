@@ -67,7 +67,14 @@ export default async function handler(
     ${backgroundText ?? "None"}
 
     Output ONLY the final image prompt text.
-    `.trim(),
+    `.trim();
+    const prompt = (await callLLM({
+      provider: normalizedProvider,
+      model:
+        normalizedProvider === "gemini"
+          ? "gemini-2.5-flash"
+          : "gpt-5-mini",
+      systemText,
       userText: promptInput,
     })).trim();
 
