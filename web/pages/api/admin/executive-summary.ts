@@ -36,7 +36,15 @@ export default async function handler(
   }
 
   try {
-    await verifyAdminRequest(req.headers.authorization);
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing or invalid Authorization header" });
+      return;
+    }
+    const token = authHeader.replace("Bearer ", "");
+
+    await verifyAdminRequest(token);
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
@@ -101,7 +109,9 @@ export default async function handler(
             }),
           },
         ],
-        response_format: { type: "json_object" },
+        text: {
+          format: { type: "json_object" },
+        }
       }),
     });
 
@@ -114,10 +124,15 @@ export default async function handler(
     }
 
     const result = await response.json();
-    const content = result?.output?.[0]?.content?.[0]?.text;
+    console.log(
+      "EXEC SUMMARY RAW RESULT:",
+      JSON.stringify(result, null, 2)
+    );
+    
+    const content = extractOutputText(result);
+    
     if (!content) {
-      res.status(500).json({ error: "No summary content returned." });
-      return;
+      throw new Error("No summary content returned.");
     }
 
     const parsed = JSON.parse(content) as {
