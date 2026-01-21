@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
 import { loadCurrentSiteImage, loadGeneratedImage } from "../../lib/firebase";
 import { callLLM } from "../../lib/llm";
+import { loadBackgroundKnowledge } from "../../lib/firebase";
 
 const buildPromptInput = (payload: {
   workspaceSummary?: Record<string, string>;
@@ -38,6 +39,10 @@ export default async function handler(
       return;
     }
 
+    const background = await loadBackgroundKnowledge();
+    const backgroundText = background?.curatedText?.trim();
+
+
     const { workspaceSummary, workspaceInput, provider } = req.body as {
       workspaceSummary: Record<string, string>;
       workspaceInput: Record<string, string[]>;
@@ -55,8 +60,20 @@ export default async function handler(
         normalizedProvider === "gemini"
           ? "gemini-2.5-flash"
           : "gpt-5-mini",
-      systemText:
-        "You write a single concise prompt for an image-edit model. Use the site image as the base context and propose one grounded design alternative. Keep the camera angle and background structure unchanged. Output only the prompt text, no extra formatting.",
+    const systemText = `
+    You are an expert industrial designer and engineer.
+    You write a single concise prompt for an image-edit model.
+    Rules:
+    - Use the provided site image as the base.
+    - Keep camera angle, background, and global layout unchanged.
+    - Propose ONE grounded design alternative.
+    - Respect physical feasibility and material behavior.
+    
+    Background knowledge (MUST FOLLOW):
+    ${backgroundText ?? "None"}
+
+    Output ONLY the final image prompt text.
+    `.trim(),
       userText: promptInput,
     })).trim();
 
