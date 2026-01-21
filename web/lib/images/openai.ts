@@ -20,7 +20,6 @@ export const generateOpenAIImage = async ({
   const form = new FormData();
   form.append("model", "gpt-image-1");
   form.append("prompt", prompt);
-  form.append("response_format", "b64_json");
   form.append("image", bufferToBlob(imageBuffer, mimeType), "site-image");
 
   const response = await fetch("https://api.openai.com/v1/images/edits", {
