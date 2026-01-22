@@ -207,7 +207,6 @@ export default function Workspace() {
     null
   );
   const [showSiteImageWarning, setShowSiteImageWarning] = useState(false);
-  const [showSubmitNotice, setShowSubmitNotice] = useState<null | string>(null);
   type FinishNotice = { status: "uploading" | "success" | "error"; message: string };
   const [finishNotice, setFinishNotice] = useState<FinishNotice | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -918,7 +917,7 @@ export default function Workspace() {
       return;
     }
     if (!userKey) {
-      setShowSubmitNotice("Authentication required.");
+
       return;
     }
     const selected = alternativeImages.find(
@@ -948,11 +947,11 @@ export default function Workspace() {
 
   const handleSubmitRankings = async () => {
     if (!userKey) {
-      setShowSubmitNotice("Authentication required.");
+
       return;
     }
     if (!evaluationImages.length) {
-      setShowSubmitNotice("No designs available to rank.");
+
       return;
     }
     const payload = {
@@ -966,7 +965,7 @@ export default function Workspace() {
       return updated;
     });
     await sendEvaluationResult(payload);
-    setShowSubmitNotice("Your rankings have been submitted.");
+
     await handleCompleteStep();
   };
 
@@ -1890,23 +1889,7 @@ export default function Workspace() {
           </div>
         </div>
       )}
-      {showSubmitNotice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900">
-              Submission received
-            </h3>
-            <p className="mt-3 text-sm text-slate-500">{showSubmitNotice}</p>
-            <button
-              className="mt-6 w-full rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
-              type="button"
-              onClick={() => setShowSubmitNotice(null)}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+     
     </AppShell>
   );
 }
