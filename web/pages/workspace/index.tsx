@@ -542,6 +542,7 @@ export default function Workspace() {
     }
   
     setChatLogs((prev) => [
+     const next = [
       ...prev,
       {
         stepId: "alternatives",
@@ -555,8 +556,14 @@ export default function Workspace() {
         imageLabel: imageRecord.label,
         imageNote: imageRecord.note,
       },
-    ]);
-  }, [activeProvider, requestGeneratedImage]);
+    ];
+      saveChatLogsToFirestore(
+        userKey!,
+        next,
+        user?.email ?? userKey!
+      );
+    return next;
+  });
 
   useEffect(() => {
   if (activeStep.id !== "alternatives") return;
@@ -648,7 +655,8 @@ export default function Workspace() {
             return;
           }
 
-          setChatLogs((prev) => [
+          setChatLogs((prev) => {
+            const next = [
             ...prev,
             {
               stepId,
@@ -661,13 +669,16 @@ export default function Workspace() {
               imageId: imageRecord.id,
               imageLabel: imageRecord.label,
               imageNote: imageRecord.note,
-            },
-          ]);
-        } finally {
-          setIsLoadingAlternatives(false);
-        }
-        return;
-      }
+              },
+            ];        
+          saveChatLogsToFirestore(
+            userKey!,
+            next,
+            user?.email ?? userKey!
+          );
+      
+        return next;
+      });
 
       const response = await fetch("/api/chat", {
         method: "POST",
