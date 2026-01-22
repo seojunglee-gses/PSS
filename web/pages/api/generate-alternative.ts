@@ -158,7 +158,6 @@ export default async function handler(
       base64 = result.data?.[0]?.b64_json;
     
     } else {
-      // ✅ Gemini 2.5 image
       const geminiKey = process.env.GEMINI_API_KEY;
       if (!geminiKey) {
         res.status(500).json({ error: "GEMINI_API_KEY is not configured." });
@@ -192,17 +191,6 @@ export default async function handler(
 }
   if (!base64) {
       throw new Error("Failed to generate image base64 data");
-      }
-  const savedImage = await saveGeneratedImageFromBase64({
-     imageId,
-     base64,
-     label: feedback ? "Revised Design" : "Generated Concept",
-     note: prompt,
-     userId: userID,
-      });
-  
-    if (!savedImage) {
-      throw new Error("Failed to save generated image to Firebase.");
       }
   
       res.status(200).json({
