@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
-import { loadCurrentSiteImage, loadGeneratedImage } from "../../lib/firebase";
+import { loadCurrentSiteImage, loadGeneratedImage, saveGeneratedImageFromBase64 } from "../../lib/firebase";
 import { callLLM } from "../../lib/llm";
 import { loadBackgroundKnowledge } from "../../lib/firebase";
 
@@ -50,13 +50,13 @@ export default async function handler(
     const background = await loadBackgroundKnowledge();
     const backgroundText = background?.curatedText?.trim();
 
-
     const {
       workspaceSummary,
       workspaceInput,
       provider,
       feedback,
       previousPrompt,
+      userID,
     } = req.body as {
       workspaceSummary: Record<string, string>;
       workspaceInput: Record<string, string[]>;
@@ -186,17 +186,34 @@ export default async function handler(
 
   base64 = imagePart?.inlineData?.data;
 }
-
-    res.status(200).json({
-      imageId,
-      label: "Generated Concept",
-      prompt,
-      base64,
-      existing: false,
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : "Unexpected error.",
-    });
+  if (!base64) {
+      throw new Error("Failed to generate image base64 data");
+      }
+  const savedImage = await saveGeneratedImageFromBase64({
+     imageId,
+     base64,
+     label: feedback ? "Revised Design" : "Generated Concept",
+     note: prompt,
+     userId: effectiveUserId,
+      });
+  
+    if (!savedImage) {
+      throw new Error("Failed to save generated image to Firebase.");
+      }
+  
+      res.status(200).json({
+        imageId,
+        label: savedImage.label,
+        prompt,
+        base64,
+        downloadUrl: savedImage.downloadUrl, // 저장된 URL 반환
+        existing: false,
+      });
+  
+    } catch (error) {
+      console.error("Generate Error:", error); // 서버 로그 확인용
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Unexpected error.",
+      });
+    }
   }
-}
