@@ -111,6 +111,18 @@ type DesignImage = {
   imageUrl?: string;
   createdAt?: string;
   submittedBy?: string;
+  userId?: string;
+};
+
+type ExecutiveSummary = {
+  keywords: string[];
+  stageSummaries: {
+    problemDefinition: string;
+    dataAnalysis: string;
+    designAlternatives: string;
+    designEvaluation: string;
+    decision: string;
+  };
 };
 
 type ExecutiveSummary = {
@@ -202,6 +214,16 @@ export default function Workspace() {
   >({});
   const [executiveSummary, setExecutiveSummary] =
     useState<ExecutiveSummary | null>(null);
+
+  const roleByUserId = useMemo(() => {
+    const map = new Map<string, string>();
+    evaluationResults.forEach((result) => {
+      if (result.userId && result.role) {
+        map.set(result.userId, result.role);
+      }
+    });
+    return map;
+  }, [evaluationResults]);
 
   const buildImageGenerationInput = useCallback(() => {
   const MAX_MESSAGES = 6;
@@ -410,6 +432,7 @@ export default function Workspace() {
           imageUrl: submission.downloadUrl,
           createdAt: submission.createdAt,
           submittedBy: formatParticipantLabel(index, submission.userId),
+          userId: submission.userId,
         }))
       );
     } finally {
@@ -490,6 +513,19 @@ export default function Workspace() {
       </p>
     ));
   }, []);
+
+  const getParticipantRoleLabel = useCallback(
+    (image?: DesignImage) => {
+      if (!image) {
+        return "Participant";
+      }
+      if (image.userId && roleByUserId.has(image.userId)) {
+        return roleByUserId.get(image.userId) ?? "Participant";
+      }
+      return image.submittedBy ?? "Participant";
+    },
+    [roleByUserId]
+  );
 
   const buildWorkspaceInput = useCallback(() => {
     return steps.reduce<Record<string, string[]>>((acc, step) => {
@@ -1719,12 +1755,12 @@ export default function Workspace() {
                 <p className="text-xs font-semibold uppercase text-slate-400">
                   Top preference
                 </p>
-                <div className="mt-3 h-32 overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100">
+                <div className="mt-3 h-56 overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100">
                   {topPreference?.imageUrl && (
                     <img
                       src={topPreference.imageUrl}
                       alt={topPreference.label}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-contain"
                     />
                   )}
                 </div>
@@ -1732,9 +1768,8 @@ export default function Workspace() {
                   {topPreference?.label ?? "Top concept"}
                 </p>
                 <p className="mt-1 text-xs text-slate-400">
-                  ID {topPreference?.id ?? "N/A"} ·{" "}
                   {topPreference?.label ?? "Design"} ·{" "}
-                  {topPreference?.submittedBy ?? "Participant"}
+                  {getParticipantRoleLabel(topPreference)}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   Highest-rated design based on submitted rankings.
@@ -1783,15 +1818,22 @@ export default function Workspace() {
                   </div>
                   {aggregatedResults.map((result) => (
                     <div key={result.id} className="space-y-2">
-                      <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] items-center gap-3 text-xs text-slate-500">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
                         <div className="relative group font-semibold text-slate-700">
                           <span className="cursor-default">
-                            {result.label}
+                            {result.label}{" "}
+                            <span className="text-[11px] font-normal text-slate-400">
+                              {getParticipantRoleLabel(
+                                evaluationImages.find(
+                                  (image) => image.id === result.id
+                                )
+                              )}
+                            </span>
                           </span>
                           {evaluationImages.find(
                             (image) => image.id === result.id
                           )?.imageUrl && (
-                            <div className="pointer-events-none absolute left-0 top-full z-10 mt-2 w-40 rounded-xl border border-slate-200 bg-white p-2 shadow-lg opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                            <div className="pointer-events-none absolute left-0 top-full z-10 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                               <img
                                 src={
                                   evaluationImages.find(
@@ -1799,18 +1841,17 @@ export default function Workspace() {
                                   )?.imageUrl
                                 }
                                 alt={`${result.label} preview`}
-                                className="h-24 w-full rounded-lg object-cover"
+                                className="h-40 w-full rounded-lg object-cover"
                               />
                             </div>
                           )}
                         </div>
-                        <span className="text-slate-500">
-                          {result.submittedBy ?? "Participant"}
-                        </span>
                         <span>
+                          Avg rank{" "}
                           {result.average > 0
                             ? result.average.toFixed(1)
-                            : "N/A"}
+                            : "N/A"}{" "}
+                          · Top choice {result.topChoice}
                         </span>
                         <span>{result.voteCount}</span>
                       </div>
