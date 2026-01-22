@@ -306,6 +306,19 @@ export default function Workspace() {
   }, [userKey]);
 
   useEffect(() => {
+    if (!userKey) {
+      return;
+    }
+    const loadEvaluations = async () => {
+      const results = await loadEvaluationResults();
+      if (results.length) {
+        setEvaluationResults(results);
+      }
+    };
+    loadEvaluations();
+  }, [userKey]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
