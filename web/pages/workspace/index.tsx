@@ -331,18 +331,22 @@ export default function Workspace() {
             }
           | Record<string, number>
         >;
-        const normalized = parsed.map((entry) => {
-          if ("rankings" in entry) {
-            return entry;
-          }
-          return {
-            submittedAt: new Date().toISOString(),
-            rankings: entry,
-          };
-        });
-        setEvaluationResults(normalized);
-      } catch {
-        setEvaluationResults([]);
+         const normalized: Array<{
+           submittedAt: string;
+           rankings: Record<string, number>;
+           userId?: string;
+           role?: string;
+         }> = parsed.map((entry) => {
+           if ("rankings" in entry) {
+             return entry;
+           }
+           return {
+             submittedAt: new Date().toISOString(),
+             rankings: entry,
+           };
+         });
+        
+         setEvaluationResults(normalized);
       }
     }
   }, []);
