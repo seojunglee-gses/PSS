@@ -657,7 +657,7 @@ export default function Workspace() {
         }
 
         setIsLoadingAlternatives(true);
-        try {
+        
           const latestPrompt =
             alternativeImages[alternativeImages.length - 1]?.note;
           const imageRecord = await requestGeneratedImage(
