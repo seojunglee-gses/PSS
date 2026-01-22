@@ -416,7 +416,7 @@ export const archiveBackgroundKnowledgeFile = async (
   await addDoc(collection(db, "ppssBackgroundKnowledgeArchives"), archivePayload);
 };
   
-  export const saveCurrentSiteImage = async (
+   export const saveCurrentSiteImage = async (
     file: File,
     updatedBy: string
   ): Promise<SiteImage | null> => {
@@ -433,12 +433,14 @@ export const archiveBackgroundKnowledgeFile = async (
           ? "jpg"
           : "png";
   
-    // ✅ 핵심: 버전드 path
     const timestamp = Date.now();
     const storagePath = `ppss-site-image/${timestamp}.${ext}`;
     const storageRef = ref(storage, storagePath);
   
+    // 1️⃣ 업로드
     await uploadBytes(storageRef, file);
+  
+    // 2️⃣ URL 생성 (이 줄이 핵심)
     const downloadUrl = await getDownloadURL(storageRef);
   
     const payload: SiteImage = {
@@ -449,24 +451,11 @@ export const archiveBackgroundKnowledgeFile = async (
       updatedBy,
     };
   
-    // current 포인터만 갱신
+    // 3️⃣ Firestore current 포인터 갱신
     await setDoc(doc(db, "ppssSiteImages", "current"), payload, { merge: true });
   
     return payload;
   };
-
-
-  const downloadUrl = await getDownloadURL(ref(storage, storagePath));
-  const payload: SiteImage = {
-    imageId,
-    storagePath,
-    downloadUrl,
-    updatedAt: new Date().toISOString(),
-    updatedBy,
-  };
-  await setDoc(doc(db, "ppssSiteImages", "current"), payload, { merge: true });
-  return payload;
-};
 
 export const loadCurrentSiteImage = async (): Promise<SiteImage | null> => {
   const app = getFirebaseApp();
