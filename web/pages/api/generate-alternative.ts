@@ -63,7 +63,12 @@ export default async function handler(
       provider?: "openai" | "gemini";
       feedback?: string;
       previousPrompt?: string;
+      userID?: string;
     };
+    if (!userID) {
+  throw new Error("Authentication required.");
+}
+  userId: userID,
 
     const normalizedProvider =
       provider === "gemini" ? "gemini" : "openai";
