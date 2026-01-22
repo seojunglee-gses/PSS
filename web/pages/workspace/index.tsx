@@ -353,7 +353,7 @@ export default function Workspace() {
     [chatLogs]
   );
 
-  const refreshEvaluationImages = useCallback(async () => {
+   const refreshEvaluationImages = useCallback(async () => {
     setIsLoadingEvaluationImages(true);
     try {
       const submissions = await loadEvaluationImages();
@@ -361,10 +361,24 @@ export default function Workspace() {
         setEvaluationImages([]);
         return;
       }
+  
+      const byUser = new Map<string, typeof submissions[number]>();
+  
+      submissions.forEach((submission) => {
+        if (!submission.userId) return;
+  
+      const prev = byUser.get(submission.userId);
+        if (!prev || submission.createdAt > prev.createdAt) {
+          byUser.set(submission.userId, submission);
+        }
+      });
+  
+      const filtered = Array.from(byUser.values());
+  
       setEvaluationImages(
-        submissions.map((submission, index) => ({
+        filtered.map((submission, index) => ({
           id: submission.imageId,
-          label: submission.label || `Concept ${index + 1}`,
+          label: `Alternative ${index + 1}`,
           note: submission.note,
           imageUrl: submission.downloadUrl,
           createdAt: submission.createdAt,
