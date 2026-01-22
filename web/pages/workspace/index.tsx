@@ -470,6 +470,7 @@ export default function Workspace() {
           activeProvider.toLowerCase() === "gemini"
             ? "gemini"
             : "openai",
+         userID: userKey,
       }),
     });
 
