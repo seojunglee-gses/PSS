@@ -74,6 +74,19 @@ export default async function handler(
     const normalizedProvider =
       provider === "gemini" ? "gemini" : "openai";
 
+     const systemText = 
+      mode === "initial"
+    ? `
+    You are creating the FIRST design alternative.
+    You write a single concise prompt for an image-edit model.
+    Translate summaries into a concrete initial design.
+     Please emphasize the very unique points from the dialogue in this prompt and files that can clearly appear and be seen in the image and also design that other stakeholders might not have. Mention specific elements in the dialogues to generate images. Mention the specific elements in the dialogue to generate images.
+    `
+        : `
+      You are MODIFYING an existing design.
+      Preserve the prior design intent.
+      Apply user's feedback to the promt.
+      `;
 
     const promptInput =
       mode === "initial"
@@ -91,20 +104,6 @@ export default async function handler(
       systemText,
       userText: promptInput,
     });
-
-    const systemText = 
-      mode === "initial"
-    ? `
-    You are creating the FIRST design alternative.
-    You write a single concise prompt for an image-edit model.
-    Translate summaries into a concrete initial design.
-     Please emphasize the very unique points from the dialogue in this prompt and files that can clearly appear and be seen in the image and also design that other stakeholders might not have. Mention specific elements in the dialogues to generate images. Mention the specific elements in the dialogue to generate images.
-    `
-        : `
-      You are MODIFYING an existing design.
-      Preserve the prior design intent.
-      Apply user's feedback to the promt.
-      `;
 
     if (!prompt) {
       res.status(500).json({ error: "Prompt generation failed." });
