@@ -87,9 +87,9 @@ export default async function handler(
           });
 
     const prompt = await callLLM({
-      provider: normalizedProvider,
-      system: systemText,
-      user: promptInput,
+      provider: normalizedProvider as "openai" | "gemini", 
+      systemText,
+      userText: promptInput,
     });
 
     const systemText = 
