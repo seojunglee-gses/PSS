@@ -676,7 +676,7 @@ export default function Workspace() {
             {
               stepId,
               provider: activeProvider,
-              sender: "assistant",
+              sender: "assistant" as const,
               text: "Generated a new concept image based on your feedback.",
               label: activeProvider,
               createdAt: new Date().toISOString(),
