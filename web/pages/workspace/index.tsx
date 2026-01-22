@@ -122,8 +122,6 @@ const stepSummaries: Record<string, string> = {
     "Prepared final decision report and supporting evidence for approval.",
 };
 
-const storageKey = "ppss-workspace-summaries";
-const evaluationStorageKey = "ppss-evaluation-results";
 const providerStorageKey = "ppss-active-provider";
 const adminEmail = "test@snu.ac.kr";
 const pieColors = [
@@ -275,20 +273,6 @@ export default function Workspace() {
   }, [loading, user, router]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const stored = window.localStorage.getItem(storageKey);
-    if (stored) {
-      try {
-        setSavedSummaries(JSON.parse(stored));
-      } catch {
-        setSavedSummaries({});
-      }
-    }
-  }, []);
-
-  useEffect(() => {
     if (!userKey) {
       return;
     }
@@ -309,47 +293,17 @@ export default function Workspace() {
   }, [completedStages]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (!userKey) {
       return;
     }
-    window.localStorage.setItem(storageKey, JSON.stringify(savedSummaries));
-  }, [savedSummaries]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const stored = window.localStorage.getItem(evaluationStorageKey);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as Array<
-          | {
-              submittedAt: string;
-              rankings: Record<string, number>;
-              userId?: string;
-              role?: string;
-            }
-          | Record<string, number>
-        >;
-         const normalized: Array<{
-           submittedAt: string;
-           rankings: Record<string, number>;
-           userId?: string;
-           role?: string;
-         }> = parsed.map((entry) => {
-           if ("rankings" in entry) {
-             return entry;
-           }
-           return {
-             submittedAt: new Date().toISOString(),
-             rankings: entry,
-           };
-         });
-        
-         setEvaluationResults(normalized);
+    const loadEvaluations = async () => {
+      const results = await loadEvaluationResults();
+      if (results.length) {
+        setEvaluationResults(results);
       }
-    }
-  }, []);
+    };
+    loadEvaluations();
+  }, [userKey]);
 
   useEffect(() => {
     if (!userKey) {
@@ -1017,12 +971,6 @@ useEffect(() => {
     };
     setEvaluationResults((prev) => {
       const updated = [...prev, payload];
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          evaluationStorageKey,
-          JSON.stringify(updated)
-        );
-      }
       return updated;
     });
     await sendEvaluationResult(payload);
