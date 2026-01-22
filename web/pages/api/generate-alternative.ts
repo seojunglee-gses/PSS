@@ -51,6 +51,7 @@ export default async function handler(
     const backgroundText = background?.curatedText?.trim();
 
     const {
+      mode,
       workspaceSummary,
       workspaceInput,
       provider,
@@ -73,44 +74,36 @@ export default async function handler(
       provider === "gemini" ? "gemini" : "openai";
 
 
-    const promptInput = buildPromptInput({
-      workspaceSummary,
-      workspaceInput,
-      feedback,
-      previousPrompt,
-    });
-    const systemText = `
-    You are an expert industrial designer and engineer.
-    You write a single concise prompt for an image-edit model.
-    Rules:
-    - Use the provided site image as the base.
-    - Keep camera angle, background, and global layout unchanged.
-    - Respect physical feasibility and material behavior.
-    - Please emphasize the very unique points from the dialogue in this prompt and files that can clearly appear and be seen in the image and also design that other stakeholders might not have. Mention specific elements in the dialogues to generate images. Mention the specific elements in the dialogue to generate images.
+    const promptInput =
+      mode === "initial"
+        ? buildPromptInput({
+            workspaceSummary,
+            workspaceInput,
+          })
+        : buildPromptInput({
+            feedback,
+            previousPrompt,
+          });
     
-    Background knowledge (MUST FOLLOW):
-    ${backgroundText ?? "None"}
-
-    Output ONLY the final image prompt text.
-    `.trim();
-    const prompt = (await callLLM({
-      provider: normalizedProvider,
-      model:
-        normalizedProvider === "gemini"
-          ? "gemini-2.5-flash"
-          : "gpt-5-mini",
-      systemText,
-      userText: promptInput,
-    })).trim();
+    const systemText = 
+      mode === "initial"
+    ? `
+    You are creating the FIRST design alternative.
+    You write a single concise prompt for an image-edit model.
+    Translate summaries into a concrete initial design.
+     Please emphasize the very unique points from the dialogue in this prompt and files that can clearly appear and be seen in the image and also design that other stakeholders might not have. Mention specific elements in the dialogues to generate images. Mention the specific elements in the dialogue to generate images.
+    `
+        : `
+      You are MODIFYING an existing design.
+      Preserve the prior design intent.
+      Apply user's feedback to the promt.
+      `;
 
     if (!prompt) {
       res.status(500).json({ error: "Prompt generation failed." });
       return;
     }
-    const imageId = crypto
-      .createHash("sha256")
-      .update(`${currentSiteImage.imageId}-${prompt}`)
-      .digest("hex");
+    const imageId = crypto.randomUUID();
 
     const existing = await loadGeneratedImage(imageId);
     if (existing?.downloadUrl) {
