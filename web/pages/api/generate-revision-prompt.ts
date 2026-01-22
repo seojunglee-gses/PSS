@@ -5,11 +5,18 @@ import { loadBackgroundKnowledge } from "../../lib/firebase";
 const systemText = `You are a design planning expert.
 Rewrite a new image-generation prompt based on user feedback.
 
+Priority order:
+1. User feedback (highest priority)
+2. Previous prompt
+3. Background knowledge (supporting context only)
+
 Rules:
 - Preserve the site context, camera angle, and base concept.
 - Explicitly reflect the user's feedback.
 - Ensure changes are visually obvious in the resulting image.
-- Do NOT mention 'feedback' or 'revision' in the prompt.
+- The "prompt" must NOT mention feedback or revision.
+- The "rationale" SHOULD clearly explain what changed and why.
+
 - Also produce a short rationale explaining what changed and why. - Please emphasize the very unique points from the dialogue in this prompt and files that can clearly appear and be seen in the image and also design that other stakeholders might not have. Mention specific elements in the dialogues to generate images. Mention the specific elements in the dialogue to generate images.
 
 Return JSON ONLY in this format:
