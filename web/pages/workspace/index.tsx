@@ -432,26 +432,6 @@ export default function Workspace() {
     }
     refreshEvaluationImages();
   }, [refreshEvaluationImages, userKey]);
-
-  useEffect(() => {
-  if (!userKey) return;
-
-  const loadAlternatives = async () => {
-    const images = await loadGeneratedImages(userKey);
-    setAlternativeImages(
-      images.map((img) => ({
-        id: img.imageId,
-        label: img.label,
-        note: img.note,
-        imageUrl: img.downloadUrl,
-        createdAt: img.createdAt,
-        }))
-      );
-    };
-  
-    loadAlternatives();
-  }, [userKey]);
-
   
   useEffect(() => {
     if (!userKey) {
@@ -682,6 +662,42 @@ export default function Workspace() {
     setLastGeneratedImageId(saved.imageId);
     return imageRecord;
   };
+
+  const requestRevisionPrompt = async (
+    feedback: string,
+    previousPrompt?: string
+  ) => {
+    const response = await fetch("/api/generate-revision-prompt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        feedback,
+        previousPrompt,
+        provider:
+          activeProvider.toLowerCase() === "gemini"
+            ? "gemini"
+            : activeProvider.toLowerCase() === "deepseek"
+              ? "deepseek"
+              : "openai",
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload?.error ?? "Prompt revision failed.");
+    }
+
+    const payload = (await response.json()) as {
+      prompt?: string;
+      rationale?: string;
+    };
+
+    if (!payload.prompt || !payload.rationale) {
+      throw new Error("Invalid revision prompt response.");
+    }
+
+    return { prompt: payload.prompt, rationale: payload.rationale };
+  };
   
   const handleSend = async () => {
     
@@ -740,8 +756,15 @@ export default function Workspace() {
               ? selectedAlternative ?? lastGeneratedImageId ?? undefined
               : undefined;
           
-          const imageRecord = await requestGeneratedImage(
+          const basePrompt = baseId
+            ? alternativeImages.find((image) => image.id === baseId)?.note
+            : undefined;
+          const revision = await requestRevisionPrompt(
             userMessage,
+            basePrompt
+          );
+          const imageRecord = await requestGeneratedImage(
+            revision.prompt,
             baseId
           );
         
@@ -756,18 +779,13 @@ export default function Workspace() {
               stepId,
               provider: activeProvider,
               sender: "assistant",
-              text:
-                intent === "image_edit"
-                  ? selectedAlternative
-                    ? "Updated the selected revision based on your request."
-                    : "Updated the latest revision based on your request."
-                  : "Generated a new concept image.",
+              text: revision.rationale,
               label: activeProvider,
               createdAt: new Date().toISOString(),
               imageUrl: imageRecord.imageUrl,
               imageId: imageRecord.id,
               imageLabel: imageRecord.label,
-              imageNote: imageRecord.note,
+              imageNote: revision.prompt,
             },
           ]);
 
@@ -947,11 +965,11 @@ export default function Workspace() {
 
   const handleSubmitRankings = async () => {
     if (!userKey) {
-
+      setShowSubmitNotice("Authentication required.");
       return;
     }
     if (!evaluationImages.length) {
-
+      setShowSubmitNotice("No designs available to rank.");
       return;
     }
     const payload = {
