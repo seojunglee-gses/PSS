@@ -145,6 +145,102 @@ const roleDescriptions: Record<string, string> = {
     "Review compliance, safety, and policy alignment across all steps.",
 };
 
+const roleIcons: Record<string, JSX.Element> = {
+  All: (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <circle
+        cx="12"
+        cy="8"
+        r="3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M5 19c1.6-3 4.2-4.5 7-4.5s5.4 1.5 7 4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  "The Public": (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <circle
+        cx="12"
+        cy="8"
+        r="3.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M5 19c1.6-3 4.2-4.5 7-4.5s5.4 1.5 7 4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  "Business Owners": (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <rect
+        x="5"
+        y="4"
+        width="14"
+        height="16"
+        rx="2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M9 9h6M9 13h6M9 17h4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  Planners: (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <path
+        d="M5 5h10l4 4v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M15 5v4h4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+    </svg>
+  ),
+  Government: (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+      <path
+        d="M4 10h16M6 10v8M10 10v8M14 10v8M18 10v8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M12 4l7 4H5l7-4z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+};
+
 const formatParticipantLabel = (index: number, userId?: string) => {
   if (userId) {
     return `Participant ${index + 1}`;
@@ -216,8 +312,7 @@ export default function Workspace() {
   const [allWorkspaceSummaries, setAllWorkspaceSummaries] = useState<
     WorkspaceSummaryRecord[]
   >([]);
-  const [activeReportTab, setActiveReportTab] =
-    useState("evaluation-report");
+  const [activeReportTab, setActiveReportTab] = useState("all");
   const [activeUserTabs, setActiveUserTabs] = useState<Record<string, number>>(
     {}
   );
@@ -546,21 +641,20 @@ export default function Workspace() {
     );
   }, [allWorkspaceSummaries]);
 
-  const roleTabs = useMemo(() => {
-    const roles = Object.keys(roleGroups);
-    const orderedRoles = [
-      ...Object.keys(roleDescriptions).filter((role) => roles.includes(role)),
-      ...roles.filter((role) => !Object.keys(roleDescriptions).includes(role)),
-    ];
-    return [
-      { id: "evaluation-report", label: "Evaluation Report" },
-      ...orderedRoles.map((role) => ({ id: role, label: role })),
-    ];
-  }, [roleGroups]);
+  const roleTabs = useMemo(
+    () => [
+      { id: "all", label: "All" },
+      { id: "The Public", label: "The Public" },
+      { id: "Business Owners", label: "Business" },
+      { id: "Planners", label: "Planners" },
+      { id: "Government", label: "Government" },
+    ],
+    []
+  );
 
   useEffect(() => {
     if (!roleTabs.find((tab) => tab.id === activeReportTab)) {
-      setActiveReportTab("evaluation-report");
+      setActiveReportTab("all");
     }
   }, [activeReportTab, roleTabs]);
 
@@ -1770,40 +1864,26 @@ export default function Workspace() {
               Consolidate the final PPSS report for audit and stakeholder
               sign-off.
             </p>
-            <div className="mt-6 space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  Project keywords
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {(executiveSummary?.keywords ?? []).length > 0 ? (
-                    executiveSummary?.keywords.map((keyword) => (
-                      <span
-                        key={keyword}
-                        className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600"
-                      >
-                        {keyword}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-slate-400">
-                      Keywords will appear after executive summary generation.
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  Executive summary
-                </p>
-                <div className="mt-3 space-y-2">
-                  {executiveSummary?.stageSummaries.decision
-                    ? renderSummaryLines(executiveSummary.stageSummaries.decision)
-                    : "Generate the decision summary to see the final executive overview."}
-                </div>
-              </div>
+            <div className="mt-6 flex flex-wrap gap-2">
+              {roleTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveReportTab(tab.id)}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                    activeReportTab === tab.id
+                      ? "bg-[var(--primary)] text-white"
+                      : "border border-slate-200 bg-white text-slate-500 hover:border-[var(--primary)] hover:text-[var(--primary)]"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    {roleIcons[tab.id === "all" ? "All" : tab.id]}
+                    {tab.label}
+                  </span>
+                </button>
+              ))}
             </div>
-            {activeReportTab === "evaluation-report" ? (
+            {activeReportTab === "all" ? (
               <div className="mt-6 space-y-4">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-xs font-semibold uppercase text-slate-400">
