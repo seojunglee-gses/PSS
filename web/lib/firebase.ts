@@ -29,6 +29,7 @@ type EvaluationPayload = {
 type WorkspaceSummary = {
   stageSummaries: Record<string, string>;
   overallSummary: string;
+  role?: string;
   completedStages?: string[];
   updatedAt?: string;
 };
