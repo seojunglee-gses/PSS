@@ -620,7 +620,6 @@ export default function Workspace() {
   ]);
   
   const handleSend = async () => {
-    
     if (!inputValue.trim()) {
       return;
     }
@@ -691,10 +690,11 @@ export default function Workspace() {
             next,
             user?.email ?? userKey!
           );
+          return next;
+        });
+         return;
+      }
       
-        return next;
-      });
-
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
