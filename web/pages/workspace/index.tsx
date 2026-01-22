@@ -125,6 +125,17 @@ type ExecutiveSummary = {
   };
 };
 
+type ExecutiveSummary = {
+  keywords: string[];
+  stageSummaries: {
+    problemDefinition: string;
+    dataAnalysis: string;
+    designAlternatives: string;
+    designEvaluation: string;
+    decision: string;
+  };
+};
+
 const roleDescriptions: Record<string, string> = {
   "The Public":
     "Focus on community impact and public-facing outcomes during each stage.",
@@ -1799,6 +1810,12 @@ export default function Workspace() {
                   Ranking overview
                 </p>
                 <div className="mt-3 space-y-3">
+                  <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-3 text-[11px] font-semibold uppercase text-slate-400">
+                    <span>Alternative</span>
+                    <span>Participant role</span>
+                    <span>Average rank</span>
+                    <span>Votes</span>
+                  </div>
                   {aggregatedResults.map((result) => (
                     <div key={result.id} className="space-y-2">
                       <div className="flex items-center justify-between text-xs text-slate-500">
@@ -1836,6 +1853,7 @@ export default function Workspace() {
                             : "N/A"}{" "}
                           · Top choice {result.topChoice}
                         </span>
+                        <span>{result.voteCount}</span>
                       </div>
                       <div className="h-2 rounded-full bg-slate-200">
                         <div
