@@ -59,6 +59,7 @@ export default async function handler(
       previousPrompt,
       userID,
     } = req.body as {
+      mode: "initial" | "iteration";
       workspaceSummary: Record<string, string>;
       workspaceInput: Record<string, string[]>;
       provider?: "openai" | "gemini";
@@ -84,7 +85,13 @@ export default async function handler(
             feedback,
             previousPrompt,
           });
-    
+
+    const prompt = await callLLM({
+      provider: normalizedProvider,
+      system: systemText,
+      user: promptInput,
+    });
+
     const systemText = 
       mode === "initial"
     ? `
