@@ -17,7 +17,6 @@ import {
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
 import { loadGeneratedImages } from "../../lib/firebase";
-import { callLLM } from "../../lib/llm";
 
 const getChatModelByProvider = (provider: string) => {
   if (provider.toLowerCase() === "gemini") {
@@ -746,12 +745,14 @@ export default function Workspace() {
       else if (stepId === "evaluation") {
       const evaluationContext = buildEvaluationContext();
     
-      const response = await callLLM({
-        provider:
-          activeProvider.toLowerCase() === "gemini"
-            ? "gemini"
-            : "openai",
-        systemText: `
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: activeProvider,
+          model: getChatModelByProvider(activeProvider),
+          stepId: "evaluation",
+          message:  `
     You are an expert design reviewer.
     You analyze existing design alternatives.
     
@@ -770,7 +771,12 @@ export default function Workspace() {
     ${userMessage}
     `,
       });
-    
+     if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload?.error ?? "Evaluation chat failed.");
+     }
+    const payload = await response.json();
+    const reply = payload.reply;    
       setChatLogs((prev) => {
         const next = [
           ...prev,
