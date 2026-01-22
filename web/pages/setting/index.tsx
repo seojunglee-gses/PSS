@@ -724,7 +724,6 @@ export default function Setting() {
                 )}
               </div>
             </div>
-            </div>
           </div>
         </section>
       )}
