@@ -5,6 +5,12 @@ import { loadBackgroundKnowledge } from "../../lib/firebase";
 const systemText = `You are a design planning expert.
 Rewrite a new image-generation prompt based on user feedback.
 
+You MUST treat the site image as immutable spatial context.
+Do NOT introduce or retain any city, country, or location name
+unless it is explicitly visible in the site image.
+If the previous prompt mentions a location that is not visible
+in the site image, REMOVE it.
+
 Priority order:
 1. User feedback (highest priority)
 2. Previous prompt
