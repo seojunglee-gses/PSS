@@ -646,7 +646,7 @@ export default function Workspace() {
               imageUrl: imageRecord.imageUrl,
               imageId: imageRecord.id,
               imageLabel: imageRecord.label,
-              imageNote: revision.prompt,
+              imageNote: imageRecord.note,
             },
           ]);
         } finally {
