@@ -195,7 +195,7 @@ export default async function handler(
   
       res.status(200).json({
         imageId,
-        label: savedImage.label,
+        label,
         prompt,
         base64,
       });
