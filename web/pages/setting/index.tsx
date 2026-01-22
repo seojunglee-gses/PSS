@@ -57,6 +57,13 @@ export default function Setting() {
   const [executiveSummaryMessage, setExecutiveSummaryMessage] = useState<
     Record<string, string>
   >({});
+  const [isResettingProject, setIsResettingProject] = useState(false);
+  const [resetProjectMessage, setResetProjectMessage] = useState<string | null>(
+    null
+  );
+  const [resetProjectTone, setResetProjectTone] = useState<
+    "success" | "error" | null
+  >(null);
 
   useEffect(() => {
     setIsAdmin(Boolean(user && user.email === adminEmail));
@@ -210,6 +217,46 @@ export default function Setting() {
       lockedStages: nextLocks,
       updatedBy: user.email ?? user.uid,
     });
+  };
+
+  const handleProjectReset = async () => {
+    if (!user) {
+      setResetProjectMessage("Authentication required.");
+      setResetProjectTone("error");
+      return;
+    }
+    const confirmed = window.confirm(
+      "This will reset chat logs, generated images, workspace summaries, and evaluation data. Continue?"
+    );
+    if (!confirmed) {
+      return;
+    }
+    setIsResettingProject(true);
+    setResetProjectMessage(null);
+    setResetProjectTone(null);
+    try {
+      const token = await user.getIdToken();
+      const response = await fetch("/api/admin/reset-project", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Reset failed.");
+      }
+      setResetProjectMessage("Project data reset completed.");
+      setResetProjectTone("success");
+    } catch (error) {
+      setResetProjectMessage(
+        error instanceof Error ? error.message : "Unable to reset project data."
+      );
+      setResetProjectTone("error");
+    } finally {
+      setIsResettingProject(false);
+    }
   };
 
   useEffect(() => {
@@ -583,6 +630,37 @@ export default function Setting() {
                     }`}
                   >
                     {backgroundSaveMessage}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="border-t border-slate-200 pt-6">
+              <h4 className="text-sm font-semibold text-slate-700">
+                Reset project (soft)
+              </h4>
+              <p className="mt-2 text-sm text-slate-500">
+                Clears chat logs, generated alternatives, workspace summaries,
+                and evaluation/voting data without touching background
+                knowledge or the site image.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-600 hover:border-rose-300 hover:text-rose-700"
+                  type="button"
+                  onClick={handleProjectReset}
+                  disabled={isResettingProject}
+                >
+                  {isResettingProject ? "Resetting..." : "Reset project data"}
+                </button>
+                {resetProjectMessage && (
+                  <span
+                    className={`text-xs ${
+                      resetProjectTone === "error"
+                        ? "text-rose-500"
+                        : "text-emerald-600"
+                    }`}
+                  >
+                    {resetProjectMessage}
                   </span>
                 )}
               </div>
