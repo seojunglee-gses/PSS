@@ -193,6 +193,74 @@ export default async function handler(
 
     await db.collection("ppssExecutiveSummaries").add(payload);
 
+    if (stage.id === "alternatives") {
+      const submissionsSnap = await db
+        .collection("ppssUserDesignSubmissions")
+        .get();
+      const latestByUser = submissionsSnap.docs.reduce<
+        Record<string, { imageId: string; createdAt: string }>
+      >((acc, docSnap) => {
+        const data = docSnap.data() as {
+          userId?: string;
+          imageId?: string;
+          createdAt?: string;
+        };
+        if (!data.userId || !data.imageId || !data.createdAt) {
+          return acc;
+        }
+        const existing = acc[data.userId];
+        if (!existing || data.createdAt > existing.createdAt) {
+          acc[data.userId] = {
+            imageId: data.imageId,
+            createdAt: data.createdAt,
+          };
+        }
+        return acc;
+      }, {});
+
+      const evaluationImages = await Promise.all(
+        Object.entries(latestByUser).map(async ([userId, submission]) => {
+          const imageSnap = await db
+            .collection("ppssGeneratedImages")
+            .doc(submission.imageId)
+            .get();
+          if (!imageSnap.exists) {
+            return null;
+          }
+          const image = imageSnap.data() as {
+            label?: string;
+            note?: string;
+            downloadUrl?: string;
+          };
+          if (!image?.downloadUrl) {
+            return null;
+          }
+          return {
+            userId,
+            imageId: submission.imageId,
+            createdAt: submission.createdAt,
+            label: image.label ?? "Submitted design",
+            note: image.note ?? "",
+            downloadUrl: image.downloadUrl,
+          };
+        })
+      );
+
+      const evaluationCollection = db.collection("ppssEvaluationImages");
+      const existing = await evaluationCollection.get();
+      const batch = db.batch();
+      existing.docs.forEach((docSnap) => {
+        batch.delete(docSnap.ref);
+      });
+      evaluationImages
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+        .forEach((entry) => {
+          const docRef = evaluationCollection.doc(entry.userId);
+          batch.set(docRef, entry);
+        });
+      await batch.commit();
+    }
+
     res.status(200).json(payload);
   } catch (error) {
     res.status(500).json({

@@ -22,6 +22,8 @@ import {
 type EvaluationPayload = {
   submittedAt: string;
   rankings: Record<string, number>;
+  userId?: string;
+  role?: string;
 };
 
 type WorkspaceSummary = {
@@ -85,6 +87,24 @@ type GeneratedImage = {
   userId?: string;
 };
 
+type SubmittedDesign = {
+  userId: string;
+  imageId: string;
+  createdAt: string;
+  label: string;
+  note: string;
+  downloadUrl: string;
+};
+
+type EvaluationImage = {
+  userId: string;
+  imageId: string;
+  createdAt: string;
+  label: string;
+  note: string;
+  downloadUrl: string;
+};
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -121,6 +141,16 @@ export const sendEvaluationResult = async (payload: EvaluationPayload) => {
   }
   const db = getFirestore(app);
   await addDoc(collection(db, "ppssEvaluations"), payload);
+};
+
+export const loadEvaluationResults = async (): Promise<EvaluationPayload[]> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return [];
+  }
+  const db = getFirestore(app);
+  const snapshot = await getDocs(collection(db, "ppssEvaluations"));
+  return snapshot.docs.map((docSnap) => docSnap.data() as EvaluationPayload);
 };
 
 export const saveChatLogsToStorage = async (
@@ -519,4 +549,77 @@ export const saveUserDesignSubmission = async (
     imageId,
     createdAt: new Date().toISOString(),
   });
+};
+
+export const loadSubmittedDesigns = async (): Promise<SubmittedDesign[]> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return [];
+  }
+  const db = getFirestore(app);
+  const submissionsSnap = await getDocs(
+    collection(db, "ppssUserDesignSubmissions")
+  );
+  if (submissionsSnap.empty) {
+    return [];
+  }
+  const latestByUser = submissionsSnap.docs.reduce<
+    Record<string, { imageId: string; createdAt: string }>
+  >((acc, docSnap) => {
+    const data = docSnap.data() as {
+      userId?: string;
+      imageId?: string;
+      createdAt?: string;
+    };
+    if (!data.userId || !data.imageId || !data.createdAt) {
+      return acc;
+    }
+    const existing = acc[data.userId];
+    if (!existing || data.createdAt > existing.createdAt) {
+      acc[data.userId] = {
+        imageId: data.imageId,
+        createdAt: data.createdAt,
+      };
+    }
+    return acc;
+  }, {});
+
+  const entries = await Promise.all(
+    Object.entries(latestByUser).map(async ([userId, submission]) => {
+      const imageSnap = await getDoc(
+        doc(db, "ppssGeneratedImages", submission.imageId)
+      );
+      if (!imageSnap.exists()) {
+        return null;
+      }
+      const image = imageSnap.data() as GeneratedImage;
+      return {
+        userId,
+        imageId: submission.imageId,
+        createdAt: submission.createdAt,
+        label: image.label,
+        note: image.note,
+        downloadUrl: image.downloadUrl,
+      } as SubmittedDesign;
+    })
+  );
+
+  return entries
+    .filter((entry): entry is SubmittedDesign => Boolean(entry))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+};
+
+export const loadEvaluationImages = async (): Promise<EvaluationImage[]> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return [];
+  }
+  const db = getFirestore(app);
+  const snapshot = await getDocs(collection(db, "ppssEvaluationImages"));
+  if (snapshot.empty) {
+    return [];
+  }
+  return snapshot.docs
+    .map((docSnap) => docSnap.data() as EvaluationImage)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 };
