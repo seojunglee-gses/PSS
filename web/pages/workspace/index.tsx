@@ -345,7 +345,7 @@ export default function Workspace() {
         .filter((log) => log.stepId === "alternatives" && log.imageUrl)
         .map((log) => ({
           id: log.imageId ?? `image-${log.createdAt}`,
-          label: log.imageLabel ?? "Generated alternative",
+          label: `Alternative ${index + 1}`,
           note: log.imageNote ?? "",
           imageUrl: log.imageUrl,
           createdAt: log.createdAt,
@@ -448,6 +448,45 @@ export default function Workspace() {
       return acc;
     }, {});
   }, [chatLogs]);
+
+    const buildEvaluationContext = useCallback(() => {
+    const summariesText = Object.entries(savedSummaries)
+      .map(([stage, summary]) => {
+        return `${stage.toUpperCase()} SUMMARY:\n${summary}`;
+      })
+      .join("\n\n");
+  
+    const alternativesDialogue = chatLogs
+      .filter(
+        (log) =>
+          log.stepId === "alternatives" &&
+          log.sender === "user" &&
+          log.text
+      )
+      .map((log, index) => `- ${log.text}`)
+      .join("\n");
+  
+    const alternativesContext = alternativeImages
+      .map((img, index) => {
+        return `
+  Alternative ${index + 1}:
+  Design intention (generation prompt):
+  ${img.note}
+  `;
+      })
+      .join("\n\n");
+    return `
+    === WORKSPACE DIALOGUE SUMMARIES ===
+    ${summariesText}
+    
+    === DESIGN ALTERNATIVES EVOLUTION (USER FEEDBACK) ===
+    ${alternativesDialogue || "No explicit user feedback recorded."}
+    
+    === GENERATED DESIGN ALTERNATIVES ===
+    ${alternativesContext}
+    `;
+  },  [savedSummaries, chatLogs, alternativeImages]);
+  
 
   const requestGeneratedImage = useCallback(
   async (feedback?: string, previousPrompt?: string) => {
@@ -687,6 +726,59 @@ export default function Workspace() {
         });
          return;
       }
+      else if (stepId === "evaluation") {
+      const evaluationContext = buildEvaluationContext();
+    
+      const response = await callLLM({
+        provider:
+          activeProvider.toLowerCase() === "gemini"
+            ? "gemini"
+            : "openai",
+        systemText: `
+    You are an expert design reviewer.
+    You analyze existing design alternatives.
+    
+    Your task is to explain:
+    - why each alternative was created
+    - what dialogue and constraints led to it
+    - what problem it primarily addresses
+    
+    When the user refers to "Alternative N",
+    use the provided context to answer precisely.
+    `,
+        userText: `
+    ${evaluationContext}
+    
+    User question:
+    ${userMessage}
+    `,
+      });
+    
+      setChatLogs((prev) => {
+        const next = [
+          ...prev,
+          {
+            stepId,
+            provider: activeProvider,
+            sender: "assistant",
+            text: response,
+            label: activeProvider,
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      
+        if (userKey) {
+          saveChatLogsToFirestore(
+            userKey,
+            next,
+            user?.email ?? userKey
+          );
+        }
+      
+        return next;
+      });
+      return;
+    }
       
       const response = await fetch("/api/chat", {
         method: "POST",
