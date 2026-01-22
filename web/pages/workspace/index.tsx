@@ -935,6 +935,7 @@ useEffect(() => {
       [selected.id]: Object.keys(prev).length + 1,
     }));
     await saveUserDesignSubmission(userKey, selected.id);
+    await refreshEvaluationImages();
     setHasInitializedAlternatives(true);
     setSelectedAlternative(null);
     await handleCompleteStep();
