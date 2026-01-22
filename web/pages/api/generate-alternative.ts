@@ -7,6 +7,8 @@ import { loadBackgroundKnowledge } from "../../lib/firebase";
 const buildPromptInput = (payload: {
   workspaceSummary?: Record<string, string>;
   workspaceInput?: Record<string, string[]>;
+  feedback?: string;
+  previousPrompt?: string;
 }) => {
   const summaryText = Object.entries(payload.workspaceSummary ?? {})
     .map(([key, value]) => `${key}: ${value}`)
@@ -14,7 +16,13 @@ const buildPromptInput = (payload: {
   const dialogueText = Object.entries(payload.workspaceInput ?? {})
   .map(([key, value]) => `${key}: ${String(value)}`)
   .join("\n");
-  return `Workspace summary:\n${summaryText}\n\nChat log highlights:\n${dialogueText}`;
+  const feedbackText = payload.feedback?.trim()
+    ? `User feedback:\n${payload.feedback}`
+    : "User feedback: None";
+  const previousPromptText = payload.previousPrompt?.trim()
+    ? `Previous prompt:\n${payload.previousPrompt}`
+    : "Previous prompt: None";
+  return `Workspace summary:\n${summaryText}\n\nChat log highlights:\n${dialogueText}\n\n${previousPromptText}\n\n${feedbackText}`;
 };
 
 export default async function handler(
@@ -43,17 +51,30 @@ export default async function handler(
     const backgroundText = background?.curatedText?.trim();
 
 
-    const { workspaceSummary, workspaceInput, provider } = req.body as {
+    const {
+      workspaceSummary,
+      workspaceInput,
+      provider,
+      feedback,
+      previousPrompt,
+    } = req.body as {
       workspaceSummary: Record<string, string>;
       workspaceInput: Record<string, string[]>;
       provider?: "openai" | "gemini";
+      feedback?: string;
+      previousPrompt?: string;
     };
 
     const normalizedProvider =
       provider === "gemini" ? "gemini" : "openai";
 
 
-    const promptInput = buildPromptInput({ workspaceSummary, workspaceInput });
+    const promptInput = buildPromptInput({
+      workspaceSummary,
+      workspaceInput,
+      feedback,
+      previousPrompt,
+    });
     const systemText = `
     You are an expert industrial designer and engineer.
     You write a single concise prompt for an image-edit model.
@@ -92,7 +113,7 @@ export default async function handler(
       res.status(200).json({
         imageId: existing.imageId,
         label: existing.label,
-        note: existing.note,
+        prompt: existing.note,
         downloadUrl: existing.downloadUrl,
         existing: true,
       });
