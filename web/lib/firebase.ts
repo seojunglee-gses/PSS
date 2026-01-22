@@ -96,6 +96,15 @@ type SubmittedDesign = {
   downloadUrl: string;
 };
 
+type EvaluationImage = {
+  userId: string;
+  imageId: string;
+  createdAt: string;
+  label: string;
+  note: string;
+  downloadUrl: string;
+};
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -597,5 +606,20 @@ export const loadSubmittedDesigns = async (): Promise<SubmittedDesign[]> => {
 
   return entries
     .filter((entry): entry is SubmittedDesign => Boolean(entry))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+};
+
+export const loadEvaluationImages = async (): Promise<EvaluationImage[]> => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return [];
+  }
+  const db = getFirestore(app);
+  const snapshot = await getDocs(collection(db, "ppssEvaluationImages"));
+  if (snapshot.empty) {
+    return [];
+  }
+  return snapshot.docs
+    .map((docSnap) => docSnap.data() as EvaluationImage)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 };

@@ -11,7 +11,7 @@ import {
   saveWorkspaceSummary,
   sendEvaluationResult,
   loadEvaluationResults,
-  loadSubmittedDesigns,
+  loadEvaluationImages,
   saveStageLocks,
 } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
@@ -306,19 +306,6 @@ export default function Workspace() {
   }, [userKey]);
 
   useEffect(() => {
-    if (!userKey) {
-      return;
-    }
-    const loadEvaluations = async () => {
-      const results = await loadEvaluationResults();
-      if (results.length) {
-        setEvaluationResults(results);
-      }
-    };
-    loadEvaluations();
-  }, [userKey]);
-
-  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -456,7 +443,7 @@ useEffect(() => {
   const refreshEvaluationImages = useCallback(async () => {
     setIsLoadingEvaluationImages(true);
     try {
-      const submissions = await loadSubmittedDesigns();
+      const submissions = await loadEvaluationImages();
       if (!submissions.length) {
         setEvaluationImages([]);
         return;
