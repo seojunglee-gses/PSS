@@ -17,6 +17,7 @@ import {
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
 import { loadGeneratedImages } from "../../lib/firebase";
+import { callLLM } from "../../lib/llm";
 
 const getChatModelByProvider = (provider: string) => {
   if (provider.toLowerCase() === "gemini") {
