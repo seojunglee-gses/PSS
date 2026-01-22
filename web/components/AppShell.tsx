@@ -119,7 +119,7 @@ export default function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="flex min-h-screen">
-        <aside className="flex w-72 flex-col gap-6 bg-[var(--primary)] px-6 py-8 text-white shadow-lg">
+        <aside className="sticky top-0 flex h-screen w-72 flex-col gap-6 bg-[var(--primary)] px-6 py-8 text-white shadow-lg">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">
               PPSS Platform
