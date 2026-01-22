@@ -14,6 +14,7 @@ import {
   loadEvaluationImages,
   saveStageLocks,
   loadLatestExecutiveSummariesByStage,
+  loadAllWorkspaceSummaries,
 } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
@@ -125,14 +126,12 @@ type ExecutiveSummary = {
   };
 };
 
-type ExecutiveSummary = {
-  keywords: string[];
-  stageSummaries: {
-    problemDefinition: string;
-    dataAnalysis: string;
-    designAlternatives: string;
-    designEvaluation: string;
-    decision: string;
+type WorkspaceSummaryRecord = {
+  userId: string;
+  summary: {
+    stageSummaries: Record<string, string>;
+    overallSummary: string;
+    role?: string;
   };
 };
 
@@ -214,6 +213,14 @@ export default function Workspace() {
   >({});
   const [executiveSummary, setExecutiveSummary] =
     useState<ExecutiveSummary | null>(null);
+  const [allWorkspaceSummaries, setAllWorkspaceSummaries] = useState<
+    WorkspaceSummaryRecord[]
+  >([]);
+  const [activeReportTab, setActiveReportTab] =
+    useState("evaluation-report");
+  const [activeUserTabs, setActiveUserTabs] = useState<Record<string, number>>(
+    {}
+  );
 
   const roleByUserId = useMemo(() => {
     const map = new Map<string, string>();
@@ -302,6 +309,17 @@ export default function Workspace() {
       }
     };
     loadExecutiveSummary();
+  }, [userKey]);
+
+  useEffect(() => {
+    if (!userKey) {
+      return;
+    }
+    const loadSummaries = async () => {
+      const summaries = await loadAllWorkspaceSummaries();
+      setAllWorkspaceSummaries(summaries);
+    };
+    loadSummaries();
   }, [userKey]);
 
   useEffect(() => {
@@ -513,6 +531,49 @@ export default function Workspace() {
       </p>
     ));
   }, []);
+
+  const roleGroups = useMemo(() => {
+    return allWorkspaceSummaries.reduce<Record<string, WorkspaceSummaryRecord[]>>(
+      (acc, entry) => {
+        const roleLabel = entry.summary.role ?? "Unassigned";
+        if (!acc[roleLabel]) {
+          acc[roleLabel] = [];
+        }
+        acc[roleLabel].push(entry);
+        return acc;
+      },
+      {}
+    );
+  }, [allWorkspaceSummaries]);
+
+  const roleTabs = useMemo(() => {
+    const roles = Object.keys(roleGroups);
+    const orderedRoles = [
+      ...Object.keys(roleDescriptions).filter((role) => roles.includes(role)),
+      ...roles.filter((role) => !Object.keys(roleDescriptions).includes(role)),
+    ];
+    return [
+      { id: "evaluation-report", label: "Evaluation Report" },
+      ...orderedRoles.map((role) => ({ id: role, label: role })),
+    ];
+  }, [roleGroups]);
+
+  useEffect(() => {
+    if (!roleTabs.find((tab) => tab.id === activeReportTab)) {
+      setActiveReportTab("evaluation-report");
+    }
+  }, [activeReportTab, roleTabs]);
+
+  useEffect(() => {
+    if (activeReportTab === "evaluation-report") {
+      return;
+    }
+    const entries = roleGroups[activeReportTab] ?? [];
+    const currentIndex = activeUserTabs[activeReportTab] ?? 0;
+    if (entries.length && currentIndex >= entries.length) {
+      setActiveUserTabs((prev) => ({ ...prev, [activeReportTab]: 0 }));
+    }
+  }, [activeReportTab, activeUserTabs, roleGroups]);
 
   const getParticipantRoleLabel = useCallback(
     (image?: DesignImage) => {
@@ -959,6 +1020,7 @@ export default function Workspace() {
       await saveWorkspaceSummary(userKey, {
         stageSummaries: mergedStageSummaries,
         overallSummary: payload.workspaceSummary.overallSummary ?? "",
+        role,
         completedStages: nextCompletedStages,
       });
       if (stageSummary) {
@@ -1130,6 +1192,10 @@ export default function Workspace() {
     });
     return `conic-gradient(${segments.join(", ")})`;
   }, [topPreferenceRankTotals]);
+
+  const activeRoleEntries = roleGroups[activeReportTab] ?? [];
+  const activeUserIndex = activeUserTabs[activeReportTab] ?? 0;
+  const activeUserEntry = activeRoleEntries[activeUserIndex];
 
   const groupedAlternativeImages = useMemo(() => {
     const sorted = [...alternativeImages].sort((a, b) =>
@@ -1737,6 +1803,110 @@ export default function Workspace() {
                 </div>
               </div>
             </div>
+            {activeReportTab === "evaluation-report" ? (
+              <div className="mt-6 space-y-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase text-slate-400">
+                    Project keywords
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(executiveSummary?.keywords ?? []).length > 0 ? (
+                      executiveSummary?.keywords.map((keyword) => (
+                        <span
+                          key={keyword}
+                          className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+                        >
+                          {keyword}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-400">
+                        Keywords will appear after executive summary generation.
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase text-slate-400">
+                    Executive summary
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {executiveSummary?.stageSummaries.decision
+                      ? renderSummaryLines(
+                          executiveSummary.stageSummaries.decision
+                        )
+                      : "Generate the decision summary to see the final executive overview."}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-6 space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  {activeRoleEntries.map((entry, index) => (
+                    <button
+                      key={entry.userId}
+                      type="button"
+                      onClick={() =>
+                        setActiveUserTabs((prev) => ({
+                          ...prev,
+                          [activeReportTab]: index,
+                        }))
+                      }
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        (activeUserTabs[activeReportTab] ?? 0) === index
+                          ? "bg-blue-100 text-blue-700"
+                          : "border border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:text-blue-600"
+                      }`}
+                    >
+                      User {index + 1}
+                    </button>
+                  ))}
+                </div>
+                {activeRoleEntries.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    No workspace summaries for this role yet.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase text-slate-400">
+                        Overall summary
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        {activeUserEntry?.summary.overallSummary
+                          ? renderSummaryLines(
+                              activeUserEntry.summary.overallSummary
+                            )
+                          : "No overall summary available for this user."}
+                      </div>
+                    </div>
+                    <div className="grid gap-4">
+                      {steps.map((step) => (
+                        <div
+                          key={step.id}
+                          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                        >
+                          <p className="text-sm font-semibold text-slate-700">
+                            {step.title}
+                          </p>
+                          <div className="mt-2 space-y-2 text-sm text-slate-600">
+                            {activeUserEntry?.summary.stageSummaries?.[
+                              step.id
+                            ]
+                              ? renderSummaryLines(
+                                  activeUserEntry.summary.stageSummaries[
+                                    step.id
+                                  ]
+                                )
+                              : "Finish the stage to generate this summary."}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <button
               className="mt-6 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
               type="button"
