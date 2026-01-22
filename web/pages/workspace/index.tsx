@@ -261,6 +261,8 @@ const basePromptsByStep: Record<string, string> = {
 };
 
 export default function Workspace() {
+  const [currentSiteImage, setCurrentSiteImage] =
+  useState<SiteImage | null>(null);
   const router = useRouter();
   const { user, loading } = useAuth();
   const userKey = user?.uid;
