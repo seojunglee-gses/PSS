@@ -13,6 +13,7 @@ import {
   loadEvaluationResults,
   loadEvaluationImages,
   saveStageLocks,
+  loadLatestExecutiveSummariesByStage,
 } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
@@ -112,6 +113,17 @@ type DesignImage = {
   submittedBy?: string;
 };
 
+type ExecutiveSummary = {
+  keywords: string[];
+  stageSummaries: {
+    problemDefinition: string;
+    dataAnalysis: string;
+    designAlternatives: string;
+    designEvaluation: string;
+    decision: string;
+  };
+};
+
 const roleDescriptions: Record<string, string> = {
   "The Public":
     "Focus on community impact and public-facing outcomes during each stage.",
@@ -188,6 +200,8 @@ export default function Workspace() {
   const [savedSummaries, setSavedSummaries] = useState<
     Record<string, string>
   >({});
+  const [executiveSummary, setExecutiveSummary] =
+    useState<ExecutiveSummary | null>(null);
 
   const buildImageGenerationInput = useCallback(() => {
   const MAX_MESSAGES = 6;
@@ -253,6 +267,19 @@ export default function Workspace() {
       }
     };
     loadEvaluations();
+  }, [userKey]);
+
+  useEffect(() => {
+    if (!userKey) {
+      return;
+    }
+    const loadExecutiveSummary = async () => {
+      const summary = await loadLatestExecutiveSummariesByStage();
+      if (summary) {
+        setExecutiveSummary(summary);
+      }
+    };
+    loadExecutiveSummary();
   }, [userKey]);
 
   useEffect(() => {
@@ -452,6 +479,17 @@ export default function Workspace() {
     }
     return Math.round((index / (steps.length - 1)) * 100);
   }, [activeStep.id]);
+
+  const renderSummaryLines = useCallback((summary?: string) => {
+    if (!summary) {
+      return null;
+    }
+    return summary.split(/\n+/).map((line, index) => (
+      <p key={`${line}-${index}`} className="text-sm text-slate-600">
+        {line}
+      </p>
+    ));
+  }, []);
 
   const buildWorkspaceInput = useCallback(() => {
     return steps.reduce<Record<string, string[]>>((acc, step) => {
@@ -987,73 +1025,66 @@ export default function Workspace() {
         label: image.label,
         average: 0,
         topChoice: 0,
+        voteCount: 0,
         submittedBy: image.submittedBy,
       }));
     }
     return evaluationImages.map((image) => {
-      const scores = evaluationResults.map(
-        (result) => result.rankings?.[image.id] ?? 0
-      );
-      const average =
-        scores.reduce((sum, value) => sum + value, 0) / scores.length;
+      const scores = evaluationResults
+        .map((result) => result.rankings?.[image.id])
+        .filter((value): value is number => typeof value === "number" && value > 0);
+      const average = scores.length
+        ? scores.reduce((sum, value) => sum + value, 0) / scores.length
+        : 0;
       const topChoice = scores.filter((value) => value === 1).length;
       return {
         id: image.id,
         label: image.label,
         average,
         topChoice,
+        voteCount: scores.length,
         submittedBy: image.submittedBy,
       };
     });
   }, [evaluationResults, evaluationImages]);
 
-  const rolePreferences = useMemo(() => {
-    const summary: Record<
-      string,
-      {
-        totals: Record<string, number>;
-        topPickId?: string;
+  const topPreference = useMemo(() => {
+    const ranked = aggregatedResults.filter((result) => result.voteCount > 0);
+    if (!ranked.length) {
+      return evaluationImages[0];
+    }
+    const best = [...ranked].sort((a, b) => {
+      if (b.topChoice !== a.topChoice) {
+        return b.topChoice - a.topChoice;
       }
-    > = {};
-    evaluationResults.forEach((result) => {
-      const roleKey = result.role ?? "Unspecified";
-      if (!summary[roleKey]) {
-        summary[roleKey] = { totals: {} };
-      }
-      evaluationImages.forEach((image) => {
-        if (result.rankings?.[image.id] === 1) {
-          summary[roleKey].totals[image.id] =
-            (summary[roleKey].totals[image.id] ?? 0) + 1;
-        }
-      });
-    });
-    Object.entries(summary).forEach(([roleKey, entry]) => {
-      const sorted = Object.entries(entry.totals).sort((a, b) => b[1] - a[1]);
-      entry.topPickId = sorted[0]?.[0];
-      summary[roleKey] = entry;
-    });
-    return summary;
-  }, [evaluationResults, evaluationImages]);
+      return a.average - b.average;
+    })[0];
+    return evaluationImages.find((image) => image.id === best.id);
+  }, [aggregatedResults, evaluationImages]);
 
-  const topChoiceTotals = useMemo(() => {
-    return evaluationImages.map((image) => ({
-      id: image.id,
-      label: image.label,
-      submittedBy: image.submittedBy,
-      value:
-        evaluationResults.filter(
-          (result) => result.rankings?.[image.id] === 1
-        ).length ?? 0,
-    }));
-  }, [evaluationImages, evaluationResults]);
+  const topPreferenceRankTotals = useMemo(() => {
+    if (!topPreference) {
+      return [];
+    }
+    return rankingOptions.map((rankLabel) => {
+      const rank = Number(rankLabel);
+      const value = evaluationResults.filter(
+        (result) => result.rankings?.[topPreference.id] === rank
+      ).length;
+      return { rank, value };
+    });
+  }, [evaluationResults, rankingOptions, topPreference]);
 
   const pieGradient = useMemo(() => {
-    const total = topChoiceTotals.reduce((sum, item) => sum + item.value, 0);
+    const total = topPreferenceRankTotals.reduce(
+      (sum, item) => sum + item.value,
+      0
+    );
     if (!total) {
       return "conic-gradient(#e2e8f0 0deg 360deg)";
     }
     let current = 0;
-    const segments = topChoiceTotals.map((item, index) => {
+    const segments = topPreferenceRankTotals.map((item, index) => {
       const start = current;
       const slice = (item.value / total) * 360;
       current += slice;
@@ -1062,7 +1093,7 @@ export default function Workspace() {
       )}deg ${current.toFixed(2)}deg`;
     });
     return `conic-gradient(${segments.join(", ")})`;
-  }, [topChoiceTotals]);
+  }, [topPreferenceRankTotals]);
 
   const groupedAlternativeImages = useMemo(() => {
     const sorted = [...alternativeImages].sort((a, b) =>
@@ -1086,15 +1117,6 @@ export default function Workspace() {
     const latest = alternativeImages[alternativeImages.length - 1];
     setLastGeneratedImageId(latest?.id ?? null);
   }, [activeStep.id, alternativeImages]);
-
-  const topPreference = useMemo(() => {
-    const ranked = aggregatedResults.filter((result) => result.average > 0);
-    if (!ranked.length) {
-      return evaluationImages[0];
-    }
-    const best = [...ranked].sort((a, b) => a.average - b.average)[0];
-    return evaluationImages.find((image) => image.id === best.id);
-  }, [aggregatedResults, evaluationImages]);
 
   if (loading) {
     return (
@@ -1646,19 +1668,38 @@ export default function Workspace() {
               Consolidate the final PPSS report for audit and stakeholder
               sign-off.
             </p>
-            <div className="mt-6 space-y-3">
-              {[
-                "Executive summary and scope overview.",
-                "Risk assessment matrix and approval notes.",
-                "Final recommended workflow and readiness score.",
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"
-                >
-                  {item}
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase text-slate-400">
+                  Project keywords
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(executiveSummary?.keywords ?? []).length > 0 ? (
+                    executiveSummary?.keywords.map((keyword) => (
+                      <span
+                        key={keyword}
+                        className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+                      >
+                        {keyword}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-400">
+                      Keywords will appear after executive summary generation.
+                    </span>
+                  )}
                 </div>
-              ))}
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase text-slate-400">
+                  Executive summary
+                </p>
+                <div className="mt-3 space-y-2">
+                  {executiveSummary?.stageSummaries.decision
+                    ? renderSummaryLines(executiveSummary.stageSummaries.decision)
+                    : "Generate the decision summary to see the final executive overview."}
+                </div>
+              </div>
             </div>
             <button
               className="mt-6 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
@@ -1690,11 +1731,11 @@ export default function Workspace() {
                 <p className="mt-3 text-sm font-semibold text-slate-700">
                   {topPreference?.label ?? "Top concept"}
                 </p>
-                {topPreference?.submittedBy && (
-                  <p className="mt-1 text-xs text-slate-400">
-                    {topPreference.submittedBy}
-                  </p>
-                )}
+                <p className="mt-1 text-xs text-slate-400">
+                  ID {topPreference?.id ?? "N/A"} ·{" "}
+                  {topPreference?.label ?? "Design"} ·{" "}
+                  {topPreference?.submittedBy ?? "Participant"}
+                </p>
                 <p className="mt-1 text-xs text-slate-500">
                   Highest-rated design based on submitted rankings.
                 </p>
@@ -1709,8 +1750,8 @@ export default function Workspace() {
                     style={{ background: pieGradient }}
                   />
                   <div className="space-y-2 text-xs text-slate-600">
-                  {topChoiceTotals.map((item, index) => (
-                    <div key={item.id} className="flex items-center gap-2">
+                  {topPreferenceRankTotals.map((item, index) => (
+                    <div key={item.rank} className="flex items-center gap-2">
                       <span
                         className="h-2 w-2 rounded-full"
                         style={{
@@ -1719,10 +1760,7 @@ export default function Workspace() {
                         }}
                       />
                         <span className="font-semibold text-slate-700">
-                          {item.label}
-                        </span>
-                        <span className="text-slate-400">
-                          {item.submittedBy ?? "Participant"}
+                          Rank {item.rank}
                         </span>
                         <span className="ml-auto text-slate-500">
                           {item.value} votes
@@ -1732,81 +1770,49 @@ export default function Workspace() {
                   </div>
                 </div>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  Role-based top picks (bar)
-                </p>
-                <div className="mt-3 space-y-4 text-xs text-slate-600">
-                  {Object.entries(rolePreferences).length === 0 && (
-                    <p className="text-slate-400">
-                      Role-based insights will appear after rankings are
-                      submitted.
-                    </p>
-                  )}
-                  {Object.entries(rolePreferences).map(([roleKey, entry]) => (
-                    <div key={roleKey} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-700">
-                          {roleKey}
-                        </span>
-                        <span className="text-slate-400">
-                          Top pick:{" "}
-                          {evaluationImages.find(
-                            (image) => image.id === entry.topPickId
-                          )?.label ?? "N/A"}
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        {evaluationImages.map((image) => {
-                          const value = entry.totals[image.id] ?? 0;
-                          return (
-                            <div key={image.id} className="space-y-1">
-                              <div className="flex items-center justify-between text-[11px] text-slate-500">
-                                <span>
-                                  {image.label} ·{" "}
-                                  {image.submittedBy ?? "Participant"}
-                                </span>
-                                <span>{value} votes</span>
-                              </div>
-                              <div className="h-2 rounded-full bg-slate-200">
-                                <div
-                                  className="h-full rounded-full bg-[var(--primary)]"
-                                  style={{
-                                    width: `${Math.max(
-                                      8,
-                                      (value /
-                                        Math.max(1, evaluationResults.length)) *
-                                        100
-                                    )}%`,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <p className="text-xs font-semibold uppercase text-slate-400">
                   Ranking overview
                 </p>
                 <div className="mt-3 space-y-3">
+                  <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-3 text-[11px] font-semibold uppercase text-slate-400">
+                    <span>Alternative</span>
+                    <span>Participant role</span>
+                    <span>Average rank</span>
+                    <span>Votes</span>
+                  </div>
                   {aggregatedResults.map((result) => (
                     <div key={result.id} className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-slate-500">
-                        <span className="font-semibold text-slate-700">
-                          {result.label}{" "}
-                          <span className="text-[11px] text-slate-400">
-                            {result.submittedBy ?? "Participant"}
+                      <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] items-center gap-3 text-xs text-slate-500">
+                        <div className="relative group font-semibold text-slate-700">
+                          <span className="cursor-default">
+                            {result.label}
                           </span>
+                          {evaluationImages.find(
+                            (image) => image.id === result.id
+                          )?.imageUrl && (
+                            <div className="pointer-events-none absolute left-0 top-full z-10 mt-2 w-40 rounded-xl border border-slate-200 bg-white p-2 shadow-lg opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                              <img
+                                src={
+                                  evaluationImages.find(
+                                    (image) => image.id === result.id
+                                  )?.imageUrl
+                                }
+                                alt={`${result.label} preview`}
+                                className="h-24 w-full rounded-lg object-cover"
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-slate-500">
+                          {result.submittedBy ?? "Participant"}
                         </span>
                         <span>
-                          Avg rank {result.average.toFixed(1)} · Top choice{" "}
-                          {result.topChoice}
+                          {result.average > 0
+                            ? result.average.toFixed(1)
+                            : "N/A"}
                         </span>
+                        <span>{result.voteCount}</span>
                       </div>
                       <div className="h-2 rounded-full bg-slate-200">
                         <div
