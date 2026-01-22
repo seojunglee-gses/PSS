@@ -462,6 +462,7 @@ export default function Workspace() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        mode: feedback ? "iteration" : "initial",
         workspaceSummary: savedSummaries,
         workspaceInput: buildImageGenerationInput(),
         feedback,
