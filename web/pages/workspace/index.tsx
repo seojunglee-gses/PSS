@@ -775,7 +775,7 @@ export default function Workspace() {
             stepId,
             provider: activeProvider,
             sender: "assistant" as const,
-            text: response,
+            text: reply,
             label: activeProvider,
             createdAt: new Date().toISOString(),
           },
