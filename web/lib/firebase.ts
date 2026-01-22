@@ -415,24 +415,6 @@ export const archiveBackgroundKnowledgeFile = async (
   };
   await addDoc(collection(db, "ppssBackgroundKnowledgeArchives"), archivePayload);
 };
-
-  export const saveCurrentSiteImage = async (
-    file: File,
-    updatedBy: string
-  ): Promise<SiteImage | null> => {
-    const app = getFirebaseApp();
-    if (!app) {
-      return null;
-    }
-    const db = getFirestore(app);
-    const storage = getStorage(app);
-    const imageId = "current";
-    const ext =
-    file.type === "image/png"
-      ? "png"
-      : file.type === "image/jpeg"
-        ? "jpg"
-        : "png";
   
   export const saveCurrentSiteImage = async (
     file: File,
