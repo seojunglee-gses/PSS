@@ -691,7 +691,9 @@ export default function Setting() {
                   </span>
                 )}
               </div>
-                <div className="border-t border-rose-200 bg-rose-50/40 pt-6 rounded-xl">
+            </div>
+            
+            <div className="border-t border-rose-200 bg-rose-50/40 pt-6 rounded-xl">
               <h4 className="text-sm font-semibold text-slate-700">
                 Reset project (soft)
               </h4>
