@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "../../components/AppShell";
 import {
   loadChatLogsFromFirestore,
@@ -19,6 +19,7 @@ import {
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
 import { loadGeneratedImages } from "../../lib/firebase";
+
 
 const getChatModelByProvider = (provider: string) => {
   if (provider.toLowerCase() === "gemini") {
@@ -145,7 +146,7 @@ const roleDescriptions: Record<string, string> = {
     "Review compliance, safety, and policy alignment across all steps.",
 };
 
-const roleIcons: Record<string, JSX.Element> = {
+const roleIcons: Record<string, React.ReactElement> = {
   All: (
     <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
       <circle
