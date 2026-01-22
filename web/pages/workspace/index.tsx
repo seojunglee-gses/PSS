@@ -944,11 +944,9 @@ export default function Workspace() {
 
   const handleSubmitRankings = async () => {
     if (!userKey) {
-      setShowSubmitNotice("Authentication required.");
       return;
     }
     if (!evaluationImages.length) {
-      setShowSubmitNotice("No designs available to rank.");
       return;
     }
     const payload = {
