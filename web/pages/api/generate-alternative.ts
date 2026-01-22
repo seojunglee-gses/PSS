@@ -66,9 +66,8 @@ export default async function handler(
       userID?: string;
     };
     if (!userID) {
-  throw new Error("Authentication required.");
-}
-  userId: userID,
+      throw new Error("Authentication required.");
+    }
 
     const normalizedProvider =
       provider === "gemini" ? "gemini" : "openai";
@@ -199,7 +198,7 @@ export default async function handler(
      base64,
      label: feedback ? "Revised Design" : "Generated Concept",
      note: prompt,
-     userId: effectiveUserId,
+     userId: userID,
       });
   
     if (!savedImage) {
