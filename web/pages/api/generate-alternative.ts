@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
-import { loadCurrentSiteImage, loadGeneratedImage, saveGeneratedImageFromBase64 } from "../../lib/firebase";
+import { loadCurrentSiteImage, loadGeneratedImage, } from "../../lib/firebase";
 import { callLLM } from "../../lib/llm";
 import { loadBackgroundKnowledge } from "../../lib/firebase";
 
@@ -210,9 +210,8 @@ export default async function handler(
         label: savedImage.label,
         prompt,
         base64,
-        downloadUrl: savedImage.downloadUrl, // 저장된 URL 반환
-        existing: false,
       });
+    return;
   
     } catch (error) {
       console.error("Generate Error:", error); // 서버 로그 확인용
