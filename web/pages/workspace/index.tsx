@@ -744,7 +744,12 @@ export default function Workspace() {
       }
       else if (stepId === "evaluation") {
       const evaluationContext = buildEvaluationContext();
+      const evaluationMessage = `
+    ${evaluationContext}
     
+    User question:
+    ${userMessage}
+    `;
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -752,32 +757,18 @@ export default function Workspace() {
           provider: activeProvider,
           model: getChatModelByProvider(activeProvider),
           stepId: "evaluation",
-          message:  `
-    You are an expert design reviewer.
-    You analyze existing design alternatives.
-    
-    Your task is to explain:
-    - why each alternative was created
-    - what dialogue and constraints led to it
-    - what problem it primarily addresses
-    
-    When the user refers to "Alternative N",
-    use the provided context to answer precisely.
-    `,
-        userText: `
-    ${evaluationContext}
-    
-    User question:
-    ${userMessage}
-    `,
+          message: evaluationMessage,
+        }),
       });
+
      if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
       throw new Error(payload?.error ?? "Evaluation chat failed.");
      }
     const payload = await response.json();
-    const reply = payload.reply;    
-      setChatLogs((prev) => {
+    const reply = payload.reply; 
+        
+    setChatLogs((prev) => {
         const next = [
           ...prev,
           {
