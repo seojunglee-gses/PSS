@@ -559,16 +559,6 @@ export default function Workspace() {
         imageNote: imageRecord.note,
       },
     ]);
-  setAlternativeImages((prev) => [
-    ...prev,
-    {
-      id: imageRecord.id,
-      label: imageRecord.label,
-      note: imageRecord.note,
-      imageUrl: imageRecord.imageUrl,
-      createdAt: imageRecord.createdAt,
-    },
-  ]);
   }, [
     activeProvider,
     alternativeImages.length,
@@ -786,17 +776,6 @@ export default function Workspace() {
               imageId: imageRecord.id,
               imageLabel: imageRecord.label,
               imageNote: revision.prompt,
-            },
-          ]);
-
-          setAlternativeImages((prev) => [
-            ...prev,
-            {
-              id: imageRecord.id,
-              label: imageRecord.label,
-              note: imageRecord.note,
-              imageUrl: imageRecord.imageUrl,
-              createdAt: imageRecord.createdAt,
             },
           ]);
         
