@@ -396,8 +396,9 @@ export default function Report() {
             );    
           })}
         </div>
+        </>
+      )}
       </section>
-      
     </AppShell>
   );
 }
