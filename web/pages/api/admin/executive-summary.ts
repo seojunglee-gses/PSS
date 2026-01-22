@@ -42,8 +42,20 @@ const buildSystemPrompt = (backgroundKnowledge?: string) =>
     ? `${systemPromptBase}\n\nBackground knowledge (stable system context for all planning stages):\n${backgroundKnowledge}`
     : systemPromptBase;
 
-const buildPrompt = (payload: unknown) =>
-  `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"keywords\": [\"...\"],\n  \"conclusion\": \"...\"\n}\n\nRules:\n- Conclusion reflects all participants' workspace dialogue summaries for the requested stage.\n- Keywords should capture the top 5 themes people care about most. Return exactly 5 keywords.\n- Keep output concise and structured.`;
+const buildPrompt = (payload: {
+  stageId: string;
+  stageLabel: string;
+  participants: number;
+  stageCounts: Record<string, number>;
+  stageSummary: string[];
+}) => {
+  const isDecisionStage = payload.stageId === "report";
+  return `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"keywords\": [\"...\"],\n  \"conclusion\": \"...\"\n}\n\nRules:\n- Conclusion reflects all participants' workspace dialogue summaries for the requested stage.\n- Keywords should capture the top 5 themes people care about most. Return exactly 5 keywords.\n- Keep output concise and structured.\n${
+    isDecisionStage
+      ? "- For the decision stage, synthesize the full set of stage summaries into a final executive summary."
+      : ""
+  }`;
+};
 
 export default async function handler(
   req: NextApiRequest,
@@ -104,6 +116,24 @@ export default async function handler(
       {}
     );
 
+    const combinedDecisionSummaries = summaries
+      .map((entry) => {
+        const lines = stageOrder
+          .map(({ id, label }) => {
+            const text = entry.summary.stageSummaries?.[id];
+            if (!text || !text.trim()) {
+              return null;
+            }
+            return `${label}:\n${text}`;
+          })
+          .filter((line): line is string => Boolean(line));
+        if (!lines.length) {
+          return null;
+        }
+        return lines.join("\n\n");
+      })
+      .filter((text): text is string => Boolean(text));
+
     const backgroundKnowledge = await loadBackgroundKnowledge();
     const curatedBackground = backgroundKnowledge?.curatedText?.trim();
 
@@ -124,7 +154,10 @@ export default async function handler(
               stageLabel: stage.label,
               participants: summaries.length,
               stageCounts,
-              stageSummary: aggregated[stage.id] ?? [],
+              stageSummary:
+                stage.id === "report"
+                  ? combinedDecisionSummaries
+                  : aggregated[stage.id] ?? [],
             }),
           },
         ],
