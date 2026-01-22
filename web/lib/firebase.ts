@@ -70,7 +70,7 @@ type BackgroundKnowledgeArchive = {
   uploadedBy: string;
 };
 
-type SiteImage = {
+export type SiteImage = {
   imageId: string;
   storagePath: string;
   downloadUrl: string;
