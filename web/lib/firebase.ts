@@ -416,25 +416,63 @@ export const archiveBackgroundKnowledgeFile = async (
   await addDoc(collection(db, "ppssBackgroundKnowledgeArchives"), archivePayload);
 };
 
-export const saveCurrentSiteImage = async (
-  file: File,
-  updatedBy: string
-): Promise<SiteImage | null> => {
-  const app = getFirebaseApp();
-  if (!app) {
-    return null;
-  }
-  const db = getFirestore(app);
-  const storage = getStorage(app);
-  const imageId = "current";
-  const ext =
-  file.type === "image/png"
-    ? "png"
-    : file.type === "image/jpeg"
-      ? "jpg"
-      : "png";
+  export const saveCurrentSiteImage = async (
+    file: File,
+    updatedBy: string
+  ): Promise<SiteImage | null> => {
+    const app = getFirebaseApp();
+    if (!app) {
+      return null;
+    }
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+    const imageId = "current";
+    const ext =
+    file.type === "image/png"
+      ? "png"
+      : file.type === "image/jpeg"
+        ? "jpg"
+        : "png";
+  
+  export const saveCurrentSiteImage = async (
+    file: File,
+    updatedBy: string
+  ): Promise<SiteImage | null> => {
+    const app = getFirebaseApp();
+    if (!app) return null;
+  
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+  
+    const ext =
+      file.type === "image/png"
+        ? "png"
+        : file.type === "image/jpeg"
+          ? "jpg"
+          : "png";
+  
+    // ✅ 핵심: 버전드 path
+    const timestamp = Date.now();
+    const storagePath = `ppss-site-image/${timestamp}.${ext}`;
+    const storageRef = ref(storage, storagePath);
+  
+    await uploadBytes(storageRef, file);
+    const downloadUrl = await getDownloadURL(storageRef);
+  
+    const payload: SiteImage = {
+      imageId: String(timestamp),
+      storagePath,
+      downloadUrl,
+      updatedAt: new Date().toISOString(),
+      updatedBy,
+    };
+  
+    // current 포인터만 갱신
+    await setDoc(doc(db, "ppssSiteImages", "current"), payload, { merge: true });
+  
+    return payload;
+  };
 
-const storagePath = `ppss-site-image/current.${ext}`;
 
   const downloadUrl = await getDownloadURL(ref(storage, storagePath));
   const payload: SiteImage = {
