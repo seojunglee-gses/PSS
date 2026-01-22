@@ -343,7 +343,7 @@ export default function Workspace() {
     () =>
       chatLogs
         .filter((log) => log.stepId === "alternatives" && log.imageUrl)
-        .map((log) => ({
+        .map((log, index) => ({
           id: log.imageId ?? `image-${log.createdAt}`,
           label: `Alternative ${index + 1}`,
           note: log.imageNote ?? "",
