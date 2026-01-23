@@ -749,7 +749,7 @@ export default function Workspace() {
         feedback,
         previousPrompt,
         siteImageId,
-        useSiteImage: ture,
+        useSiteImage: true,
         provider:
           activeProvider.toLowerCase() === "gemini"
             ? "gemini"
