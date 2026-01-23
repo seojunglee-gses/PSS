@@ -250,7 +250,7 @@ const formatParticipantLabel = (index: number, userId?: string) => {
 };
 
 const basePromptsByStep: Record<string, string> = {
-  data: "What stands out to you in this data?",
+  data: "Respond using the three case studies: 789 Art Zone, Gyeungui Line Forest Park, and Highline Park.",
   alternatives:
     "",
   evaluation:
@@ -1747,7 +1747,7 @@ const handleSend = async () => {
                       <img
                         src="https://museumofwander.com/wp-content/uploads/2023/03/DSC00795.jpg"
                         alt="789 Art Zone in Beijing, China"
-                        className="h-48 w-full rounded-xl object-cover"
+                        className="h-72 w-full rounded-xl object-cover"
                       />
                       <p>
                         The 798 Art Zone (also known as Dashanzi Art District)
@@ -1817,7 +1817,7 @@ const handleSend = async () => {
                       <img
                         src="https://parks.seoul.go.kr/images/egovframework/com/template/gus3.jpg"
                         alt="Gyeungui Line Forest Park in Seoul, Korea"
-                        className="h-48 w-full rounded-xl object-cover"
+                        className="h-72 w-full rounded-xl object-cover"
                       />
                       <p>
                         The Gyeongui Line Forest Park in Seoul is a major urban
@@ -1887,7 +1887,7 @@ const handleSend = async () => {
                       <img
                         src="https://cdn.vox-cdn.com/thumbor/vfP32EdfHssHtEknAq-I1Tyv0Zw=/0x0:2000x1333/2070x828/filters:focal(840x507:1160x827):format(webp)/cdn.vox-cdn.com/uploads/chorus_image/image/63748975/Highline_Guide_Max_Touhey_20190416_0082.0.jpg"
                         alt="Highline Park in New York, USA"
-                        className="h-48 w-full rounded-xl object-cover"
+                        className="h-72 w-full rounded-xl object-cover"
                       />
                       <p>
                         The High Line Park is an elevated linear park in
