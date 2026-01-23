@@ -288,6 +288,11 @@ export default function Workspace() {
     localStorage.setItem("ppss-active-step", activeStep.id);
   }, [activeStep.id]);
 
+  const persistChatLogs = async (logs: ChatLog[]) => {
+    if (!userKey) return;
+    await saveChatLogsToFirestore(userKey, logs, user?.email ?? userKey);
+  };
+
   const [isSending, setIsSending] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedAlternative, setSelectedAlternative] = useState<string | null>(
@@ -851,9 +856,8 @@ export default function Workspace() {
       return;
     }
 
-    setChatLogs((prev) => {
-      const next = [
-        ...prev,
+    const nextLogs: ChatLog[] = [
+        ...chatLogs,
         {
           stepId: "alternatives",
           provider: activeProvider,
@@ -867,7 +871,9 @@ export default function Workspace() {
           imageNote: imageRecord.note,
         },
       ];
-
+      setChatLogs(nextLogs);
+      await persistChatLogs(nextLogs);
+      
       if (userKey) {
         saveChatLogsToFirestore(
           userKey,
@@ -944,25 +950,20 @@ const handleSend = async () => {
   const userMessage = inputValue.trim();
   setIsSending(true);
 
-  // 1) 유저 메시지 append + 저장
-  setChatLogs((prev) => {
-    const next: ChatLog[] = [
-      ...prev,
-      {
-        stepId,
-        provider: activeProvider,
-        sender: "user" as const,
-        text: userMessage,
-        label: role,
-        createdAt: new Date().toISOString(),
-      },
-    ];
+  const nextUserLogs: ChatLog[] = [
+  ...chatLogs,
+  {
+    stepId,
+    provider: activeProvider,
+    sender: "user" as const,
+    text: userMessage,
+    label: role,
+    createdAt: new Date().toISOString(),
+  },
+];
 
-    if (userKey) {
-      saveChatLogsToFirestore(userKey, next, user?.email ?? userKey);
-    }
-    return next;
-  });
+setChatLogs(nextUserLogs);
+await persistChatLogs(nextUserLogs);
 
   setInputValue("");
 
@@ -986,9 +987,8 @@ const handleSend = async () => {
           return;
         }
 
-        setChatLogs((prev) => {
-          const next: ChatLog[] = [
-            ...prev,
+          const nextEvaluationLogs: ChatLog[] = [
+            ...chatLogs,
             {
               stepId,
               provider: activeProvider,
@@ -1002,6 +1002,8 @@ const handleSend = async () => {
               imageNote: imageRecord.note,
             },
           ];
+          setChatLogs(nextEvaluationLogs);
+          await persistChatLogs(nextEvaluationLogs);
 
           if (userKey) {
             saveChatLogsToFirestore(userKey, next, user?.email ?? userKey);
@@ -1038,27 +1040,20 @@ const handleSend = async () => {
       const payload = await response.json();
       const reply = payload.reply;
 
-      setChatLogs((prev) => {
-        const next: ChatLog[] = [
-          ...prev,
-          {
-            stepId,
-            provider: activeProvider,
-            sender: "assistant" as const,
-            text: reply,
-            label: activeProvider,
-            createdAt: new Date().toISOString(),
-          },
-        ];
-
-        if (userKey) {
-          saveChatLogsToFirestore(userKey, next, user?.email ?? userKey);
-        }
-        return next;
-      });
-
-      return;
-    }
+      const nextAssistantLogs: ChatLog[] = [
+        ...chatLogs,
+        {
+          stepId,
+          provider: activeProvider,
+          sender: "assistant" as const,
+          text: reply,
+          label: activeProvider,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+      setChatLogs(nextAssistantLogs);
+      await persistChatLogs(nextAssistantLogs);
+      }
 
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -1076,21 +1071,20 @@ const handleSend = async () => {
       }
       const payload = (await response.json()) as { reply: string };
       const reply = payload.reply;
-      setChatLogs((prev) => {
-        const next: ChatLog[] = [
-          ...prev,
-        {
-          stepId,
-          provider: activeProvider,
-          sender: "assistant" as const,
-          text: reply,
-          label: activeProvider,
-          createdAt: new Date().toISOString(),
-        },
-      ];     
-      if (userKey) {saveChatLogsToFirestore(userKey, next, user?.email ?? userKey); }            
-       return next;
-  });
+      const nextAssistantLogs: ChatLog[] = [
+       ...chatLogs,
+       {
+         stepId,
+         provider: activeProvider,
+         sender: "assistant" as const,
+         text: reply,
+         label: activeProvider,
+         createdAt: new Date().toISOString(),
+       },
+     ];
+    
+     setChatLogs(nextAssistantLogs);
+     await persistChatLogs(nextAssistantLogs); 
     } catch (error) {
       setErrorMessage(
         error instanceof Error
