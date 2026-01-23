@@ -292,12 +292,17 @@ export default function Workspace() {
     localStorage.setItem("ppss-active-step", activeStep.id);
   }, [activeStep.id]);
 
-  const persistChatLogs = async (logs: ChatLog[]) => {
+  const persistChatLogs = async (
+    stepId: string,
+    logs: ChatLog[],
+    currentLogsByStep: Record<string, ChatLog[]>
+  ) => {
     if (!userKey) return;
-    await saveChatLogsToFirestore(userKey, logs, user?.email ?? userKey);
-    if (typeof window !== "undefined" && chatStorageKey) {
-      window.localStorage.setItem(chatStorageKey, JSON.stringify(logs));
-    }
+    await saveChatLogsToFirestore(
+      userKey,
+      { ...currentLogsByStep, [stepId]: logs },
+      user?.email ?? userKey
+    );
   };
 
   const [isSending, setIsSending] = useState(false);
@@ -334,7 +339,13 @@ export default function Workspace() {
       role?: string;
     }>
   >([]);
-  const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
+  const [chatLogsByStep, setChatLogsByStep] = useState<
+    Record<string, ChatLog[]>
+  >({});
+  const chatLogs = useMemo(
+    () => Object.values(chatLogsByStep).flat(),
+    [chatLogsByStep]
+  );
   const [hasLoadedChatLogs, setHasLoadedChatLogs] = useState(false);
   const hasAnyAlternativeImage = useMemo(() => {
     return chatLogs.some(
@@ -472,35 +483,22 @@ export default function Workspace() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!user?.uid) {
-      return;
-    }
-    const loadLogs = async () => {
-      setHasLoadedChatLogs(false);
-      const storedLogs = await loadChatLogsFromFirestore<
-        Array<Partial<ChatLog> & { sender?: "Planner" | "ChatGPT" | "user" | "assistant" }>
-      >(user.uid);
-      const fallbackLogs =
-        !storedLogs && typeof window !== "undefined" && chatStorageKey
-          ? (JSON.parse(
-              window.localStorage.getItem(chatStorageKey) ?? "null"
-            ) as Array<Partial<ChatLog> & {
-              sender?: "Planner" | "ChatGPT" | "user" | "assistant";
-            }>) || null
-          : storedLogs;
-      if (!fallbackLogs) {
-        setHasLoadedChatLogs(true);
-        return;
-      }
-      const normalized = fallbackLogs
+  const normalizeLogs = useCallback(
+    (
+      logs: Array<
+        Partial<ChatLog> & {
+          sender?: "Planner" | "ChatGPT" | "user" | "assistant";
+        }
+      >
+    ) =>
+      logs
         .map((log, index) => {
           const sender = normalizeSender(log.sender);
 
           if (!sender || !log.provider) {
             return null;
           }
-          const stepId = log.stepId
+          const stepId = log.stepId ?? "unknown";
           const label =
             log.label ?? (sender === "assistant" ? log.provider : role);
           const createdAt =
@@ -527,34 +525,43 @@ export default function Workspace() {
           } as ChatLog;
         })
         .filter((log): log is ChatLog => Boolean(log))
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      setChatLogs(normalized);
-      if (typeof window !== "undefined" && chatStorageKey) {
-        window.localStorage.setItem(chatStorageKey, JSON.stringify(normalized));
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [role]
+  );
+
+  useEffect(() => {
+    if (!user?.uid) {
+      return;
+    }
+    const loadLogs = async () => {
+      setHasLoadedChatLogs(false);
+      const storedLogs = await loadChatLogsFromFirestore<
+        Record<
+          string,
+          Array<
+            Partial<ChatLog> & {
+              sender?: "Planner" | "ChatGPT" | "user" | "assistant";
+            }
+          >
+        >
+      >(user.uid);
+      if (!storedLogs || !storedLogs[activeStep.id]) {
+        setChatLogsByStep((prev) => ({
+          ...prev,
+          [activeStep.id]: prev[activeStep.id] ?? [],
+        }));
+        setHasLoadedChatLogs(true);
+        return;
       }
+      const normalized = normalizeLogs(storedLogs[activeStep.id]);
+      setChatLogsByStep((prev) => ({
+        ...prev,
+        [activeStep.id]: normalized,
+      }));
       setHasLoadedChatLogs(true);
     };
     loadLogs();
-  }, [user?.uid, chatStorageKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !chatStorageKey) {
-      return;
-    }
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key !== chatStorageKey || !event.newValue) {
-        return;
-      }
-      try {
-        const parsed = JSON.parse(event.newValue) as ChatLog[];
-        setChatLogs(parsed);
-      } catch {
-        // Ignore malformed payloads.
-      }
-    };
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, [chatStorageKey]);
+  }, [activeStep.id, normalizeLogs, user?.uid]);
 
   useEffect(() => {
     if (!user) {
@@ -907,7 +914,7 @@ export default function Workspace() {
       return;
     }
     const nextLogs: ChatLog[] = [
-      ...chatLogs,
+      ...(chatLogsByStep.alternatives ?? []),
       {
         stepId:"alternatives",
         provider: activeProvider,
@@ -922,10 +929,13 @@ export default function Workspace() {
       },
     ];
     
-    setChatLogs(nextLogs);
-    await persistChatLogs(nextLogs);
+    setChatLogsByStep((prev) => ({ ...prev, alternatives: nextLogs }));
+    await persistChatLogs("alternatives", nextLogs, {
+      ...chatLogsByStep,
+      alternatives: nextLogs,
+    });
     },
-  [requestGeneratedImage, chatLogs, activeProvider, persistChatLogs]
+  [requestGeneratedImage, chatLogsByStep, activeProvider, persistChatLogs]
 );
 
 
@@ -986,8 +996,8 @@ const handleSend = async () => {
   setIsSending(true);
   setErrorMessage(null);
 
-  const nextUserLogs: ChatLog[] = [
-  ...chatLogs,
+    const nextUserLogs: ChatLog[] = [
+  ...(chatLogsByStep[stepId] ?? []),
   {
     stepId,
     provider: activeProvider,
@@ -998,8 +1008,8 @@ const handleSend = async () => {
   },
 ];
 
-setChatLogs(nextUserLogs);
-persistChatLogs(nextUserLogs);
+  setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextUserLogs }));
+  persistChatLogs(stepId, nextUserLogs, chatLogsByStep);
 
   setInputValue("");
 
@@ -1039,8 +1049,11 @@ persistChatLogs(nextUserLogs);
               imageNote: imageRecord.note,
             },
           ];
-          setChatLogs(nextEvaluationLogs);
-          await persistChatLogs(nextEvaluationLogs);
+          setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextEvaluationLogs }));
+          await persistChatLogs(stepId, nextEvaluationLogs, {
+            ...chatLogsByStep,
+            [stepId]: nextEvaluationLogs,
+          });
 
       } finally {
         setIsLoadingAlternatives(false);
@@ -1068,7 +1081,7 @@ persistChatLogs(nextUserLogs);
       }
       const payload = (await response.json()) as { reply: string };
       const reply = payload.reply;
-      const baseLogs = [...nextUserLogs];
+     const baseLogs = [...nextUserLogs];
       const nextAssistantLogs: ChatLog[] = [
        ...baseLogs,
        {
@@ -1081,8 +1094,11 @@ persistChatLogs(nextUserLogs);
        },
      ];
     
-     setChatLogs(nextAssistantLogs);
-     persistChatLogs(nextAssistantLogs);
+     setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextAssistantLogs }));
+     persistChatLogs(stepId, nextAssistantLogs, {
+       ...chatLogsByStep,
+       [stepId]: nextAssistantLogs,
+     });
     } catch (error) {
       setErrorMessage(
         error instanceof Error

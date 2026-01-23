@@ -186,7 +186,7 @@ export const loadChatLogsFromStorage = async <T>(
 
 export const saveChatLogsToFirestore = async (
   userId: string,
-  logs: unknown,
+  logsByStep: Record<string, unknown>,
   updatedBy?: string
 ) => {
   const app = getFirebaseApp();
@@ -197,7 +197,7 @@ export const saveChatLogsToFirestore = async (
   await setDoc(
     doc(db, "ppssChatLogs", userId),
     {
-      logs,
+      logsByStep,
       updatedAt: new Date().toISOString(),
       updatedBy,
     },
@@ -217,8 +217,24 @@ export const loadChatLogsFromFirestore = async <T>(
   if (!snapshot.exists()) {
     return null;
   }
-  const data = snapshot.data() as { logs?: T };
-  return data.logs ?? null;
+  const data = snapshot.data() as { logsByStep?: T; logs?: unknown };
+  if (data.logsByStep) {
+    return data.logsByStep;
+  }
+  if (Array.isArray(data.logs)) {
+    const grouped = (data.logs as Array<{ stepId?: string }>).reduce<
+      Record<string, unknown[]>
+    >((acc, log) => {
+      const stepId = log.stepId ?? "unknown";
+      if (!acc[stepId]) {
+        acc[stepId] = [];
+      }
+      acc[stepId].push(log);
+      return acc;
+    }, {});
+    return grouped as T;
+  }
+  return null;
 };
 
 export const saveWorkspaceSummary = async (
