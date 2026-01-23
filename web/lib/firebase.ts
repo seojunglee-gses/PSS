@@ -223,7 +223,7 @@ export const loadChatLogsFromFirestore = async <T>(
 
 export const saveWorkspaceSummary = async (
   userId: string,
-  summary: WorkspaceSummary
+  summary: Partial<WorkspaceSummary>
 ) => {
   const app = getFirebaseApp();
   if (!app) {
