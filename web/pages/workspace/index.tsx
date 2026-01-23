@@ -1060,7 +1060,10 @@ const handleSend = async () => {
           label: activeProvider,
           createdAt: new Date().toISOString(),
         },
-      ]);
+      ]     
+      if (userKey) {   saveChatLogsToFirestore(userKey, next, user?.email ?? userKey); }            
+       return next;
+  });
     } catch (error) {
       setErrorMessage(
         error instanceof Error
