@@ -949,10 +949,7 @@ export default function Workspace() {
     ];
     
     setChatLogsByStep((prev) => ({ ...prev, alternatives: nextLogs }));
-    await persistChatLogs("alternatives", nextLogs, {
-      ...chatLogsByStep,
-      alternatives: nextLogs,
-    });
+    await persistChatLogs("alternatives", nextLogs);
     },
   [requestGeneratedImage, chatLogsByStep, activeProvider, persistChatLogs]
 );
@@ -1069,10 +1066,7 @@ const handleSend = async () => {
             },
           ];
           setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextEvaluationLogs }));
-          await persistChatLogs(stepId, nextEvaluationLogs, {
-            ...chatLogsByStep,
-            [stepId]: nextEvaluationLogs,
-          });
+          await persistChatLogs(stepId, nextEvaluationLogs);
 
       } finally {
         setIsLoadingAlternatives(false);
