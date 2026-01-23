@@ -100,16 +100,16 @@ export default async function handler(
       `);
 
     const promptInput = buildPromptInput({
-            workspaceSummary,
-            workspaceInput,
-            feedback
+            mode,
+          workspaceSummary: mode === "initial" ? workspaceSummary : undefined,
+          workspaceInput: mode === "initial" ? workspaceInput : undefined,
+          feedback: mode === "iteration" ? feedback : undefined,
           });
 
     const prompt = await callLLM({
-      mode,
-      workspaceSummary: mode === "initial" ? workspaceSummary : undefined,
-      workspaceInput: mode === "initial" ? workspaceInput : undefined,
-      feedback: mode === "iteration" ? feedback : undefined,
+      provider: normalizedProvider,
+      systemText,
+      userText: promptInput
     });
 
     if (!prompt) {
