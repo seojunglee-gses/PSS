@@ -86,6 +86,7 @@ export default async function handler(
       You generate a SINGLE image-generation prompt, not the image itself.
       
       IMAGE RULES:
+      - The OVERPASS refers to the elevated roadway structure crossing above streets and rail lines in the image.
       - The provided site image is the IMMUTABLE base.
       - The OVERPASS is the PRIMARY and ONLY subject to redesign.
       - Surrounding buildings, streets, and background must remain unchanged.
