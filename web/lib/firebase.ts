@@ -9,6 +9,7 @@ import {
   setDoc,
   query,
   where,
+  serverTimestamp,
 } from "firebase/firestore";
 import {
   getStorage,
@@ -31,6 +32,11 @@ export async function saveStepChatLogs<T = unknown>(
   stepId: string,
   logs: T[]
 ) {
+  const app = getFirebaseApp();
+    if (!app) return;
+
+  const db = getFirestore(app);
+  
   const ref = doc(db, "users", userId, "steps", stepId);
   await setDoc(
     ref,
@@ -46,6 +52,12 @@ export async function loadStepChatLogs<T = unknown>(
   userId: string,
   stepId: string
 ): Promise<T | null> {
+  const app = getFirebaseApp();
+  if (!app) return null;
+
+  const db = getFirestore(app);
+
+  
   const ref = doc(db, "users", userId, "steps", stepId);
   const snap = await getDoc(ref);
   return snap.exists() ? (snap.data().logs as T) : null;
