@@ -1769,8 +1769,9 @@ const handleSend = async () => {
               </div>
             </div>
             <div className="p-6">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="mt-4 space-y-2 text-sm text-slate-600">
+              <div className="max-h-[70vh] overflow-y-auto pr-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="mt-4 space-y-2 text-sm text-slate-600">
                   {activeTab === "patterns" && (
                     <>
                       <img
@@ -1977,6 +1978,7 @@ const handleSend = async () => {
                       </p>
                     </>
                   )}
+                  </div>
                 </div>
               </div>
             </div>
