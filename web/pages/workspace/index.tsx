@@ -873,6 +873,9 @@ export default function Workspace() {
     
     setChatLogs(nextLogs);
     await persistChatLogs(nextLogs);
+    },
+  [requestGeneratedImage, chatLogs, activeProvider, persistChatLogs]
+);
 
 
   useEffect(() => {
