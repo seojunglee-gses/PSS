@@ -1043,7 +1043,7 @@ const handleSend = async () => {
         const latestPrompt =
           alternativeImages[alternativeImages.length - 1]?.note;
 
-        const imageRecord = await requestGeneratedImage(userMessage, latestPrompt);
+        const imageRecord = await requestGeneratedImage(userMessage, undefined);
 
         if (!imageRecord?.imageUrl) {
           setErrorMessage("Unable to generate the image.");
