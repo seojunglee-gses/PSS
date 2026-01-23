@@ -82,19 +82,24 @@ export default async function handler(
       provider === "gemini" ? "gemini" : "openai";
 
     const systemText = `
-      You are making a SINGLE image-generation prompt to generate new design for the site.
-       The provided site image is the IMMUTABLE base.
-       Preserve camera angle, background, layout, and spatial structure.
-       Do NOT create a new scene or a new overall composition.
-       Only apply localized, realistic modifications on top of the site image.
-       Please change the actual overpass design, there MUST NOT be a car on the roadway. It's not for cars anymore.
-       This is NOT an edit of a previous design.
-       Bias toward conservative variations that stay close to the original structure.
-       Avoid radical departures.
-
+      ROLE:
+      You generate a SINGLE image-generation prompt, not the image itself.
       
-       Emphasize very specific, unique, and clearly visible design elements.
-       Focus on ideas derived from the workspace summary that other stakeholders might not have.
+      IMAGE RULES:
+      - The provided site image is the IMMUTABLE base.
+      - Preserve camera angle, layout, and spatial structure.
+      - Do NOT create a new scene.
+      - Modify the overpass only.
+      - The overpass is no longer for cars (NO cars).
+      
+      DESIGN MODE:
+      - Generate a NEW design alternative (not an edit).
+      - Stay close to the original structure.
+      - Avoid radical changes.
+      
+      FOCUS:
+      - Describe specific, clearly visible design elements.
+      - Base ideas on the workspace summary.
     `.trim();
 
     const promptInput = buildPromptInput({
