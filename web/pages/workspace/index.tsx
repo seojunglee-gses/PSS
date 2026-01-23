@@ -908,7 +908,6 @@ const handleSend = async () => {
   sendingRef.current = true;
 
   if (activeStep.id === "alternatives" && isLoadingAlternatives) {
-    sendingRef.current = false;
     setErrorMessage("Image generation already in progress.");
     return;
   }
@@ -1056,12 +1055,15 @@ const handleSend = async () => {
         {
           stepId,
           provider: activeProvider,
-          sender: "assistant",
+          sender: "assistant" as const,
           text: reply,
           label: activeProvider,
           createdAt: new Date().toISOString(),
         },
-      ]);
+      ];     
+      if (userKey) {saveChatLogsToFirestore(userKey, next, user?.email ?? userKey); }            
+       return next;
+  });
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -1070,6 +1072,7 @@ const handleSend = async () => {
       );
     } finally {
       setIsSending(false);
+      sendingRef.current = false;
     }
   };
 
@@ -1565,7 +1568,7 @@ const handleSend = async () => {
         </figure>
         <div className="panel-copy space-y-4 text-sm text-slate-600">
           <h2 className="text-lg font-semibold text-slate-900">
-            Clarify the Strategic Challenge
+            Seoul Station Overpass
           </h2>
           <p>
             Before its transformation, the Seoul Station Overpass stood as a
@@ -1698,8 +1701,7 @@ const handleSend = async () => {
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">Problem Definition</h3>
             <p className="mt-2 text-sm text-slate-500">
-              Frame the PPSS objective, scope, and initial constraints before
-              the model interaction.
+              Clarify your interest and objectives  
             </p>
             {renderProblemDefinitionContext()}
           </div>
@@ -1713,7 +1715,7 @@ const handleSend = async () => {
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
               <h3 className="text-lg font-semibold">Data Analysis</h3>
               <p className="mt-2 text-sm text-slate-500">
-                Review reference cases with clear, horizontal tab navigation.
+                Explore other projects with similar situations.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
@@ -2033,10 +2035,10 @@ const handleSend = async () => {
                 onClick={handleSubmitAlternative}
                 disabled={!selectedAlternative}
               >
-                submit your best design
+                Submit Design
               </button>
               <p className="text-xs text-slate-500">
-                Submit a selected design to move it to the evaluation list.
+                Submit your best design to share.
               </p>
             </div>
           </div>
