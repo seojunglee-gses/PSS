@@ -18,6 +18,8 @@ import {
   uploadBytes,
   uploadString,
 } from "firebase/storage";
+import type { ChatLog } from "../pages/workspace/index";
+
 
 type EvaluationPayload = {
   submittedAt: string;
@@ -29,7 +31,7 @@ type EvaluationPayload = {
 export async function saveStepChatLogs(
   userId: string,
   stepId: string,
-  logs: chatLog[]
+  logs: T[]
 ) {
   const ref = doc(db, "users", userId, "steps", stepId);
   await setDoc(
@@ -42,7 +44,7 @@ export async function saveStepChatLogs(
   );
 }
 
-export async function loadStepChatLogs<T = ChatLog[]>(
+export async function loadStepChatLogs<T = unknown>(
   userId: string,
   stepId: string
 ): Promise<T | null> {
