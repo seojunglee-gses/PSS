@@ -835,7 +835,7 @@ export default function Workspace() {
   
 
   const requestGeneratedImage = useCallback(
-  async (feedback?: string, previousPrompt?: string) => {
+  async (feedback?: string) => {
     if (!userKey) {
       throw new Error("Authentication required.");
     }
@@ -843,22 +843,26 @@ export default function Workspace() {
       throw new Error("Site image is not configured.");
     }
 
+    const isInitial = alternativeImages.length === 0;
     const response = await fetch("/api/generate-alternative", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        mode: feedback ? "iteration" : "initial",
-        workspaceSummary: savedSummaries,
-        workspaceInput: buildImageGenerationInput(),
-        feedback,
-        previousPrompt,
+        mode: isInitial ? "initial" : "iteration",
+    
+        // ✅ initial일 때만 보낸다
+        workspaceSummary: isInitial ? savedSummaries : undefined,
+        workspaceInput: isInitial ? buildImageGenerationInput() : undefined,
+    
+        // ✅ iteration일 때는 이것만
+        feedback: isInitial ? undefined : feedback,
+    
         siteImageId,
-        useSiteImage: true,
         provider:
           activeProvider.toLowerCase() === "gemini"
             ? "gemini"
             : "openai",
-         userID: userKey,
+        userID: userKey,
       }),
     });
 
@@ -1043,7 +1047,7 @@ const handleSend = async () => {
         const latestPrompt =
           alternativeImages[alternativeImages.length - 1]?.note;
 
-        const imageRecord = await requestGeneratedImage(userMessage, undefined);
+        const imageRecord = await requestGeneratedImage(userMessage);
 
         if (!imageRecord?.imageUrl) {
           setErrorMessage("Unable to generate the image.");
