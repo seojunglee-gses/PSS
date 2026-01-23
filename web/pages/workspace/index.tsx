@@ -1138,7 +1138,7 @@ const handleSend = async () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          currentStage: activeStep.title,
+          currentStage: activeStep.id,
           workspaceInput: buildWorkspaceInput(),
         }),
       });
