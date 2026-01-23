@@ -89,6 +89,9 @@ export default async function handler(
        Only apply localized, realistic modifications on top of the site image.
        Please change the actual overpass design, there MUST NOT be a car on the roadway. It's not for cars anymore.
        This is NOT an edit of a previous design.
+       Bias toward conservative variations that stay close to the original structure.
+       Avoid radical departures.
+
       
        Emphasize very specific, unique, and clearly visible design elements.
        Focus on ideas derived from the workspace summary that other stakeholders might not have.
