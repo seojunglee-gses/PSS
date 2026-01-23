@@ -748,7 +748,8 @@ export default function Workspace() {
         workspaceInput: buildImageGenerationInput(),
         feedback,
         previousPrompt,
-        siteImageId
+        siteImageId,
+        useSiteImage: ture,
         provider:
           activeProvider.toLowerCase() === "gemini"
             ? "gemini"
