@@ -1555,7 +1555,7 @@ const handleSend = async () => {
 
   const renderProblemDefinitionContext = () => {
     return (
-      <div className="mt-6 space-y-6">
+      <div className="mt-6 max-h-[70vh] space-y-6 overflow-y-auto pr-2">
         <figure className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
           <img
             src="https://cdn.m-joongang.com/news/photo/201506/20150618_2_306921.jpg"
@@ -1966,65 +1966,67 @@ const handleSend = async () => {
               Generate alternatives in the chat, then select the design you
               want to submit.
             </p>
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-              Use the chat panel to request new alternatives or edit the latest
-              concept image. Generated images will appear inline in the chat
-              history and in the gallery below.
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-             {groupedAlternativeImages.map((group) =>
-               group.images.map((item) => (
-                 <div
-                   key={item.id}
-                   className={`rounded-2xl border p-4 ${
-                     selectedAlternative === item.id
-                       ? "border-[var(--primary)] bg-blue-50"
-                       : "border-slate-200 bg-slate-50"
-                   }`}
-                 >
-                   <button
-                     className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
-                     type="button"
-                     onClick={() => {
-                       setSelectedImage(item.id);
-                       setSelectedAlternative(item.id);
-                     }}
-                   >
-                     {item.imageUrl && (
-                       <img
-                         src={item.imageUrl}
-                         alt={item.label}
-                         className="h-full w-full object-contain"
-                       />
-                     )}
-                   </button>
-                 </div>
-               ))
-             )}
-            
-            {isLoadingAlternatives && (
-              <div className="rounded-2xl border border-blue-200 bg-blue-50/30 p-4">
-                <div className="h-44 w-full rounded-xl border-2 border-dashed border-blue-300 bg-white/50 flex flex-col items-center justify-center text-blue-600 animate-pulse">
-                  <div className="mb-3 h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-                                    <span className="text-sm font-bold">
-                    {groupedAlternativeImages.length === 0
-                      ? "Generating Design..."
-                      : "Updating Design..."}
-                  </span>
-                  <span className="text-xs opacity-70 mt-1">Generating</span>
-                </div>
+            <div className="mt-5 max-h-[70vh] overflow-y-auto pr-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                Use the chat panel to request new alternatives or edit the
+                latest concept image. Generated images will appear inline in
+                the chat history and in the gallery below.
               </div>
-            )}
-            
-             {groupedAlternativeImages.length === 0 && !isLoadingAlternatives && (
-               <div className="flex flex-col items-center justify-center gap-3 py-6">
-                 <span className="text-sm text-slate-500 text-center">
-                   Generated images will appear here
-                 </span>
-               </div>
-             )}
 
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                {groupedAlternativeImages.map((group) =>
+                  group.images.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`rounded-2xl border p-4 ${
+                        selectedAlternative === item.id
+                          ? "border-[var(--primary)] bg-blue-50"
+                          : "border-slate-200 bg-slate-50"
+                      }`}
+                    >
+                      <button
+                        className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                        type="button"
+                        onClick={() => {
+                          setSelectedImage(item.id);
+                          setSelectedAlternative(item.id);
+                        }}
+                      >
+                        {item.imageUrl && (
+                          <img
+                            src={item.imageUrl}
+                            alt={item.label}
+                            className="h-full w-full object-contain"
+                          />
+                        )}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {isLoadingAlternatives && (
+                <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/30 p-4">
+                  <div className="flex h-44 w-full animate-pulse flex-col items-center justify-center rounded-xl border-2 border-dashed border-blue-300 bg-white/50 text-blue-600">
+                    <div className="mb-3 h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+                    <span className="text-sm font-bold">
+                      {groupedAlternativeImages.length === 0
+                        ? "Generating Design..."
+                        : "Updating Design..."}
+                    </span>
+                    <span className="mt-1 text-xs opacity-70">Generating</span>
+                  </div>
+                </div>
+              )}
+
+              {groupedAlternativeImages.length === 0 &&
+                !isLoadingAlternatives && (
+                  <div className="flex flex-col items-center justify-center gap-3 py-6">
+                    <span className="text-center text-sm text-slate-500">
+                      Generated images will appear here
+                    </span>
+                  </div>
+                )}
             </div>
             <div className="mt-6 flex flex-wrap gap-3">
               <button
