@@ -190,10 +190,23 @@ export default async function handler(
         },
       ]);
 
-  const parts = result.response.candidates?.[0]?.content?.parts ?? [];
-  const imagePart = parts.find((p: any) => p.inlineData);
-
-  base64 = imagePart?.inlineData?.data;
+  const candidate = result.response.candidates?.[0];
+  const parts = candidate?.content?.parts ?? [];
+  
+  let imageBase64: string | undefined;
+  
+  for (const part of parts) {
+    if (part.inlineData?.data) {
+      imageBase64 = part.inlineData.data;
+      break;
+    }
+    if (part.fileData?.data) {
+      imageBase64 = part.fileData.data;
+      break;
+    }
+  }
+  
+  base64 = imageBase64;
 }
   if (!base64) {
       throw new Error("Failed to generate image base64 data");
