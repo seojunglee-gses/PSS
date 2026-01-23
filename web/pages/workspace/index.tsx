@@ -292,17 +292,9 @@ export default function Workspace() {
     localStorage.setItem("ppss-active-step", activeStep.id);
   }, [activeStep.id]);
 
-  const persistChatLogs = async (
-    stepId: string,
-    logs: ChatLog[],
-    currentLogsByStep: Record<string, ChatLog[]>
-  ) => {
+  const persistChatLogs = async (stepId: string, logs: ChatLog[]) => {
     if (!userKey) return;
-    await saveChatLogsToFirestore(
-      userKey,
-      { ...currentLogsByStep, [stepId]: logs },
-      user?.email ?? userKey
-    );
+    await saveStepChatLogs(userKey, stepId, logs);
   };
 
   const [isSending, setIsSending] = useState(false);
@@ -1009,7 +1001,7 @@ const handleSend = async () => {
 ];
 
   setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextUserLogs }));
-  persistChatLogs(stepId, nextUserLogs, chatLogsByStep);
+  persistChatLogs(stepId, nextUserLogs);
 
   setInputValue("");
 
@@ -1095,21 +1087,18 @@ const handleSend = async () => {
      ];
     
      setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextAssistantLogs }));
-     persistChatLogs(stepId, nextAssistantLogs, {
-       ...chatLogsByStep,
-       [stepId]: nextAssistantLogs,
-     });
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to connect to the LLM API."
-      );
-    } finally {
-      setIsSending(false);
-      sendingRef.current = false;
-    }
-  };
+     persistChatLogs(stepId, nextAssistantLogs);
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to connect to the LLM API."
+        );
+      } finally {
+        setIsSending(false);
+        sendingRef.current = false;
+      }
+    };
 
   const handleCompleteStep = async () => {
     if (lockedStages[activeStep.id]) {
