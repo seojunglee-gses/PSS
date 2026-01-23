@@ -1317,7 +1317,7 @@ persistChatLogs(nextUserLogs);
   }
 
   const renderChatPanel = () => {
-    const stepLogs = chatLogs.filter((log) => (log.stepId ?? activeStep.id) === activeStep.id);
+    const stepLogs = chatLogs;
     const basePrompt = basePromptsByStep[activeStep.id];
     const displayedMessages = [
       ...(basePrompt
