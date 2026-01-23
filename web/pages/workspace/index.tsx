@@ -538,9 +538,12 @@ export default function Workspace() {
       >(userKey, activeStep.id);
   
       if (!stepLogs) {
-        setChatLogs([]);
-        setHasLoadedChatLogs(true);
-        return;
+       setChatLogsByStep((prev) => ({
+        ...prev,
+        [activeStep.id]: [],
+      }));
+      setHasLoadedChatLogs(true);
+  return;
       }
   
       const normalized = stepLogs
