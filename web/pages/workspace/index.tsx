@@ -718,7 +718,7 @@ export default function Workspace() {
     }, {});
   }, [chatLogs]);
 
-    const buildEvaluationContext = useCallback(() => {
+  const buildEvaluationContext = useCallback(() => {
     const summariesText = Object.entries(savedSummaries)
       .map(([stage, summary]) => {
         return `${stage.toUpperCase()} SUMMARY:\n${summary}`;
@@ -744,6 +744,17 @@ export default function Workspace() {
   `;
       })
       .join("\n\n");
+  
+    const submittedContext = evaluationImages
+      .map((img, index) => {
+        return `
+  Submitted Design ${index + 1}:
+  Label: ${img.label}
+  Intent and elements (from prompt/notes):
+  ${img.note}
+  `;
+      })
+      .join("\n\n");
     return `
     === WORKSPACE DIALOGUE SUMMARIES ===
     ${summariesText}
@@ -753,8 +764,11 @@ export default function Workspace() {
     
     === GENERATED DESIGN ALTERNATIVES ===
     ${alternativesContext}
+
+    === SUBMITTED DESIGNS (FOR EVALUATION) ===
+    ${submittedContext || "No submitted designs available yet."}
     `;
-  },  [savedSummaries, chatLogs, alternativeImages]);
+  },  [savedSummaries, chatLogs, alternativeImages, evaluationImages]);
   
 
   const requestGeneratedImage = useCallback(
@@ -954,7 +968,7 @@ persistChatLogs(nextUserLogs);
 
   try {
     let finalMessage = userMessage;
-    if (stepId === "alternatives") {
+      if (stepId === "alternatives") {
       if (!siteImageConfigured) {
         setShowSiteImageWarning(true);
         setErrorMessage("Image generation requires a site image.");
@@ -994,6 +1008,7 @@ persistChatLogs(nextUserLogs);
       } finally {
         setIsLoadingAlternatives(false);
       }
+      return;
     }
       if (stepId === "evaluation") {
        const evaluationContext = buildEvaluationContext();
@@ -1317,7 +1332,7 @@ persistChatLogs(nextUserLogs);
   }
 
   const renderChatPanel = () => {
-    const stepLogs = chatLogs;
+    const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
     const basePrompt = basePromptsByStep[activeStep.id];
     const displayedMessages = [
       ...(basePrompt
