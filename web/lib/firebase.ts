@@ -29,7 +29,7 @@ type EvaluationPayload = {
 export async function saveStepChatLogs(
   userId: string,
   stepId: string,
-  logs: ChatLog[]
+  logs: chatLog[]
 ) {
   const ref = doc(db, "users", userId, "steps", stepId);
   await setDoc(
