@@ -880,18 +880,7 @@ export default function Workspace() {
       activeProvider,
       persistChatLogs,
     ]
-      }
-
-      return next;
-    });
-  },
-  [
-    requestGeneratedImage,
-    activeProvider,
-    userKey,
-    user?.email,
-  ]
-);
+  );
 
   useEffect(() => {
     if (activeStep.id !== "alternatives") return;
@@ -1004,8 +993,7 @@ await persistChatLogs(nextUserLogs);
           ];
           setChatLogs(nextEvaluationLogs);
           await persistChatLogs(nextEvaluationLogs);
-        };
-        return;
+
       } finally {
         setIsLoadingAlternatives(false);
       }
