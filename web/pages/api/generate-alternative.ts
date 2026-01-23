@@ -87,7 +87,7 @@ export default async function handler(
        Preserve camera angle, background, layout, and spatial structure.
        Do NOT create a new scene or a new overall composition.
        Only apply localized, realistic modifications on top of the site image.
-       Please change the actual overpass, there should not be a car on the overpass.
+       Please change the actual overpass design, there MUST NOT be a car on the overpass. It's not for cars anymore.
        This is NOT an edit of a previous design.
       
        Emphasize very specific, unique, and clearly visible design elements.
