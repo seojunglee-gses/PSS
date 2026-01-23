@@ -269,7 +269,25 @@ export default function Workspace() {
   const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
   const [role, setRole] = useState("Guest");
-  const [activeProvider, setActiveProvider] = useState("ChatGPT");
+  const [activeProvider, setActiveProvider] = useState("Gemini");
+  
+  useEffect(() => {
+  if (typeof window === "undefined") return;
+  
+    const saved = localStorage.getItem("ppss-active-step");
+    if (!saved) return;
+  
+    const step = steps.find((s) => s.id === saved);
+    if (step) {
+      setActiveStep(step);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("ppss-active-step", activeStep.id);
+  }, [activeStep.id]);
+
   const [isSending, setIsSending] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedAlternative, setSelectedAlternative] = useState<string | null>(
@@ -462,7 +480,7 @@ export default function Workspace() {
           if (!sender || !log.provider) {
             return null;
           }
-          const stepId = log.stepId ?? activeStep.id;
+          const stepId = log.stepId
           const label =
             log.label ?? (sender === "assistant" ? log.provider : role);
           const createdAt =
@@ -476,7 +494,7 @@ export default function Workspace() {
             return null;
           }
           return {
-            stepId: log.stepId,
+            stepId,
             provider: log.provider,
             sender,
             text,
@@ -1359,7 +1377,7 @@ const handleSend = async () => {
   }
 
   const renderChatPanel = () => {
-    const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
+    const stepLogs = chatLogs.filter((log) => (log.stepId ?? activeStep.id) === activeStep.id);
     const basePrompt = basePromptsByStep[activeStep.id];
     const displayedMessages = [
       ...(basePrompt
