@@ -872,7 +872,7 @@ export default function Workspace() {
         imageNote: imageRecord.note,
       },
     ];
-    void persistChatLogs(next); /
+    void persistChatLogs(next); 
     return next;
   });
     },
