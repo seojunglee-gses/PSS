@@ -8,21 +8,23 @@ const buildPromptInput = (payload: {
   workspaceSummary?: Record<string, string>;
   workspaceInput?: Record<string, string[]>;
   feedback?: string;
-  previousPrompt?: string;
 }) => {
-  const summaryText = Object.entries(payload.workspaceSummary ?? {})
+ if (payload.mode === "iteration") {
+    return payload.feedback?.trim()
+      ? `User feedback:\n${payload.feedback}`
+      : "User feedback: None";
+  }
+ const summaryText = Object.entries(payload.workspaceSummary ?? {})
     .map(([key, value]) => `${key}: ${value}`)
     .join("\n");
   const dialogueText = Object.entries(payload.workspaceInput ?? {})
-  .map(([key, value]) => `${key}: ${String(value)}`)
-  .join("\n");
-  const feedbackText = payload.feedback?.trim()
-    ? `User feedback:\n${payload.feedback}`
-    : "User feedback: None";
-  const previousPromptText = payload.previousPrompt?.trim()
-    ? `Previous prompt:\n${payload.previousPrompt}`
-    : "Previous prompt: None";
-  return `Workspace summary:\n${summaryText}\n\nChat log highlights:\n${dialogueText}\n\n${previousPromptText}\n\n${feedbackText}`;
+    .map(([key, value]) => {
+      const recent = value.slice(-2).join(" | ");
+      return `${key}: ${recent}`;
+    })
+    .join("\n");
+
+  return `Workspace summary:\n${summaryText}\n\nChat log highlights:\n${dialogueText}`;
 };
 
 export default async function handler(
@@ -56,7 +58,6 @@ export default async function handler(
       workspaceInput,
       provider,
       feedback,
-      previousPrompt,
       userID,
     } = req.body as {
       mode: "initial" | "iteration";
@@ -64,7 +65,6 @@ export default async function handler(
       workspaceInput: Record<string, string[]>;
       provider?: "openai" | "gemini";
       feedback?: string;
-      previousPrompt?: string;
       userID?: string;
     };
     if (!userID) {
@@ -105,9 +105,10 @@ export default async function handler(
           });
 
     const prompt = await callLLM({
-      provider: normalizedProvider as "openai" | "gemini", 
-      systemText,
-      userText: promptInput,
+      mode,
+      workspaceSummary: mode === "initial" ? workspaceSummary : undefined,
+      workspaceInput: mode === "initial" ? workspaceInput : undefined,
+      feedback: mode === "iteration" ? feedback : undefined,
     });
 
     if (!prompt) {
