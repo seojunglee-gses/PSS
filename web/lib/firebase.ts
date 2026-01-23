@@ -230,9 +230,13 @@ export const saveWorkspaceSummary = async (
     return;
   }
   const db = getFirestore(app);
-  await setDoc(doc(db, "ppssWorkspaceSummaries", userId), {
+  await setDoc(
+    doc(db, "ppssWorkspaceSummaries", userId), 
+    {
     ...summary,
     updatedAt: new Date().toISOString(),
+    },
+    {merge: true}
   });
 };
 
