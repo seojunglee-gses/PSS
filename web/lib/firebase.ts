@@ -237,8 +237,8 @@ export const saveWorkspaceSummary = async (
     updatedAt: new Date().toISOString(),
     },
     {merge: true}
-  });
-};
+    );
+  };
 
 export const loadWorkspaceSummary = async (
   userId: string
