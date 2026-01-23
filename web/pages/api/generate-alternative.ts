@@ -201,8 +201,9 @@ export default async function handler(
       imageBase64 = part.inlineData.data;
       break;
     }
-    if (part.fileData?.data) {
-      imageBase64 = part.fileData.data;
+  const fileDataAny = part.fileData as any;
+    if (fileDataAny?.data) {
+      imageBase64 = fileDataAny.data;
       break;
     }
   }
