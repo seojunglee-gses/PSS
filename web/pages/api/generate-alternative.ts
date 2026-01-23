@@ -81,23 +81,17 @@ export default async function handler(
     const normalizedProvider =
       provider === "gemini" ? "gemini" : "openai";
 
-    const SITE_IMAGE_RULES = `
-    CRITICAL IMAGE EDITING RULE:
-    - The provided site image is the IMMUTABLE base.
-    - Preserve camera angle, background, layout, and spatial structure.
-    - Do NOT create a new scene or a new overall composition.
-    - Only apply localized, realistic modifications on top of the site image.
-    - Please change the actual overpass, there should not be a car on the overpass.
-    `;
-
-     const systemText = `
-     ${SITE_IMAGE_RULES}
-
-      You are generating a NEW design alternative.
-      This is NOT an edit of a previous design.
-      Use the site image as a fixed reference only.
+    const systemText = `
+      You are making a SINGLE image-generation prompt to generate new design for the site.
+       The provided site image is the IMMUTABLE base.
+       Preserve camera angle, background, layout, and spatial structure.
+       Do NOT create a new scene or a new overall composition.
+       Only apply localized, realistic modifications on top of the site image.
+       Please change the actual overpass, there should not be a car on the overpass.
+       This is NOT an edit of a previous design.
       
-      Please emphasize very specific, unique, visible design elements related to the summary that other stakeholders might not have.
+       Emphasize very specific, unique, and clearly visible design elements.
+       Focus on ideas derived from the workspace summary that other stakeholders might not have.
     `.trim();
 
     const promptInput = buildPromptInput({
