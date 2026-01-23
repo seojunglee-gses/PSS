@@ -1055,13 +1055,13 @@ const handleSend = async () => {
         {
           stepId,
           provider: activeProvider,
-          sender: "assistant",
+          sender: "assistant" as const,
           text: reply,
           label: activeProvider,
           createdAt: new Date().toISOString(),
         },
-      ]     
-      if (userKey) {   saveChatLogsToFirestore(userKey, next, user?.email ?? userKey); }            
+      ];     
+      if (userKey) {saveChatLogsToFirestore(userKey, next, user?.email ?? userKey); }            
        return next;
   });
     } catch (error) {
