@@ -873,13 +873,13 @@ export default function Workspace() {
       ];
       setChatLogs(nextLogs);
       await persistChatLogs(nextLogs);
-      
-      if (userKey) {
-        saveChatLogsToFirestore(
-          userKey,
-          next,
-          user?.email ?? userKey
-        );
+    },
+    [
+      requestGeneratedImage,
+      chatLogs,
+      activeProvider,
+      persistChatLogs,
+    ]
       }
 
       return next;
@@ -1004,13 +1004,7 @@ await persistChatLogs(nextUserLogs);
           ];
           setChatLogs(nextEvaluationLogs);
           await persistChatLogs(nextEvaluationLogs);
-
-          if (userKey) {
-            saveChatLogsToFirestore(userKey, next, user?.email ?? userKey);
-          }
-          return next;
-        });
-
+        };
         return;
       } finally {
         setIsLoadingAlternatives(false);
