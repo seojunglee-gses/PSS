@@ -26,6 +26,32 @@ type EvaluationPayload = {
   role?: string;
 };
 
+export async function saveStepChatLogs(
+  userId: string,
+  stepId: string,
+  logs: ChatLog[]
+) {
+  const ref = doc(db, "users", userId, "steps", stepId);
+  await setDoc(
+    ref,
+    {
+      logs,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
+export async function loadStepChatLogs<T = ChatLog[]>(
+  userId: string,
+  stepId: string
+): Promise<T | null> {
+  const ref = doc(db, "users", userId, "steps", stepId);
+  const snap = await getDoc(ref);
+  return snap.exists() ? (snap.data().logs as T) : null;
+}
+
+
 export type WorkspaceSummary = {
   stageSummaries: Record<string, string>;
   overallSummary: string;
