@@ -10,11 +10,11 @@ const buildPromptInput = (payload: {
   workspaceInput?: Record<string, string[]>;
   feedback?: string;
 }) => {
- if (payload.mode === "iteration") {
-    return payload.feedback?.trim()
-      ? `User feedback:\n${payload.feedback}`
-      : "User feedback: None";
-  }
+ const promptInput = buildPromptInput({
+  workspaceSummary,
+  workspaceInput,
+  feedback,
+ });
  const summaryText = Object.entries(payload.workspaceSummary ?? {})
     .map(([key, value]) => `${key}: ${value}`)
     .join("\n");
@@ -86,11 +86,7 @@ export default async function handler(
 
      const systemText = 
       SITE_IMAGE_RULES +
-       (mode === "initial"
-    ? `
-    You are creating the FIRST design alternative.
-    You write a single concise prompt for an image-edit model.
-    Translate summaries into a concrete initial design.
+     `You are generating a NEW design alternative. This is NOT an edit of a previous design. Use the site image as a fixed reference only.
      Please emphasize the very unique points from the dialogue in this prompt and files that can clearly appear and be seen in the image and also design that other stakeholders might not have. Mention specific elements in the dialogues to generate images. Mention the specific elements in the dialogue to generate images.
     `
         : `
