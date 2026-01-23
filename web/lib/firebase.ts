@@ -26,7 +26,7 @@ type EvaluationPayload = {
   role?: string;
 };
 
-type WorkspaceSummary = {
+export type WorkspaceSummary = {
   stageSummaries: Record<string, string>;
   overallSummary: string;
   role?: string;
