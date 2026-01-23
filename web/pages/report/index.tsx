@@ -375,7 +375,7 @@ export default function Report() {
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           {workflowSteps.map((step, index) => {
             const stepId = stepIds[index];
-            if (stepId === "evaluation") return null;
+            if (stepId === "decision") return null;
   
             return (
               <div
