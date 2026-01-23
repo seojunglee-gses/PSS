@@ -74,8 +74,17 @@ export default async function handler(
     const normalizedProvider =
       provider === "gemini" ? "gemini" : "openai";
 
+    const SITE_IMAGE_RULES = `
+    CRITICAL IMAGE EDITING RULE:
+    - The provided site image is the IMMUTABLE base.
+    - Preserve camera angle, background, layout, and spatial structure.
+    - Do NOT create a new scene or a new overall composition.
+    - Only apply localized, realistic modifications on top of the site image.
+    `;
+
      const systemText = 
-      mode === "initial"
+      SITE_IMAGE_RULES +
+       (mode === "initial"
     ? `
     You are creating the FIRST design alternative.
     You write a single concise prompt for an image-edit model.
@@ -86,17 +95,13 @@ export default async function handler(
       You are MODIFYING an existing design.
       Preserve the prior design intent.
       Apply user's feedback to the promt.
-      `;
+      
+      `);
 
-    const promptInput =
-      mode === "initial"
-        ? buildPromptInput({
+    const promptInput = buildPromptInput({
             workspaceSummary,
             workspaceInput,
-          })
-        : buildPromptInput({
-            feedback,
-            previousPrompt,
+            feedback
           });
 
     const prompt = await callLLM({
