@@ -908,7 +908,6 @@ const handleSend = async () => {
   sendingRef.current = true;
 
   if (activeStep.id === "alternatives" && isLoadingAlternatives) {
-    sendingRef.current = false;
     setErrorMessage("Image generation already in progress.");
     return;
   }
@@ -1070,6 +1069,7 @@ const handleSend = async () => {
       );
     } finally {
       setIsSending(false);
+      sendingRef.current = false;
     }
   };
 
