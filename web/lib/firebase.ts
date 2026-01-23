@@ -18,8 +18,6 @@ import {
   uploadBytes,
   uploadString,
 } from "firebase/storage";
-import type { ChatLog } from "../pages/workspace/index";
-
 
 type EvaluationPayload = {
   submittedAt: string;
