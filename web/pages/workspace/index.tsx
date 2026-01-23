@@ -270,6 +270,10 @@ export default function Workspace() {
   const [inputValue, setInputValue] = useState("");
   const [role, setRole] = useState("Guest");
   const [activeProvider, setActiveProvider] = useState("Gemini");
+  const chatStorageKey = useMemo(
+    () => (userKey ? `ppss-chat-logs-${userKey}` : null),
+    [userKey]
+  );
   
   useEffect(() => {
   if (typeof window === "undefined") return;
@@ -291,6 +295,9 @@ export default function Workspace() {
   const persistChatLogs = async (logs: ChatLog[]) => {
     if (!userKey) return;
     await saveChatLogsToFirestore(userKey, logs, user?.email ?? userKey);
+    if (typeof window !== "undefined" && chatStorageKey) {
+      window.localStorage.setItem(chatStorageKey, JSON.stringify(logs));
+    }
   };
 
   const [isSending, setIsSending] = useState(false);
@@ -474,11 +481,19 @@ export default function Workspace() {
       const storedLogs = await loadChatLogsFromFirestore<
         Array<Partial<ChatLog> & { sender?: "Planner" | "ChatGPT" | "user" | "assistant" }>
       >(user.uid);
-      if (!storedLogs) {
+      const fallbackLogs =
+        !storedLogs && typeof window !== "undefined" && chatStorageKey
+          ? (JSON.parse(
+              window.localStorage.getItem(chatStorageKey) ?? "null"
+            ) as Array<Partial<ChatLog> & {
+              sender?: "Planner" | "ChatGPT" | "user" | "assistant";
+            }>) || null
+          : storedLogs;
+      if (!fallbackLogs) {
         setHasLoadedChatLogs(true);
         return;
       }
-      const normalized = storedLogs
+      const normalized = fallbackLogs
         .map((log, index) => {
           const sender = normalizeSender(log.sender);
 
@@ -514,10 +529,32 @@ export default function Workspace() {
         .filter((log): log is ChatLog => Boolean(log))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       setChatLogs(normalized);
+      if (typeof window !== "undefined" && chatStorageKey) {
+        window.localStorage.setItem(chatStorageKey, JSON.stringify(normalized));
+      }
       setHasLoadedChatLogs(true);
     };
     loadLogs();
-  }, [user?.uid]);
+  }, [user?.uid, chatStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !chatStorageKey) {
+      return;
+    }
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== chatStorageKey || !event.newValue) {
+        return;
+      }
+      try {
+        const parsed = JSON.parse(event.newValue) as ChatLog[];
+        setChatLogs(parsed);
+      } catch {
+        // Ignore malformed payloads.
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [chatStorageKey]);
 
   useEffect(() => {
     if (!user) {
@@ -718,7 +755,7 @@ export default function Workspace() {
     }, {});
   }, [chatLogs]);
 
-    const buildEvaluationContext = useCallback(() => {
+  const buildEvaluationContext = useCallback(() => {
     const summariesText = Object.entries(savedSummaries)
       .map(([stage, summary]) => {
         return `${stage.toUpperCase()} SUMMARY:\n${summary}`;
@@ -744,6 +781,17 @@ export default function Workspace() {
   `;
       })
       .join("\n\n");
+  
+    const submittedContext = evaluationImages
+      .map((img, index) => {
+        return `
+  Submitted Design ${index + 1}:
+  Label: ${img.label}
+  Intent and elements (from prompt/notes):
+  ${img.note}
+  `;
+      })
+      .join("\n\n");
     return `
     === WORKSPACE DIALOGUE SUMMARIES ===
     ${summariesText}
@@ -753,8 +801,11 @@ export default function Workspace() {
     
     === GENERATED DESIGN ALTERNATIVES ===
     ${alternativesContext}
+
+    === SUBMITTED DESIGNS (FOR EVALUATION) ===
+    ${submittedContext || "No submitted designs available yet."}
     `;
-  },  [savedSummaries, chatLogs, alternativeImages]);
+  },  [savedSummaries, chatLogs, alternativeImages, evaluationImages]);
   
 
   const requestGeneratedImage = useCallback(
@@ -954,7 +1005,7 @@ persistChatLogs(nextUserLogs);
 
   try {
     let finalMessage = userMessage;
-    if (stepId === "alternatives") {
+      if (stepId === "alternatives") {
       if (!siteImageConfigured) {
         setShowSiteImageWarning(true);
         setErrorMessage("Image generation requires a site image.");
@@ -974,7 +1025,7 @@ persistChatLogs(nextUserLogs);
         }
 
           const nextEvaluationLogs: ChatLog[] = [
-            ...chatLogs,
+            ...nextUserLogs,
             {
               stepId,
               provider: activeProvider,
@@ -994,6 +1045,7 @@ persistChatLogs(nextUserLogs);
       } finally {
         setIsLoadingAlternatives(false);
       }
+      return;
     }
       if (stepId === "evaluation") {
        const evaluationContext = buildEvaluationContext();
@@ -1317,7 +1369,7 @@ persistChatLogs(nextUserLogs);
   }
 
   const renderChatPanel = () => {
-    const stepLogs = chatLogs;
+    const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
     const basePrompt = basePromptsByStep[activeStep.id];
     const displayedMessages = [
       ...(basePrompt
