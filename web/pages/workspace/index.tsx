@@ -948,7 +948,7 @@ const handleSend = async () => {
 ];
 
 setChatLogs(nextUserLogs);
-await persistChatLogs(nextUserLogs);
+persistChatLogs(nextUserLogs);
 
   setInputValue("");
 
@@ -1030,7 +1030,7 @@ await persistChatLogs(nextUserLogs);
      ];
     
      setChatLogs(nextAssistantLogs);
-     await persistChatLogs(nextAssistantLogs); 
+     persistChatLogs(nextAssistantLogs);
     } catch (error) {
       setErrorMessage(
         error instanceof Error
