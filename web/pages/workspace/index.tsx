@@ -1035,54 +1035,6 @@ const handleSend = async () => {
       return;
     }
 
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: activeProvider,
-        model: getChatModelByProvider(activeProvider),
-        stepId,
-        message: userMessage,
-      }),
-    });
-
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(payload?.error ?? "Chat request failed.");
-    }
-
-    const payload = (await response.json()) as { reply: string };
-    const reply = payload.reply;
-
-    setChatLogs((prev) => {
-      const next: ChatLog[] = [
-        ...prev,
-        {
-          stepId,
-          provider: activeProvider,
-          sender: "assistant" as const,
-          text: reply,
-          label: activeProvider,
-          createdAt: new Date().toISOString(),
-        },
-      ];
-
-      if (userKey) {
-        saveChatLogsToFirestore(userKey, next, user?.email ?? userKey);
-      }
-      return next;
-    });
-  } catch (error) {
-    setErrorMessage(
-      error instanceof Error ? error.message : "Unable to connect to the LLM API."
-    );
-  } finally {
-    setIsSending(false);
-    sendingRef.current = false; 
-  }
-};
-
-      
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
