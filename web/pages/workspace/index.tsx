@@ -902,8 +902,9 @@ export default function Workspace() {
     const stepId = activeStep.id;
     const userMessage = inputValue.trim();
     setIsSending(true);
-    setChatLogs((prev) => [
-      const ...prev,
+    setChatLogs((prev) => {
+      const next = [ 
+        ...prev,
       {
         stepId,
         provider: activeProvider,
@@ -912,7 +913,8 @@ export default function Workspace() {
         label: role,
         createdAt: new Date().toISOString(),
       },
-      };
+      ];
+      
       saveChatLogsToFirestore(userKey!, next, user?.email ?? userKey!);
       return next;  
       });
