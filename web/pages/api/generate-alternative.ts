@@ -31,19 +31,6 @@ Chat log highlights:
 ${dialogueText}${feedbackText}`;
 };
 
- const summaryText = Object.entries(payload.workspaceSummary ?? {})
-    .map(([key, value]) => `${key}: ${value}`)
-    .join("\n");
-  const dialogueText = Object.entries(payload.workspaceInput ?? {})
-    .map(([key, value]) => {
-      const recent = value.slice(-2).join(" | ");
-      return `${key}: ${recent}`;
-    })
-    .join("\n");
-
-  return `Workspace summary:\n${summaryText}\n\nChat log highlights:\n${dialogueText}`;
-};
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -105,9 +92,9 @@ export default async function handler(
       This is NOT an edit of a previous design.
       Use the site image as a fixed reference only.
       
-      Please emphasize very specific, visible design elements from the workspace dialogue.
+      Please emphasize very specific, unique, visible design elements related to the summary that other stakeholders might not have.
     `.trim();
-    );
+
     const promptInput = buildPromptInput({
           workspaceSummary,
           workspaceInput,
