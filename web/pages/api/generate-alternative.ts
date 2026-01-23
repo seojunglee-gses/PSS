@@ -15,11 +15,16 @@ const buildPromptInput = (payload: {
 
   const dialogueText = Object.entries(payload.workspaceInput ?? {})
     .map(([key, value]) => {
-      const recent = value.slice(-2).join(" | ");
-      return `${key}: ${recent}`;
-    })
-    .join("\n");
-
+     if (Array.isArray(value)) {
+      return `${key}: ${value.slice(-2).join(" | ")}`;
+    }
+    if (typeof value === "string") {
+      return `${key}: ${value}`;
+    }
+    return `${key}:`;
+  })
+  .join("\n");
+  
   const feedbackText = payload.feedback?.trim()
     ? `\n\nUser feedback:\n${payload.feedback}`
     : "";
