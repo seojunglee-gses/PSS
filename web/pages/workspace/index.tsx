@@ -856,23 +856,25 @@ export default function Workspace() {
       return;
     }
 
-    const nextLogs: ChatLog[] = [
-        ...chatLogs,
-        {
-          stepId: "alternatives",
-          provider: activeProvider,
-          sender: "assistant" as const,
-          text: "Generated an initial concept image based on earlier discussions.",
-          label: activeProvider,
-          createdAt: new Date().toISOString(),
-          imageUrl: imageRecord.imageUrl,
-          imageId: imageRecord.id,
-          imageLabel: imageRecord.label,
-          imageNote: imageRecord.note,
-        },
-      ];
-      setChatLogs(nextLogs);
-      await persistChatLogs(nextLogs);
+    setChatLogs((prev) => {
+    const next = [
+      ...prev,
+      {
+        stepId: "alternatives",
+        provider: activeProvider,
+        sender: "assistant" as const,
+        text: "Generated an initial concept image based on earlier discussions.",
+        label: activeProvider,
+        createdAt: new Date().toISOString(),
+        imageUrl: imageRecord.imageUrl,
+        imageId: imageRecord.id,
+        imageLabel: imageRecord.label,
+        imageNote: imageRecord.note,
+      },
+    ];
+    void persistChatLogs(next); /
+    return next;
+  });
     },
     [
       requestGeneratedImage,
@@ -885,7 +887,8 @@ export default function Workspace() {
   useEffect(() => {
     if (activeStep.id !== "alternatives") return;
     if (lockedStages["alternatives"]) return;
-    if (!siteImageConfigured) return;
+    if (!siteImageConfigured) return;      
+    if (!hasLoadedChatLogs) return; 
     if (isLoadingAlternatives) return; 
     if (isSending) return;             
     if (alternativesInitialized !== false) return;
