@@ -935,6 +935,7 @@ const handleSend = async () => {
   const stepId = activeStep.id;
   const userMessage = inputValue.trim();
   setIsSending(true);
+  setErrorMessage(null);
 
   const nextUserLogs: ChatLog[] = [
   ...chatLogs,
@@ -954,11 +955,12 @@ await persistChatLogs(nextUserLogs);
   setInputValue("");
 
   try {
+    let finalMessage = userMessage;
     if (stepId === "alternatives") {
       if (!siteImageConfigured) {
         setShowSiteImageWarning(true);
         setErrorMessage("Image generation requires a site image.");
-        return;
+        throw new Error("Site image not configured.");
       }
 
       setIsLoadingAlternatives(true);
@@ -995,43 +997,9 @@ await persistChatLogs(nextUserLogs);
         setIsLoadingAlternatives(false);
       }
     }
-
-    if (stepId === "evaluation") {
-      const evaluationContext = buildEvaluationContext();
-      const evaluationMessage = `${evaluationContext}\n\nUser question:\n${userMessage}`;
-
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider: activeProvider,
-          model: getChatModelByProvider(activeProvider),
-          stepId: "evaluation",
-          message: evaluationMessage,
-        }),
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Evaluation chat failed.");
-      }
-
-      const payload = await response.json();
-      const reply = payload.reply;
-
-      const nextAssistantLogs: ChatLog[] = [
-        ...chatLogs,
-        {
-          stepId,
-          provider: activeProvider,
-          sender: "assistant" as const,
-          text: reply,
-          label: activeProvider,
-          createdAt: new Date().toISOString(),
-        },
-      ];
-      setChatLogs(nextAssistantLogs);
-      await persistChatLogs(nextAssistantLogs);
+      if (stepId === "evaluation") {
+       const evaluationContext = buildEvaluationContext();
+       finalMessage = `${evaluationContext}\n\nUser question:\n${userMessage}`;
       }
 
       const response = await fetch("/api/chat", {
@@ -1041,7 +1009,7 @@ await persistChatLogs(nextUserLogs);
           provider: activeProvider,
           model: getChatModelByProvider(activeProvider),
           stepId,
-          message: userMessage,
+          message: finalMessage,
         }),
       });
       if (!response.ok) {
@@ -1050,8 +1018,9 @@ await persistChatLogs(nextUserLogs);
       }
       const payload = (await response.json()) as { reply: string };
       const reply = payload.reply;
+      const baseLogs = [...nextUserLogs];
       const nextAssistantLogs: ChatLog[] = [
-       ...chatLogs,
+       ...baseLogs,
        {
          stepId,
          provider: activeProvider,
