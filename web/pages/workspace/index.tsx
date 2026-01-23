@@ -855,8 +855,6 @@ export default function Workspace() {
       setErrorMessage("Unable to generate the image.");
       return;
     }
-
-    setChatLogs((prev) => {
     const nextLogs: ChatLog[] = [
       ...chatLogs,
       {
