@@ -87,9 +87,10 @@ export default async function handler(
       
       IMAGE RULES:
       - The provided site image is the IMMUTABLE base.
+      - The OVERPASS is the PRIMARY and ONLY subject to redesign.
+      - Surrounding buildings, streets, and background must remain unchanged.
       - Preserve camera angle, layout, and spatial structure.
       - Do NOT create a new scene.
-      - Modify the overpass only.
       - The overpass is no longer for cars (NO cars).
       
       DESIGN MODE:
@@ -98,7 +99,7 @@ export default async function handler(
       - Avoid radical changes.
       
       FOCUS:
-      - Describe specific, clearly visible design elements.
+      - Describe specific, clearly visible design elements to the OVERPASS ITSELF.
       - Base ideas on the workspace summary.
     `.trim();
 
