@@ -459,9 +459,10 @@ export default function Workspace() {
         .map((log, index) => {
           const sender = normalizeSender(log.sender);
 
-          if (!sender || !log.stepId || !log.provider) {
+          if (!sender || !log.provider) {
             return null;
           }
+          const stepId = log.stepId ?? activeStep.id;
           const label =
             log.label ?? (sender === "assistant" ? log.provider : role);
           const createdAt =
