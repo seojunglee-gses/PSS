@@ -171,7 +171,7 @@ export default async function handler(
       }
     
       const imageArrayBuffer = await imageBlob.arrayBuffer();
-      const imageBase64 = Buffer.from(imageArrayBuffer).toString("base64");
+      const siteimageBase64 = Buffer.from(imageArrayBuffer).toString("base64");
     
       const { GoogleGenerativeAI } = await import("@google/generative-ai");
       const client = new GoogleGenerativeAI(geminiKey);
@@ -185,7 +185,7 @@ export default async function handler(
         {
           inlineData: {
             mimeType: imageBlob.type || "image/png",
-            data: imageBase64,
+            data: siteimageBase64,
           },
         },
       ]);
