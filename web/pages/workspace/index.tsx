@@ -908,12 +908,12 @@ export default function Workspace() {
       {
         stepId,
         provider: activeProvider,
-        sender: "user",
+        sender: "user" as const,
         text: userMessage,
         label: role,
         createdAt: new Date().toISOString(),
       },
-      ];
+    ];
       
       saveChatLogsToFirestore(userKey!, next, user?.email ?? userKey!);
       return next;  
