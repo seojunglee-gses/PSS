@@ -748,6 +748,7 @@ export default function Workspace() {
         workspaceInput: buildImageGenerationInput(),
         feedback,
         previousPrompt,
+        siteImageId
         provider:
           activeProvider.toLowerCase() === "gemini"
             ? "gemini"
