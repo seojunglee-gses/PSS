@@ -250,7 +250,7 @@ const formatParticipantLabel = (index: number, userId?: string) => {
 };
 
 const basePromptsByStep: Record<string, string> = {
-  data: "What stands out to you in this data?",
+  data: "Respond using the three case studies: 789 Art Zone, Gyeungui Line Forest Park, and Highline Park.",
   alternatives:
     "",
   evaluation:
@@ -266,7 +266,7 @@ export default function Workspace() {
   const { user, loading } = useAuth();
   const userKey = user?.uid;
   const [activeStep, setActiveStep] = useState(steps[0]);
-  const [activeTab, setActiveTab] = useState("Process log");
+  const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
   const [role, setRole] = useState("Guest");
   const [activeProvider, setActiveProvider] = useState("ChatGPT");
@@ -1550,6 +1550,96 @@ const handleSend = async () => {
   );
   };
 
+  const renderProblemDefinitionContext = () => {
+    return (
+      <div className="mt-6 space-y-6">
+        <figure className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+          <img
+            src="https://cdn.m-joongang.com/news/photo/201506/20150618_2_306921.jpg"
+            alt="Designers collaborating with post-it notes"
+            className="h-56 w-full object-cover"
+          />
+          <figcaption className="px-4 py-3 text-xs text-slate-500">
+            Picture of Seoul station overpass.
+          </figcaption>
+        </figure>
+        <div className="panel-copy space-y-4 text-sm text-slate-600">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Clarify the Strategic Challenge
+          </h2>
+          <p>
+            Before its transformation, the Seoul Station Overpass stood as a
+            deteriorating yet symbolically important piece of infrastructure in
+            the heart of the city. Built in 1970 to ease mounting traffic and
+            support fast-paced urban growth, the elevated roadway once embodied
+            Seoul’s modernization. Over time, however, structural aging, safety
+            concerns, and limited pedestrian accessibility made it increasingly
+            incompatible with the evolving needs of the city. Still, as
+            conversations around urban regeneration grew, the overpass began to
+            be seen not only as an obsolete structure but also as a potential
+            anchor for revitalizing the fragmented districts surrounding Seoul
+            Station.
+          </p>
+          <p>
+            Structurally, the overpass was narrow, elevated up to 17 meters, and
+            originally designed for vehicle-heavy use—conditions that made it
+            unsafe for public recreation and difficult for pedestrians to reach.
+            Its height and position over major arterial roads and rail tracks
+            also contributed to its isolation from the street-level environment.
+            Although the view from the overpass mainly looked onto adjacent
+            buildings rather than open landscapes, the area below and around it
+            was rich with cultural, historical, and industrial assets, creating
+            opportunities for a more integrated urban strategy.
+          </p>
+          <p>
+            The districts west of Seoul Station—such as Jungnim-dong,
+            Seogye-dong, and Malli-dong—had long suffered from physical decline
+            and social isolation due to the separation created by the railway.
+            This isolation contributed to economic stagnation and political
+            marginalization, even as these neighborhoods maintained unique
+            cultural landscapes, including historic sites, traditional hillsides,
+            and a concentrated sewing and garment industry. These
+            characteristics positioned the western neighborhoods as strong
+            candidates for community-based urban regeneration.
+          </p>
+          <p>
+            On the eastern side, Namdaemun Market and Hoehyeon-dong faced
+            different challenges. Namdaemun Market, one of Korea’s largest and
+            most historic commercial zones, struggled with aging facilities,
+            competing stakeholder interests, declined tourism, and complex
+            governance issues. Hoehyeon-dong, caught between Namsan and the
+            commercial core, had long been constrained by height limits and
+            fragmented development patterns. Despite these challenges, both
+            areas retained symbolic significance and benefited from their
+            strategic location at Seoul’s urban gateway.
+          </p>
+          <p>
+            Across all neighborhoods, local groups expressed shared concerns as
+            the city considered closing the overpass. Many demanded alternative
+            traffic routes, plans to alleviate anticipated congestion, and
+            renewed attention to long-stalled development around the northern
+            station area. Others emphasized the need to address local social
+            issues—particularly homelessness, vulnerable housing, and support
+            for the declining sewing industry. Specific districts also raised
+            their own priorities, from calls to modernize Namdaemun Market to
+            community-led planning efforts in Seogye-dong that sought a balanced
+            approach to redevelopment.
+          </p>
+          <p>
+            Overall, before its conversion into a public park, the Seoul Station
+            Overpass existed at the intersection of aging infrastructure,
+            fragmented urban fabric, and a dense concentration of cultural and
+            economic activities. Although its original transportation role had
+            diminished, the surrounding neighborhoods’ conditions suggested
+            that reimagining the overpass could play a central role in
+            stitching together divided districts and offering a new direction
+            for urban regeneration in central Seoul.
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <AppShell>
       <section className="flex flex-col gap-2">
@@ -1611,13 +1701,7 @@ const handleSend = async () => {
               Frame the PPSS objective, scope, and initial constraints before
               the model interaction.
             </p>
-            <div className="mt-6 grid gap-4">
-              <div className="h-48 rounded-2xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                Component: Gearbox housing · Material: Al 7075-T6 · Key risk:
-                fixture stability under high-speed milling.
-              </div>
-            </div>
+            {renderProblemDefinitionContext()}
           </div>
           {renderChatPanel()}
         </section>
@@ -1633,9 +1717,9 @@ const handleSend = async () => {
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
-                  { label: "Case Study A", value: "Case study" },
-                  { label: "Case Study B", value: "Quality metrics" },
-                  { label: "Case Study C", value: "Resource map" },
+                  { label: "789 Art Zone", value: "patterns" },
+                  { label: "Gyeungui Line Forest Park", value: "painpoints" },
+                  { label: "Highline Park", value: "opportunities" },
                 ].map((tab) => {
                   const isActive = tab.value === activeTab;
                   return (
@@ -1657,34 +1741,211 @@ const handleSend = async () => {
             </div>
             <div className="p-6">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="h-48 rounded-2xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
                 <div className="mt-4 space-y-2 text-sm text-slate-600">
-                  {activeTab === "Case study" && (
+                  {activeTab === "patterns" && (
                     <>
+                      <img
+                        src="https://museumofwander.com/wp-content/uploads/2023/03/DSC00795.jpg"
+                        alt="789 Art Zone in Beijing, China"
+                        className="h-72 w-full rounded-xl object-cover"
+                      />
                       <p>
-                        Site profile imagery and baseline narrative for the
-                        reference case study.
+                        The 798 Art Zone (also known as Dashanzi Art District)
+                        in Beijing is a globally recognized urban regeneration
+                        project that transformed a 1950s military electronics
+                        factory complex into China’s leading contemporary art
+                        hub. Originally part of the 718 Joint Project, the
+                        Bauhaus-style industrial complex was built in
+                        collaboration with East Germany and served as a model
+                        socialist factory—a self-contained community providing
+                        housing, schools, and healthcare for its workers.
                       </p>
                       <p>
-                        Highlights of usage patterns and stakeholder feedback.
+                        Following China’s economic reforms in the 1980s,
+                        production declined, and the complex was abandoned. In
+                        the mid-1990s, artists such as Sui Jianguo, Huang Rui,
+                        and Liu Suola began occupying the vacant spaces,
+                        attracted by low rent and spacious, light-filled
+                        interiors. This spontaneous occupation marked the first
+                        phase (“incubation period”) of the district’s rebirth as
+                        a creative enclave.
+                      </p>
+                      <p>
+                        In the early 2000s, the “Seven Star Group”, a state
+                        enterprise owning the site, sought to demolish the
+                        buildings for redevelopment. In response, artists
+                        organized exhibitions such as Reconstruction 798 and the
+                        Dashanzi International Art Festival (2004–2006), drawing
+                        international attention and civic support. The city
+                        government ultimately protected 798 as a cultural
+                        heritage site, designating it a “Creative Cultural
+                        Industries Cluster” in 2008.
+                      </p>
+                      <p>
+                        Today, 798 Art Zone covers 138 hectares in Beijing’s
+                        Chaoyang District, featuring art galleries, design
+                        studios, cafés, and creative companies. It attracts both
+                        domestic and international visitors and plays a key role
+                        in Beijing’s city branding. However, rapid
+                        commercialization and rising rents have pushed many
+                        pioneering artists to relocate to cheaper districts
+                        like Caochangdi and Songzhuang, raising concerns about
+                        gentrification and the loss of 798’s avant-garde spirit.
+                      </p>
+                      <p>
+                        Despite this, the zone remains a symbol of China’s
+                        cultural transformation, representing the intersection
+                        of industrial heritage reuse, creative economy, and
+                        state-led urban marketing. It embodies the paradox of
+                        contemporary Chinese urbanism—balancing artistic
+                        freedom, economic pragmatism, and government control.
+                      </p>
+                      <p>
+                        Key themes: ▷ Adaptive reuse of socialist industrial
+                        heritage (Bauhaus architecture) ▷ Emergence from
+                        grassroots artist occupation to state-recognized
+                        cultural hub ▷ Integration into Beijing’s global city
+                        marketing strategy ▷ Tensions between artistic
+                        authenticity and commercialization ▷ Influence on
+                        similar creative clusters across China (e.g., Shanghai’s
+                        M50, Chengdu, Kunming)
                       </p>
                     </>
                   )}
-                  {activeTab === "Quality metrics" && (
+                  {activeTab === "painpoints" && (
                     <>
+                      <img
+                        src="https://parks.seoul.go.kr/images/egovframework/com/template/gus3.jpg"
+                        alt="Gyeungui Line Forest Park in Seoul, Korea"
+                        className="h-72 w-full rounded-xl object-cover"
+                      />
                       <p>
-                        Control charts for critical dimensions and defect
-                        rates.
+                        The Gyeongui Line Forest Park in Seoul is a major urban
+                        regeneration project that transformed an abandoned
+                        railway corridor into a linear green space stretching
+                        approximately 6.3 km from Gajwa Station to Yongsan
+                        Community Center. Initiated in 2009 as part of the
+                        city’s regeneration plan, it reconnects neighborhoods
+                        once divided by the railway and enhances the quality of
+                        urban life by returning disused land to the public.
                       </p>
-                      <p>Variance snapshots for tooling accuracy.</p>
+                      <p>
+                        The project originated from a 2004 Seoul Institute study
+                        on reusing idle rail land and was implemented in stages
+                        —beginning with the Daeheung section (760 m) in 2012 and
+                        expanding through Yeonnam-dong and Yeomni-dong. The
+                        park’s design integrates green space with pedestrian
+                        accessibility, linking surrounding neighborhoods and
+                        commercial areas while absorbing local pedestrian
+                        traffic into its flow.
+                      </p>
+                      <p>
+                        A key characteristic of the Gyeongui Line Forest Park is
+                        its strong emphasis on citizen participation. In 2014,
+                        the city and Mapo District established “Gyeongui Line
+                        Forest Keepers” (Gyeongui-seon Supgil-jigi)—a nonprofit
+                        organization modeled after New York’s Friends of the
+                        High Line. This group includes residents, designers,
+                        students, and local officials who collaborate to manage
+                        and activate the park through community-based programs
+                        such as cultural events, gardening, environmental
+                        cleanups, and public art projects (White Butterfly
+                        Project).
+                      </p>
+                      <p>
+                        The park has become a vibrant urban space where citizens
+                        and visitors gather for leisure and cultural activities,
+                        especially in the Yeonnam-dong area near Hongdae.
+                        However, it also faces challenges like gentrification,
+                        waste management, and pedestrian–cyclist safety
+                        conflicts. Local forums and initiatives have been
+                        organized to mitigate these issues and ensure
+                        sustainable coexistence between long-term residents and
+                        newcomers.
+                      </p>
+                      <p>
+                        The Gyeongui Line Forest Park exemplifies adaptive reuse
+                        of post-industrial infrastructure through participatory
+                        governance, aligning with global trends such as New
+                        York’s High Line and Paris’s Promenade Plantée. It
+                        symbolizes Seoul’s shift from government-driven
+                        redevelopment toward citizen-led urban regeneration,
+                        where community stewardship shapes the identity and
+                        sustainability of public spaces.
+                      </p>
+                      <p>
+                        Key themes: ▷ Transformation of an abandoned railway
+                        into a linear urban park ▷ Citizen-led management
+                        through Gyeongui Line Forest Keepers ▷ Cultural and
+                        ecological revitalization of neighborhoods ▷ Challenges
+                        of gentrification and inclusive urban regeneration
+                      </p>
                     </>
                   )}
-                  {activeTab === "Resource map" && (
+                  {activeTab === "opportunities" && (
                     <>
+                      <img
+                        src="https://cdn.vox-cdn.com/thumbor/vfP32EdfHssHtEknAq-I1Tyv0Zw=/0x0:2000x1333/2070x828/filters:focal(840x507:1160x827):format(webp)/cdn.vox-cdn.com/uploads/chorus_image/image/63748975/Highline_Guide_Max_Touhey_20190416_0082.0.jpg"
+                        alt="Highline Park in New York, USA"
+                        className="h-72 w-full rounded-xl object-cover"
+                      />
                       <p>
-                        Resource allocation visuals for tooling and staffing.
+                        The High Line Park is an elevated linear park in
+                        Manhattan, New York City, created from an abandoned
+                        freight rail line that once ran through the Chelsea
+                        district. Originally built in the 1930s to prevent
+                        frequent traffic accidents between trains and vehicles
+                        on 10th Avenue—once known as “Death Avenue”—the railway
+                        operated until 1980 before being closed and neglected
+                        for decades.
                       </p>
-                      <p>Material flow and staging layout notes.</p>
+                      <p>
+                        In the 1990s, the structure faced demolition, but local
+                        residents organized a civic movement called Friends of
+                        the High Line (FHL) to preserve and repurpose it as a
+                        public park. Founded by Joshua David and Robert Hammond
+                        in 1999, the group succeeded in convincing the city and
+                        property owners to support redevelopment instead of
+                        removal.
+                      </p>
+                      <p>
+                        A public–private partnership between the City of New
+                        York and FHL led to the park’s creation. The city
+                        allowed developers to transfer development rights from
+                        nearby lots, while FHL raised $3.5 million and the city
+                        invested $15.75 million, later increased by Mayor
+                        Michael Bloomberg to a total of $43.25 million. In 2003,
+                        an international design competition attracted 720 teams
+                        from 36 countries. The winning proposal came from Field
+                        Operations (landscape architecture) and Diller Scofidio
+                        + Renfro (architecture), whose design integrated nature
+                        and urban infrastructure through the concept of
+                        “Agri-tecture”—a hybrid of agriculture and
+                        architecture.
+                      </p>
+                      <p>
+                        Opened in stages from 2009, the High Line preserves the
+                        industrial character of the area while introducing
+                        sustainable greenery, wooden decks, and pedestrian paths
+                        that blend with the city’s skyline. The park provides a
+                        serene walking experience above the bustling streets,
+                        offering views of the Hudson River and Manhattan’s
+                        buildings.
+                      </p>
+                      <p>
+                        Today, the High Line stands as a symbol of urban
+                        regeneration, transforming a decaying industrial relic
+                        into a vibrant public space that promotes ecological
+                        design, cultural vitality, and social inclusivity. It
+                        also reinforced New York’s identity as a city capable of
+                        turning “urban scars” into celebrated landmarks.
+                      </p>
+                      <p>
+                        Key themes: ▷ Adaptive reuse of obsolete infrastructure
+                        ▷ Citizen-led activism and public–private collaboration
+                        ▷ Integration of nature and urban life (Agri-tecture) ▷
+                        Model for sustainable urban regeneration and placemaking
+                      </p>
                     </>
                   )}
                 </div>
