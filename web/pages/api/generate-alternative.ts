@@ -5,16 +5,32 @@ import { callLLM } from "../../lib/llm";
 import { loadBackgroundKnowledge } from "../../lib/firebase";
 
 const buildPromptInput = (payload: {
-  mode: "initial" | "iteration";
   workspaceSummary?: Record<string, string>;
   workspaceInput?: Record<string, string[]>;
   feedback?: string;
 }) => {
- const promptInput = buildPromptInput({
-  workspaceSummary,
-  workspaceInput,
-  feedback,
- });
+  const summaryText = Object.entries(payload.workspaceSummary ?? {})
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
+
+  const dialogueText = Object.entries(payload.workspaceInput ?? {})
+    .map(([key, value]) => {
+      const recent = value.slice(-2).join(" | ");
+      return `${key}: ${recent}`;
+    })
+    .join("\n");
+
+  const feedbackText = payload.feedback?.trim()
+    ? `\n\nUser feedback:\n${payload.feedback}`
+    : "";
+
+  return `Workspace summary:
+${summaryText}
+
+Chat log highlights:
+${dialogueText}${feedbackText}`;
+};
+
  const summaryText = Object.entries(payload.workspaceSummary ?? {})
     .map(([key, value]) => `${key}: ${value}`)
     .join("\n");
@@ -54,14 +70,12 @@ export default async function handler(
     const backgroundText = background?.curatedText?.trim();
 
     const {
-      mode,
       workspaceSummary,
       workspaceInput,
       provider,
       feedback,
       userID,
     } = req.body as {
-      mode: "initial" | "iteration";
       workspaceSummary: Record<string, string>;
       workspaceInput: Record<string, string[]>;
       provider?: "openai" | "gemini";
@@ -84,24 +98,21 @@ export default async function handler(
     - Please change the actual overpass, there should not be a car on the overpass.
     `;
 
-     const systemText = 
-      SITE_IMAGE_RULES +
-     `You are generating a NEW design alternative. This is NOT an edit of a previous design. Use the site image as a fixed reference only.
-     Please emphasize the very unique points from the dialogue in this prompt and files that can clearly appear and be seen in the image and also design that other stakeholders might not have. Mention specific elements in the dialogues to generate images. Mention the specific elements in the dialogue to generate images.
-    `
-        : `
-      You are MODIFYING an existing design.
-      Preserve the prior design intent.
-      Apply user's feedback to the promt.
-      
-      `);
+     const systemText = `
+     ${SITE_IMAGE_RULES}
 
+      You are generating a NEW design alternative.
+      This is NOT an edit of a previous design.
+      Use the site image as a fixed reference only.
+      
+      Please emphasize very specific, visible design elements from the workspace dialogue.
+    `.trim();
+    );
     const promptInput = buildPromptInput({
-            mode,
-          workspaceSummary: mode === "initial" ? workspaceSummary : undefined,
-          workspaceInput: mode === "initial" ? workspaceInput : undefined,
-          feedback: mode === "iteration" ? feedback : undefined,
-          });
+          workspaceSummary,
+          workspaceInput,
+          feedback,
+   });
 
     const prompt = await callLLM({
       provider: normalizedProvider,
