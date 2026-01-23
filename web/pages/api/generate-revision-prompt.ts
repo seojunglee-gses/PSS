@@ -2,14 +2,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { callLLM } from "../../lib/llm";
 import { loadBackgroundKnowledge } from "../../lib/firebase";
 
-const systemText = `You are a design planning expert.
+const systemText = `
 Rewrite a new image-generation prompt based on user feedback.
-
-You MUST treat the site image as immutable spatial context.
-Do NOT introduce or retain any city, country, or location name
-unless it is explicitly visible in the site image.
-If the previous prompt mentions a location that is not visible
-in the site image, REMOVE it.
 
 Priority order:
 1. User feedback (highest priority)
@@ -21,9 +15,8 @@ Rules:
 - Explicitly reflect the user's feedback.
 - Ensure changes are visually obvious in the resulting image.
 - The "prompt" must NOT mention feedback or revision.
-- The "rationale" SHOULD clearly explain what changed and why.
-
-- Also produce a short rationale explaining what changed and why. - Please emphasize the very unique points from the dialogue in this prompt and files that can clearly appear and be seen in the image and also design that other stakeholders might not have. Mention specific elements in the dialogues to generate images. Mention the specific elements in the dialogue to generate images.
+- Please emphasize the very unique points from the dialogue in this prompt and files that can clearly appear and be seen in the image and also design that other stakeholders might not have. Mention specific elements in the dialogues to generate images. Mention the specific elements in the dialogue to generate images.
+- Design the overpass not the environment around.
 
 Return JSON ONLY in this format:
 {
