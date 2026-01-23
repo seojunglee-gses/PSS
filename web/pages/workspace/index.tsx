@@ -857,13 +857,13 @@ export default function Workspace() {
     }
 
     setChatLogs((prev) => {
-    const next = [
-      ...prev,
+    const nextLogs: ChatLog[] = [
+      ...chatLogs,
       {
-        stepId: "alternatives",
+        stepId,
         provider: activeProvider,
         sender: "assistant" as const,
-        text: "Generated an initial concept image based on earlier discussions.",
+        text: "Generated a new concept image based on your feedback.",
         label: activeProvider,
         createdAt: new Date().toISOString(),
         imageUrl: imageRecord.imageUrl,
@@ -872,17 +872,10 @@ export default function Workspace() {
         imageNote: imageRecord.note,
       },
     ];
-    void persistChatLogs(next); 
-    return next;
-  });
-    },
-    [
-      requestGeneratedImage,
-      chatLogs,
-      activeProvider,
-      persistChatLogs,
-    ]
-  );
+    
+    setChatLogs(nextLogs);
+    await persistChatLogs(nextLogs);
+
 
   useEffect(() => {
     if (activeStep.id !== "alternatives") return;
