@@ -571,7 +571,10 @@ export default function Workspace() {
         .filter((l): l is ChatLog => Boolean(l))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   
-      setChatLogs(normalized);
+      setChatLogsByStep((prev) => ({
+        ...prev,
+        [activeStep.id]: normalized,
+      }));
       setHasLoadedChatLogs(true);
     };
   
