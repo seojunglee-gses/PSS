@@ -521,39 +521,58 @@ export default function Workspace() {
     [role]
   );
 
-  useEffect(() => {
-    if (!user?.uid) {
-      return;
-    }
-    const loadLogs = async () => {
+ useEffect(() => {
+    if (!userKey) return;
+  
+    const loadStepLogs = async () => {
       setHasLoadedChatLogs(false);
-      const storedLogs = await loadChatLogsFromFirestore<
-        Record<
-          string,
-          Array<
-            Partial<ChatLog> & {
-              sender?: "Planner" | "ChatGPT" | "user" | "assistant";
-            }
-          >
+  
+      const stepLogs = await loadStepChatLogs<
+        Array<
+          Partial<ChatLog> & {
+            sender?: "Planner" | "ChatGPT" | "user" | "assistant";
+          }
         >
-      >(user.uid);
-      if (!storedLogs || !storedLogs[activeStep.id]) {
-        setChatLogsByStep((prev) => ({
-          ...prev,
-          [activeStep.id]: prev[activeStep.id] ?? [],
-        }));
+      >(userKey, activeStep.id);
+  
+      if (!stepLogs) {
+        setChatLogs([]);
         setHasLoadedChatLogs(true);
         return;
       }
-      const normalized = normalizeLogs(storedLogs[activeStep.id]);
-      setChatLogsByStep((prev) => ({
-        ...prev,
-        [activeStep.id]: normalized,
-      }));
+  
+      const normalized = stepLogs
+        .map((log, index) => {
+          const sender = normalizeSender(log.sender);
+          if (!sender || !log.provider) return null;
+  
+          return {
+            stepId: activeStep.id,
+            provider: log.provider,
+            sender,
+            text: log.text ?? "",
+            label:
+              log.label ??
+              (sender === "assistant" ? log.provider : role),
+            createdAt:
+              log.createdAt ??
+              new Date(Date.now() + index).toISOString(),
+            imageUrl: log.imageUrl,
+            imageId: log.imageId,
+            imageLabel: log.imageLabel,
+            imageNote: log.imageNote,
+          } as ChatLog;
+        })
+        .filter((l): l is ChatLog => Boolean(l))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  
+      setChatLogs(normalized);
       setHasLoadedChatLogs(true);
     };
-    loadLogs();
-  }, [activeStep.id, normalizeLogs, user?.uid]);
+  
+    loadStepLogs();
+  }, [userKey, activeStep.id]);
+
 
   useEffect(() => {
     if (!user) {
