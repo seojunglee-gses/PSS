@@ -1058,7 +1058,7 @@ const handleSend = async () => {
       const payload = (await response.json()) as { reply: string };
       const reply = payload.reply;
       setChatLogs((prev) => {
-        const next: ChatLog{} = [
+        const next: ChatLog[] = [
           ...prev,
         {
           stepId,
