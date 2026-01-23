@@ -1550,6 +1550,96 @@ const handleSend = async () => {
   );
   };
 
+  const renderProblemDefinitionContext = () => {
+    return (
+      <div className="mt-6 space-y-6">
+        <figure className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+          <img
+            src="https://cdn.m-joongang.com/news/photo/201506/20150618_2_306921.jpg"
+            alt="Designers collaborating with post-it notes"
+            className="h-56 w-full object-cover"
+          />
+          <figcaption className="px-4 py-3 text-xs text-slate-500">
+            Picture of Seoul station overpass.
+          </figcaption>
+        </figure>
+        <div className="panel-copy space-y-4 text-sm text-slate-600">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Clarify the Strategic Challenge
+          </h2>
+          <p>
+            Before its transformation, the Seoul Station Overpass stood as a
+            deteriorating yet symbolically important piece of infrastructure in
+            the heart of the city. Built in 1970 to ease mounting traffic and
+            support fast-paced urban growth, the elevated roadway once embodied
+            Seoul’s modernization. Over time, however, structural aging, safety
+            concerns, and limited pedestrian accessibility made it increasingly
+            incompatible with the evolving needs of the city. Still, as
+            conversations around urban regeneration grew, the overpass began to
+            be seen not only as an obsolete structure but also as a potential
+            anchor for revitalizing the fragmented districts surrounding Seoul
+            Station.
+          </p>
+          <p>
+            Structurally, the overpass was narrow, elevated up to 17 meters, and
+            originally designed for vehicle-heavy use—conditions that made it
+            unsafe for public recreation and difficult for pedestrians to reach.
+            Its height and position over major arterial roads and rail tracks
+            also contributed to its isolation from the street-level environment.
+            Although the view from the overpass mainly looked onto adjacent
+            buildings rather than open landscapes, the area below and around it
+            was rich with cultural, historical, and industrial assets, creating
+            opportunities for a more integrated urban strategy.
+          </p>
+          <p>
+            The districts west of Seoul Station—such as Jungnim-dong,
+            Seogye-dong, and Malli-dong—had long suffered from physical decline
+            and social isolation due to the separation created by the railway.
+            This isolation contributed to economic stagnation and political
+            marginalization, even as these neighborhoods maintained unique
+            cultural landscapes, including historic sites, traditional hillsides,
+            and a concentrated sewing and garment industry. These
+            characteristics positioned the western neighborhoods as strong
+            candidates for community-based urban regeneration.
+          </p>
+          <p>
+            On the eastern side, Namdaemun Market and Hoehyeon-dong faced
+            different challenges. Namdaemun Market, one of Korea’s largest and
+            most historic commercial zones, struggled with aging facilities,
+            competing stakeholder interests, declined tourism, and complex
+            governance issues. Hoehyeon-dong, caught between Namsan and the
+            commercial core, had long been constrained by height limits and
+            fragmented development patterns. Despite these challenges, both
+            areas retained symbolic significance and benefited from their
+            strategic location at Seoul’s urban gateway.
+          </p>
+          <p>
+            Across all neighborhoods, local groups expressed shared concerns as
+            the city considered closing the overpass. Many demanded alternative
+            traffic routes, plans to alleviate anticipated congestion, and
+            renewed attention to long-stalled development around the northern
+            station area. Others emphasized the need to address local social
+            issues—particularly homelessness, vulnerable housing, and support
+            for the declining sewing industry. Specific districts also raised
+            their own priorities, from calls to modernize Namdaemun Market to
+            community-led planning efforts in Seogye-dong that sought a balanced
+            approach to redevelopment.
+          </p>
+          <p>
+            Overall, before its conversion into a public park, the Seoul Station
+            Overpass existed at the intersection of aging infrastructure,
+            fragmented urban fabric, and a dense concentration of cultural and
+            economic activities. Although its original transportation role had
+            diminished, the surrounding neighborhoods’ conditions suggested
+            that reimagining the overpass could play a central role in
+            stitching together divided districts and offering a new direction
+            for urban regeneration in central Seoul.
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <AppShell>
       <section className="flex flex-col gap-2">
@@ -1611,13 +1701,7 @@ const handleSend = async () => {
               Frame the PPSS objective, scope, and initial constraints before
               the model interaction.
             </p>
-            <div className="mt-6 grid gap-4">
-              <div className="h-48 rounded-2xl bg-gradient-to-br from-blue-100 via-white to-slate-100" />
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-                Component: Gearbox housing · Material: Al 7075-T6 · Key risk:
-                fixture stability under high-speed milling.
-              </div>
-            </div>
+            {renderProblemDefinitionContext()}
           </div>
           {renderChatPanel()}
         </section>
