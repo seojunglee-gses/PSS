@@ -879,7 +879,10 @@ export default function Workspace() {
     };
 
     const label = `Alternative ${alternativeImages.length + 1}`;
-    const note = payload.prompt ?? "";
+    const note =
+      typeof payload.prompt === "string"
+        ? payload.prompt
+        : "";
 
     if (payload.downloadUrl && !payload.base64) {
       setLastGeneratedImageId(payload.imageId);
