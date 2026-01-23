@@ -26,12 +26,13 @@ type EvaluationPayload = {
   role?: string;
 };
 
-type WorkspaceSummary = {
+export type WorkspaceSummary = {
   stageSummaries: Record<string, string>;
   overallSummary: string;
   role?: string;
   completedStages?: string[];
   updatedAt?: string;
+  alternativesInitialized?: boolean;
 };
 
 type ExecutiveSummary = {
@@ -222,18 +223,22 @@ export const loadChatLogsFromFirestore = async <T>(
 
 export const saveWorkspaceSummary = async (
   userId: string,
-  summary: WorkspaceSummary
+  summary: Partial<WorkspaceSummary>
 ) => {
   const app = getFirebaseApp();
   if (!app) {
     return;
   }
   const db = getFirestore(app);
-  await setDoc(doc(db, "ppssWorkspaceSummaries", userId), {
+  await setDoc(
+    doc(db, "ppssWorkspaceSummaries", userId), 
+    {
     ...summary,
     updatedAt: new Date().toISOString(),
-  });
-};
+    },
+    {merge: true}
+    );
+  };
 
 export const loadWorkspaceSummary = async (
   userId: string
