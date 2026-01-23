@@ -270,6 +270,10 @@ export default function Workspace() {
   const [inputValue, setInputValue] = useState("");
   const [role, setRole] = useState("Guest");
   const [activeProvider, setActiveProvider] = useState("Gemini");
+  const chatStorageKey = useMemo(
+    () => (userKey ? `ppss-chat-logs-${userKey}` : null),
+    [userKey]
+  );
   
   useEffect(() => {
   if (typeof window === "undefined") return;
