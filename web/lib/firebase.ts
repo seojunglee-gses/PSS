@@ -32,6 +32,7 @@ type WorkspaceSummary = {
   role?: string;
   completedStages?: string[];
   updatedAt?: string;
+  alternativesInitialized?: boolean;
 };
 
 type ExecutiveSummary = {
