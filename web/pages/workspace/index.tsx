@@ -14,6 +14,8 @@ import {
   loadEvaluationImages,
   saveStageLocks,
   loadLatestExecutiveSummariesByStage,
+  saveStepChatLogs,
+  loadStepChatLogs,
   loadAllWorkspaceSummaries,
 } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
