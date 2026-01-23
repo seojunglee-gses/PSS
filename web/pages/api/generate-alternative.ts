@@ -5,6 +5,7 @@ import { callLLM } from "../../lib/llm";
 import { loadBackgroundKnowledge } from "../../lib/firebase";
 
 const buildPromptInput = (payload: {
+  mode: "initial" | "iteration";
   workspaceSummary?: Record<string, string>;
   workspaceInput?: Record<string, string[]>;
   feedback?: string;
