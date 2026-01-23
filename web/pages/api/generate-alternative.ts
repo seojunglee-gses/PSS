@@ -95,8 +95,8 @@ export default async function handler(
       
       DESIGN MODE:
       - Generate a NEW design alternative (not an edit).
+      - The overpass MUST show a CLEAR and VISIBLE design change.
       - Stay close to the original structure.
-      - Avoid radical changes.
       
       FOCUS:
       - Describe specific, clearly visible design elements to the OVERPASS ITSELF.
