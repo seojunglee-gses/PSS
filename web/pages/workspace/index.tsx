@@ -270,6 +270,10 @@ export default function Workspace() {
   const [inputValue, setInputValue] = useState("");
   const [role, setRole] = useState("Guest");
   const [activeProvider, setActiveProvider] = useState("Gemini");
+  const chatStorageKey = useMemo(
+    () => (userKey ? `ppss-chat-logs-${userKey}` : null),
+    [userKey]
+  );
   
   useEffect(() => {
   if (typeof window === "undefined") return;
@@ -291,6 +295,9 @@ export default function Workspace() {
   const persistChatLogs = async (logs: ChatLog[]) => {
     if (!userKey) return;
     await saveChatLogsToFirestore(userKey, logs, user?.email ?? userKey);
+    if (typeof window !== "undefined" && chatStorageKey) {
+      window.localStorage.setItem(chatStorageKey, JSON.stringify(logs));
+    }
   };
 
   const [isSending, setIsSending] = useState(false);
@@ -474,11 +481,19 @@ export default function Workspace() {
       const storedLogs = await loadChatLogsFromFirestore<
         Array<Partial<ChatLog> & { sender?: "Planner" | "ChatGPT" | "user" | "assistant" }>
       >(user.uid);
-      if (!storedLogs) {
+      const fallbackLogs =
+        !storedLogs && typeof window !== "undefined" && chatStorageKey
+          ? (JSON.parse(
+              window.localStorage.getItem(chatStorageKey) ?? "null"
+            ) as Array<Partial<ChatLog> & {
+              sender?: "Planner" | "ChatGPT" | "user" | "assistant";
+            }>) || null
+          : storedLogs;
+      if (!fallbackLogs) {
         setHasLoadedChatLogs(true);
         return;
       }
-      const normalized = storedLogs
+      const normalized = fallbackLogs
         .map((log, index) => {
           const sender = normalizeSender(log.sender);
 
@@ -514,10 +529,32 @@ export default function Workspace() {
         .filter((log): log is ChatLog => Boolean(log))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       setChatLogs(normalized);
+      if (typeof window !== "undefined" && chatStorageKey) {
+        window.localStorage.setItem(chatStorageKey, JSON.stringify(normalized));
+      }
       setHasLoadedChatLogs(true);
     };
     loadLogs();
-  }, [user?.uid]);
+  }, [user?.uid, chatStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !chatStorageKey) {
+      return;
+    }
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== chatStorageKey || !event.newValue) {
+        return;
+      }
+      try {
+        const parsed = JSON.parse(event.newValue) as ChatLog[];
+        setChatLogs(parsed);
+      } catch {
+        // Ignore malformed payloads.
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [chatStorageKey]);
 
   useEffect(() => {
     if (!user) {
@@ -988,7 +1025,7 @@ persistChatLogs(nextUserLogs);
         }
 
           const nextEvaluationLogs: ChatLog[] = [
-            ...chatLogs,
+            ...nextUserLogs,
             {
               stepId,
               provider: activeProvider,
