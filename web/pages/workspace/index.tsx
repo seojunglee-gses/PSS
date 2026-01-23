@@ -858,7 +858,7 @@ export default function Workspace() {
     const nextLogs: ChatLog[] = [
       ...chatLogs,
       {
-        stepId,
+        stepId:"alternatives",
         provider: activeProvider,
         sender: "assistant" as const,
         text: "Generated a new concept image based on your feedback.",
