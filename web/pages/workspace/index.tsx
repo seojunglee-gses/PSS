@@ -923,13 +923,11 @@ const handleSend = async () => {
   if (lockedStages[activeStep.id]) return;
 
   if (sendingRef.current) return;
-  sendingRef.current = true;
-
   if (activeStep.id === "alternatives" && isLoadingAlternatives) {
     setErrorMessage("Image generation already in progress.");
     return;
   }
-
+  sendingRef.current = true;
   setErrorMessage(null);
 
   const stepId = activeStep.id;
