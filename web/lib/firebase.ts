@@ -26,7 +26,7 @@ type EvaluationPayload = {
   role?: string;
 };
 
-export async function saveStepChatLogs(
+export async function saveStepChatLogs<T = unknown>(
   userId: string,
   stepId: string,
   logs: T[]
