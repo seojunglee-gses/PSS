@@ -213,10 +213,10 @@ export default function AppShell({ children }: AppShellProps) {
         )}
         <main className="flex-1 px-4 py-6 lg:px-10 lg:py-10">
           <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
-            <div className="flex items-center justify-between rounded-2xl border border-[var(--border)] bg-white px-4 py-3 shadow-sm lg:hidden">
+            <div className="flex items-center justify-between rounded-2xl border border-[var(--primary)]/40 bg-[var(--primary)] px-4 py-3 text-white shadow-sm lg:hidden">
               <button
                 type="button"
-                className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+                className="flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white"
                 onClick={() => setMobileNavOpen(true)}
               >
                 <span className="text-base leading-none">☰</span>
@@ -224,7 +224,7 @@ export default function AppShell({ children }: AppShellProps) {
               </button>
               <button
                 type="button"
-                className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600"
+                className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white"
                 onClick={() => setShowMobileAccount((value) => !value)}
               >
                 {t("shell.signedInAs")}
