@@ -3,10 +3,11 @@ import { useRouter } from "next/router";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../lib/auth";
+import { normalizeRoleId, roleLabelKeys, useI18n, type Locale } from "../lib/i18n";
 
 const navigation = [
   {
-    label: "Home",
+    labelKey: "nav.home",
     href: "/",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
@@ -21,7 +22,7 @@ const navigation = [
     ),
   },
   {
-    label: "Workspace",
+    labelKey: "nav.workspace",
     href: "/workspace",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
@@ -45,7 +46,7 @@ const navigation = [
     ),
   },
   {
-    label: "Report",
+    labelKey: "nav.report",
     href: "/report",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
@@ -65,7 +66,7 @@ const navigation = [
     ),
   },
   {
-    label: "Setting",
+    labelKey: "nav.setting",
     href: "/setting",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
@@ -96,6 +97,7 @@ interface AppShellProps {
 export default function AppShell({ children }: AppShellProps) {
   const router = useRouter();
   const { user, signOutUser } = useAuth();
+  const { locale, setLocale, t } = useI18n();
   const [role, setRole] = useState<string>("Guest");
 
   useEffect(() => {
@@ -104,7 +106,8 @@ export default function AppShell({ children }: AppShellProps) {
     }
     const storedRole = window.localStorage.getItem("ppss-role");
     if (storedRole) {
-      setRole(storedRole);
+      const normalized = normalizeRoleId(storedRole);
+      setRole(normalized ?? storedRole);
     }
   }, []);
 
@@ -116,21 +119,38 @@ export default function AppShell({ children }: AppShellProps) {
     router.push("/");
   };
 
+  const normalizedRole = normalizeRoleId(role);
+  const displayRole = normalizedRole ? t(roleLabelKeys[normalizedRole]) : role;
+
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="flex min-h-screen">
         <aside className="sticky top-0 flex h-screen w-72 flex-col gap-6 bg-[var(--primary)] px-6 py-8 text-white shadow-lg">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">
-              PPSS Platform
+              {t("shell.platform")}
             </p>
             <h1 className="mt-2 text-2xl font-semibold leading-tight">
-              AI-assisted
+              {t("shell.title")}
               <span className="block text-blue-200">PPSS</span>
             </h1>
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-blue-100">
-              Role · {role}
+              {t("shell.role")} · {displayRole}
             </p>
+          </div>
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">
+              {t("language.label")}
+            </label>
+            <select
+              className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white outline-none"
+              value={locale}
+              onChange={(event) => setLocale(event.target.value as Locale)}
+            >
+              <option className="text-slate-900" value="en">{t("language.en")}</option>
+              <option className="text-slate-900" value="ko">{t("language.ko")}</option>
+              <option className="text-slate-900" value="zh">{t("language.zh")}</option>
+            </select>
           </div>
           <nav className="flex flex-col gap-2">
             {navigation.map((item) => {
@@ -148,15 +168,15 @@ export default function AppShell({ children }: AppShellProps) {
                   <span className="rounded-full bg-white/15 p-2 text-white">
                     {item.icon}
                   </span>
-                  {item.label}
+                  {t(item.labelKey)}
                 </Link>
               );
             })}
           </nav>
           <div className="mt-auto rounded-2xl border border-white/20 bg-white/10 p-4 text-xs text-blue-100">
-            <p className="font-semibold text-white">System Status</p>
-            <p className="mt-2">Model: GPT-supported workflow</p>
-            <p className="mt-1">Latency: 1.3s · Ready</p>
+            <p className="font-semibold text-white">{t("shell.systemStatus")}</p>
+            <p className="mt-2">{t("shell.model")}</p>
+            <p className="mt-1">{t("shell.latency")}</p>
           </div>
         </aside>
         <main className="flex-1 px-10 py-10">
@@ -164,28 +184,26 @@ export default function AppShell({ children }: AppShellProps) {
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-white px-6 py-4 shadow-sm">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
-                  Signed in as
+                  {t("shell.signedInAs")}
                 </p>
                 <p className="mt-1 text-lg font-semibold text-slate-800">
-                  {role}
+                  {displayRole}
                 </p>
               </div>
               <div className="flex items-center gap-3 text-sm text-slate-500">
-                <span>{user?.email ?? "Not authenticated"}</span>
+                <span>{user?.email ?? t("shell.notAuthenticated")}</span>
                 {user && (
                   <button
                     className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
                     type="button"
                     onClick={handleLogout}
                   >
-                    Log out
+                    {t("shell.logout")}
                   </button>
                 )}
               </div>
             </div>
-            <div className="flex w-full flex-col gap-8">
-            {children}
-            </div>
+            <div className="flex w-full flex-col gap-8">{children}</div>
           </div>
         </main>
       </div>
