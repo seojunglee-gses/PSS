@@ -2,10 +2,10 @@ import { useRouter } from "next/router";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../lib/auth";
-import { useI18n } from "../lib/i18n";
+import { normalizeRoleId, roleLabelKeys, useI18n, type RoleId } from "../lib/i18n";
 
 type RoleItem = {
-  id: string;
+  id: RoleId;
   titleKey: string;
   descriptionKey: string;
   icon: ReactNode;
@@ -115,7 +115,7 @@ export default function Home() {
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedRole, setSelectedRole] = useState<string>("");
+  const [selectedRole, setSelectedRole] = useState<RoleId | "">("");
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
@@ -123,6 +123,17 @@ export default function Home() {
       router.push("/workspace");
     }
   }, [user, router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem("ppss-role");
+    const normalized = normalizeRoleId(stored);
+    if (stored && normalized && stored !== normalized) {
+      window.localStorage.setItem("ppss-role", normalized);
+    }
+  }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -192,7 +203,7 @@ export default function Home() {
                 className="mt-6 rounded-full bg-[var(--primary)] px-6 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
                 type="button"
                 onClick={() => {
-                  setSelectedRole(roleTitle);
+                  setSelectedRole(role.id);
                   setShowLogin(true);
                 }}
               >
@@ -215,7 +226,7 @@ export default function Home() {
                   {t("home.signInWorkspace")}
                 </h3>
                 <p className="mt-2 text-sm text-slate-500">
-                  {t("home.role")}: <span className="font-semibold">{selectedRole}</span>
+                  {t("home.role")}: <span className="font-semibold">{selectedRole ? t(roleLabelKeys[selectedRole]) : ""}</span>
                 </p>
               </div>
               <button

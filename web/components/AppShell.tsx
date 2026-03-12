@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../lib/auth";
-import { useI18n, type Locale } from "../lib/i18n";
+import { normalizeRoleId, roleLabelKeys, useI18n, type Locale } from "../lib/i18n";
 
 const navigation = [
   {
@@ -106,7 +106,8 @@ export default function AppShell({ children }: AppShellProps) {
     }
     const storedRole = window.localStorage.getItem("ppss-role");
     if (storedRole) {
-      setRole(storedRole);
+      const normalized = normalizeRoleId(storedRole);
+      setRole(normalized ?? storedRole);
     }
   }, []);
 
@@ -117,6 +118,9 @@ export default function AppShell({ children }: AppShellProps) {
     }
     router.push("/");
   };
+
+  const normalizedRole = normalizeRoleId(role);
+  const displayRole = normalizedRole ? t(roleLabelKeys[normalizedRole]) : role;
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -131,7 +135,7 @@ export default function AppShell({ children }: AppShellProps) {
               <span className="block text-blue-200">PPSS</span>
             </h1>
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-blue-100">
-              {t("shell.role")} · {role}
+              {t("shell.role")} · {displayRole}
             </p>
           </div>
           <div>
@@ -183,7 +187,7 @@ export default function AppShell({ children }: AppShellProps) {
                   {t("shell.signedInAs")}
                 </p>
                 <p className="mt-1 text-lg font-semibold text-slate-800">
-                  {role}
+                  {displayRole}
                 </p>
               </div>
               <div className="flex items-center gap-3 text-sm text-slate-500">
