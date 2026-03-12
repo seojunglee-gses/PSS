@@ -6,14 +6,9 @@ import {
   loadLatestExecutiveSummariesByStage,
   loadWorkspaceSummary,
 } from "../../lib/firebase";
+import { useI18n } from "../../lib/i18n";
 
-const workflowSteps = [
-  "Problem Definition",
-  "Data Analysis",
-  "Design/Plan Alternatives",
-  "Design/Plan Evaluation",
-  "Design/Plan Decision",
-];
+const workflowStepKeys = ["step.problem", "step.data", "step.alternatives", "step.evaluation", "step.report"];
 
 const stepIds = ["problem", "data", "alternatives", "evaluation", "report"];
 
@@ -91,7 +86,8 @@ export default function Report() {
 
   const { user } = useAuth();
   const userKey = user?.uid;
-  const [activeStep] = useState(workflowSteps[0]);
+  const { t } = useI18n();
+  const [activeStep] = useState(workflowStepKeys[0]);
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
   const [executiveSummary, setExecutiveSummary] =
     useState<ExecutiveSummary | null>(null);
@@ -125,7 +121,7 @@ export default function Report() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Unable to load saved summaries."
+          : t("report.stage.empty")
       );
     } finally {
       setLoading(false);
@@ -161,12 +157,11 @@ export default function Report() {
     <AppShell>
       <section className="flex flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
-          Report
+          {t("report.badge")}
         </p>
-        <h2 className="text-3xl font-semibold">PPSS compliance report</h2>
+        <h2 className="text-3xl font-semibold">{t("report.title")}</h2>
         <p className="max-w-3xl text-sm text-slate-500">
-          Executive summaries are generated from all users’ dialogues, while
-          workspace summaries reflect the currently logged-in user.
+          {t("report.desc")}
         </p>
       </section>
 
@@ -181,7 +176,7 @@ export default function Report() {
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            Executive Summary
+            {t("report.tab.executive")}
           </button>
           <button
             type="button"
@@ -192,20 +187,20 @@ export default function Report() {
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            Workspace Dialogue Summaries
+            {t("report.tab.workspace")}
           </button>
         </div>
         
          {activeReportTab === "executive" && (
       <>
-        <h3 className="text-lg font-semibold">Executive Summary</h3>
+        <h3 className="text-lg font-semibold">{t("report.tab.executive")}</h3>
         <p className="mt-2 text-sm text-slate-500">
-          Global insight generated from all stakeholder dialogues.
+          {t("report.executive.desc")}
         </p>    
         <div className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
             <p className="text-xs font-semibold uppercase text-slate-400">
-              Project key keywords
+              {t("report.keywords")}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {(executiveSummary?.keywords ?? []).length > 0 ? (
@@ -219,39 +214,34 @@ export default function Report() {
                 ))
               ) : (
                 <span className="text-xs text-slate-400">
-                  Keywords will appear after refresh.
+                  {t("report.keywords.empty")}
                 </span>
               )}
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
             <p className="text-xs font-semibold uppercase text-slate-400">
-              Current workflow view
+              {t("report.workflowView")}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {workflowSteps.map((step) => {
+              {workflowStepKeys.map((step) => {
                 const isActive =
-                  (step === "Problem Definition" &&
-                    executiveSummary?.stageSummaries.problemDefinition) ||
-                  (step === "Data Analysis" &&
-                    executiveSummary?.stageSummaries.dataAnalysis) ||
-                  (step === "Design/Plan Alternatives" &&
-                    executiveSummary?.stageSummaries.designAlternatives) ||
-                  (step === "Design/Plan Evaluation" &&
-                    executiveSummary?.stageSummaries.designEvaluation) ||
-                  (step === "Design/Plan Decision" &&
-                    executiveSummary?.stageSummaries.decision) ||
+                  (step === "step.problem" && executiveSummary?.stageSummaries.problemDefinition) ||
+                  (step === "step.data" && executiveSummary?.stageSummaries.dataAnalysis) ||
+                  (step === "step.alternatives" && executiveSummary?.stageSummaries.designAlternatives) ||
+                  (step === "step.evaluation" && executiveSummary?.stageSummaries.designEvaluation) ||
+                  (step === "step.report" && executiveSummary?.stageSummaries.decision) ||
                   (!executiveSummary && step === activeStep);
                 return (
                   <span
-                    key={step}
+                    key={t(step)}
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${
                       isActive
                         ? "bg-[var(--primary)] text-white"
                         : "bg-slate-100 text-slate-500"
                     }`}
                   >
-                    {step}
+                    {t(step)}
                   </span>
                 );
               })}
@@ -262,7 +252,7 @@ export default function Report() {
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
             <p className="text-sm font-semibold text-slate-700">
-              Problem Definition
+              {t("step.problem")}
             </p>
             <div className="mt-2 space-y-2">
               {executiveSummary?.stageSummaries.problemDefinition
@@ -271,12 +261,12 @@ export default function Report() {
                       executiveSummary.stageSummaries.problemDefinition
                     )
                   )
-                : "Refresh to generate stakeholder comparisons."}
+                : t("report.refreshHint1")}
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
             <p className="text-sm font-semibold text-slate-700">
-              Data Analysis
+              {t("step.data")}
             </p>
             <div className="mt-2 space-y-2">
               {executiveSummary?.stageSummaries.dataAnalysis
@@ -285,12 +275,12 @@ export default function Report() {
                       executiveSummary.stageSummaries.dataAnalysis
                     )
                   )
-                : "Refresh to generate lessons learned."}
+                : t("report.refreshHint2")}
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
             <p className="text-sm font-semibold text-slate-700">
-              Design Alternatives
+              {t("step.alternatives")}
             </p>
             <div className="mt-2 space-y-2">
               {executiveSummary?.stageSummaries.designAlternatives
@@ -299,12 +289,12 @@ export default function Report() {
                       executiveSummary.stageSummaries.designAlternatives
                     )
                   )
-                : "Refresh to generate design intent keywords."}
+                : t("report.refreshHint3")}
             </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
             <p className="text-sm font-semibold text-slate-700">
-              Design Evaluation
+              {t("step.evaluation")}
             </p>
             <div className="mt-2 space-y-2">
               {executiveSummary?.stageSummaries.designEvaluation
@@ -313,7 +303,7 @@ export default function Report() {
                       executiveSummary.stageSummaries.designEvaluation
                     )
                   )
-                : "Refresh to generate evaluation feedback."}
+                : t("report.refreshHint4")}
             </div>
           </div>
         </div>
@@ -324,17 +314,17 @@ export default function Report() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold">
-              Personal Workspace Summaries
+              {t("report.personal.title")}
             </h3>
             <p className="mt-2 text-sm text-slate-500">
-              Personalized summaries saved when you finish each stage.
+              {t("report.personal.desc")}
             </p>
           </div>
           <button
             className="rounded-full border border-slate-200 bg-white p-2 text-slate-500 hover:border-[var(--primary)] hover:text-[var(--primary)]"
             type="button"
             onClick={() => refreshSummaries()}
-            aria-label="Reload saved summaries"
+            aria-label={t("report.reload")}
             disabled={loading}
           >
             <svg
@@ -355,10 +345,10 @@ export default function Report() {
         <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-slate-700">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase text-blue-400">
-              Overall summary
+              {t("report.overall")}
             </p>
             <span className="text-xs text-slate-500">
-              {loading ? "Loading..." : "Synced from Firestore"}
+              {loading ? t("report.loading") : t("report.synced")}
             </span>
           </div>
           <div className="mt-3 space-y-2">
@@ -366,23 +356,23 @@ export default function Report() {
               ? renderFormattedSummary(
                   extractConclusion(workspaceSummary.overallSummary)
                 )
-              : "Finish a stage to generate your overall summary."}
+              : t("report.overall.empty")}
           </div>
           {errorMessage && (
             <p className="mt-3 text-xs text-rose-600">{errorMessage}</p>
           )}
         </div>
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          {workflowSteps.map((step, index) => {
+          {workflowStepKeys.map((step, index) => {
             const stepId = stepIds[index];
             if (stepId === "decision") return null;
   
             return (
               <div
-                key={step}
+                key={t(step)}
                 className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4"
               >
-                <p className="text-sm font-semibold text-slate-700">{step}</p>
+                <p className="text-sm font-semibold text-slate-700">{t(step)}</p>
                 <div className="mt-2 space-y-2">
                   {workspaceSummary?.stageSummaries[stepId]
                     ? renderFormattedSummary(
@@ -390,7 +380,7 @@ export default function Report() {
                           workspaceSummary.stageSummaries[stepId]
                         )
                       )
-                    : "Finish the stage to generate your summary."}
+                    : t("report.stage.empty")}
                 </div>
               </div>
             );    
