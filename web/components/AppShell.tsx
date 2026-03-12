@@ -124,8 +124,8 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <div className="flex min-h-screen">
-        <aside className="sticky top-0 flex h-screen w-72 flex-col gap-6 bg-[var(--primary)] px-6 py-8 text-white shadow-lg">
+      <div className="flex min-h-screen flex-col lg:flex-row">
+        <aside className="flex w-full flex-col gap-4 bg-[var(--primary)] px-4 py-4 text-white shadow-lg lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:gap-6 lg:px-6 lg:py-8">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">
               {t("shell.platform")}
@@ -152,14 +152,14 @@ export default function AppShell({ children }: AppShellProps) {
               <option className="text-slate-900" value="zh">{t("language.zh")}</option>
             </select>
           </div>
-          <nav className="flex flex-col gap-2">
+          <nav className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {navigation.map((item) => {
               const isActive = router.pathname === item.href;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
+                  className={`flex shrink-0 items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition lg:shrink ${
                     isActive
                       ? "bg-white/20 text-white"
                       : "text-blue-100 hover:bg-white/10 hover:text-white"
@@ -179,7 +179,7 @@ export default function AppShell({ children }: AppShellProps) {
             <p className="mt-1">{t("shell.latency")}</p>
           </div>
         </aside>
-        <main className="flex-1 px-10 py-10">
+        <main className="flex-1 px-4 py-6 lg:px-10 lg:py-10">
           <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-white px-6 py-4 shadow-sm">
               <div>

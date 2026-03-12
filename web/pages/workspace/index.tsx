@@ -1422,7 +1422,7 @@ const handleSend = async () => {
       });
     const isStageLocked = Boolean(lockedStages[activeStep.id]);
     return (
-    <div className="flex h-full flex-col rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+    <div className="relative flex h-full min-h-[460px] flex-col rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm lg:min-h-0 lg:p-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
@@ -1496,7 +1496,7 @@ const handleSend = async () => {
           )}
         </div>
       )}
-      <div className="mt-4 max-h-[420px] flex-1 space-y-4 overflow-auto text-sm text-slate-600">
+      <div className="mt-4 max-h-[46vh] flex-1 space-y-4 overflow-auto pb-24 text-sm text-slate-600 lg:max-h-[420px] lg:pb-0">
         {displayedMessages.length === 0 && (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
             {t("workspace.startConversation")}
@@ -1535,7 +1535,7 @@ const handleSend = async () => {
         })}
         <div ref={chatEndRef} />
       </div>
-      <div className="mt-4 flex items-center gap-2">
+      <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-2 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] lg:static lg:mt-4 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:shadow-none">
         <input
           className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:border-[var(--primary)] focus:outline-none disabled:bg-slate-100"
           placeholder={t("workspace.promptPlaceholder")}
@@ -1582,7 +1582,7 @@ const handleSend = async () => {
       </div>
       )}
       <button
-        className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
+        className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50 lg:mt-4"
         type="button"
         onClick={handleCompleteStep}
         disabled={isSummarizing}
@@ -1683,8 +1683,11 @@ const handleSend = async () => {
     );
   };
 
+  const responsiveWorkspaceSection = "grid gap-4 lg:gap-6 lg:grid-cols-[1.1fr_0.9fr]";
+
   return (
     <AppShell>
+      <div className="space-y-6 pb-24 lg:space-y-0 lg:pb-0">
       <section className="flex flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
           {t("workspace.badge")}
@@ -1698,8 +1701,8 @@ const handleSend = async () => {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-[var(--border)] bg-white px-6 py-6 shadow-sm">
-        <div className="grid grid-cols-5 gap-3">
+      <section className="rounded-3xl border border-[var(--border)] bg-white px-4 py-4 shadow-sm lg:px-6 lg:py-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 lg:gap-3">
           {steps.map((step) => {
             const isActive = step.id === activeStep.id;
             return (
@@ -1736,7 +1739,7 @@ const handleSend = async () => {
       </section>
 
       {activeStep.id === "problem" && (
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("step.problem")}</h3>
             <p className="mt-2 text-sm text-slate-500">
@@ -1749,7 +1752,7 @@ const handleSend = async () => {
       )}
 
       {activeStep.id === "data" && (
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className={responsiveWorkspaceSection}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
               <h3 className="text-lg font-semibold">{t("step.data")}</h3>
@@ -2000,7 +2003,7 @@ const handleSend = async () => {
       )}
 
       {activeStep.id === "alternatives" && (
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">Image Gallery</h3>
             <p className="mt-2 text-sm text-slate-500">
@@ -2088,7 +2091,7 @@ const handleSend = async () => {
       )}
 
       {activeStep.id === "evaluation" && (
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("step.evaluation")}</h3>
             <p className="mt-2 text-sm text-slate-500">
@@ -2173,7 +2176,7 @@ const handleSend = async () => {
       )}
 
       {activeStep.id === "report" && (
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("workspace.reportTitle")}</h3>
             <p className="mt-2 text-sm text-slate-500">
@@ -2442,6 +2445,7 @@ const handleSend = async () => {
           </div>
         </section>
       )}
+      </div>
       {selectedImage && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4"
