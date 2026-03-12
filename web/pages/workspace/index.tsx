@@ -2005,16 +2005,13 @@ const handleSend = async () => {
       {activeStep.id === "alternatives" && (
         <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Image Gallery</h3>
+            <h3 className="text-lg font-semibold">{t("workspace.imageGallery")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              Generate alternatives in the chat, then select the design you
-              want to submit.
+              {t("workspace.imageGalleryDesc")}
             </p>
             <div className="mt-5 max-h-[70vh] overflow-y-auto pr-2">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                Use the chat panel to request new alternatives or edit the
-                latest concept image. Generated images will appear inline in
-                the chat history and in the gallery below.
+                {t("workspace.imageGalleryHelp")}
               </div>
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
