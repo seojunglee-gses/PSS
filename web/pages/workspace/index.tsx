@@ -1702,96 +1702,6 @@ const handleSend = async () => {
   );
   };
 
-  const renderProblemDefinitionContext = () => {
-    return (
-      <div className="mt-6 max-h-[70vh] space-y-6 overflow-y-auto pr-2">
-        <figure className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-          <img
-            src="https://cdn.m-joongang.com/news/photo/201506/20150618_2_306921.jpg"
-            alt="Designers collaborating with post-it notes"
-            className="h-56 w-full object-cover"
-          />
-          <figcaption className="px-4 py-3 text-xs text-slate-500">
-            Picture of Seoul station overpass.
-          </figcaption>
-        </figure>
-        <div className="panel-copy space-y-4 text-sm text-slate-600">
-          <h2 className="text-lg font-semibold text-slate-900">
-            Seoul Station Overpass
-          </h2>
-          <p>
-            Before its transformation, the Seoul Station Overpass stood as a
-            deteriorating yet symbolically important piece of infrastructure in
-            the heart of the city. Built in 1970 to ease mounting traffic and
-            support fast-paced urban growth, the elevated roadway once embodied
-            Seoul’s modernization. Over time, however, structural aging, safety
-            concerns, and limited pedestrian accessibility made it increasingly
-            incompatible with the evolving needs of the city. Still, as
-            conversations around urban regeneration grew, the overpass began to
-            be seen not only as an obsolete structure but also as a potential
-            anchor for revitalizing the fragmented districts surrounding Seoul
-            Station.
-          </p>
-          <p>
-            Structurally, the overpass was narrow, elevated up to 17 meters, and
-            originally designed for vehicle-heavy use—conditions that made it
-            unsafe for public recreation and difficult for pedestrians to reach.
-            Its height and position over major arterial roads and rail tracks
-            also contributed to its isolation from the street-level environment.
-            Although the view from the overpass mainly looked onto adjacent
-            buildings rather than open landscapes, the area below and around it
-            was rich with cultural, historical, and industrial assets, creating
-            opportunities for a more integrated urban strategy.
-          </p>
-          <p>
-            The districts west of Seoul Station—such as Jungnim-dong,
-            Seogye-dong, and Malli-dong—had long suffered from physical decline
-            and social isolation due to the separation created by the railway.
-            This isolation contributed to economic stagnation and political
-            marginalization, even as these neighborhoods maintained unique
-            cultural landscapes, including historic sites, traditional hillsides,
-            and a concentrated sewing and garment industry. These
-            characteristics positioned the western neighborhoods as strong
-            candidates for community-based urban regeneration.
-          </p>
-          <p>
-            On the eastern side, Namdaemun Market and Hoehyeon-dong faced
-            different challenges. Namdaemun Market, one of Korea’s largest and
-            most historic commercial zones, struggled with aging facilities,
-            competing stakeholder interests, declined tourism, and complex
-            governance issues. Hoehyeon-dong, caught between Namsan and the
-            commercial core, had long been constrained by height limits and
-            fragmented development patterns. Despite these challenges, both
-            areas retained symbolic significance and benefited from their
-            strategic location at Seoul’s urban gateway.
-          </p>
-          <p>
-            Across all neighborhoods, local groups expressed shared concerns as
-            the city considered closing the overpass. Many demanded alternative
-            traffic routes, plans to alleviate anticipated congestion, and
-            renewed attention to long-stalled development around the northern
-            station area. Others emphasized the need to address local social
-            issues—particularly homelessness, vulnerable housing, and support
-            for the declining sewing industry. Specific districts also raised
-            their own priorities, from calls to modernize Namdaemun Market to
-            community-led planning efforts in Seogye-dong that sought a balanced
-            approach to redevelopment.
-          </p>
-          <p>
-            Overall, before its conversion into a public park, the Seoul Station
-            Overpass existed at the intersection of aging infrastructure,
-            fragmented urban fabric, and a dense concentration of cultural and
-            economic activities. Although its original transportation role had
-            diminished, the surrounding neighborhoods’ conditions suggested
-            that reimagining the overpass could play a central role in
-            stitching together divided districts and offering a new direction
-            for urban regeneration in central Seoul.
-          </p>
-        </div>
-      </div>
-    );
-  };
-
   const responsiveWorkspaceSection = "grid gap-4 lg:gap-6 lg:grid-cols-[1.1fr_0.9fr]";
 
   return (
@@ -1868,7 +1778,7 @@ const handleSend = async () => {
             </p>
             <button
               type="button"
-              className="mt-4 flex h-56 w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
+              className="mt-4 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
               onClick={() => {
                 if (!canEditContent) return;
                 const next = window.prompt("Problem definition image URL", activeProject?.workspaceContent.problem.imageUrl ?? "");
@@ -1877,12 +1787,11 @@ const handleSend = async () => {
               }}
             >
               {activeProject?.workspaceContent.problem.imageUrl ? (
-                <img src={activeProject.workspaceContent.problem.imageUrl} alt="Problem definition" className="h-full w-full object-cover" />
+                <img src={activeProject.workspaceContent.problem.imageUrl} alt="Problem definition" className="h-auto w-full object-contain" />
               ) : (
                 <span>{canEditContent ? "Click to add image" : "No image"}</span>
               )}
             </button>
-            {renderProblemDefinitionContext()}
           </div>
           {renderChatPanel()}
         </section>
@@ -1926,7 +1835,15 @@ const handleSend = async () => {
                       type="button"
                       onClick={() => setActiveTab(tab.id)}
                     >
-                      {tab.label}
+                      <span
+                        contentEditable={canEditContent}
+                        suppressContentEditableWarning
+                        onBlur={(event) => saveDataCase(tab.id, { label: event.currentTarget.textContent ?? "" })}
+                        onClick={(event) => event.stopPropagation()}
+                        className={canEditContent ? "rounded px-1 hover:bg-white/70" : ""}
+                      >
+                        {tab.label}
+                      </span>
                     </button>
                   );
                 })}
@@ -1953,7 +1870,7 @@ const handleSend = async () => {
                         </h4>
                         <button
                           type="button"
-                          className="mt-3 flex h-72 w-full items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-500"
+                          className="mt-3 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-500"
                           onClick={() => {
                             if (!canEditContent) return;
                             const next = window.prompt("Case study image URL", activeCase.imageUrl ?? "");
@@ -1962,7 +1879,7 @@ const handleSend = async () => {
                           }}
                         >
                           {activeCase.imageUrl ? (
-                            <img src={activeCase.imageUrl} alt={activeCase.label} className="h-full w-full object-cover" />
+                            <img src={activeCase.imageUrl} alt={activeCase.label} className="h-auto w-full object-contain" />
                           ) : (
                             <span>{canEditContent ? "Click to add image" : "No image"}</span>
                           )}

@@ -86,19 +86,73 @@ const defaultWorkspaceContent = (): StageWorkspaceContent => ({
   report: { text: "", imageUrl: "" },
 });
 
+const legacyProjectWorkspaceContent = (): StageWorkspaceContent => ({
+  problem: {
+    title: "Seoul Station Overpass Regeneration",
+    text: "Before its transformation, the Seoul Station Overpass had aging infrastructure, fragmented connectivity, and local social concerns that required an integrated regeneration strategy.",
+    imageUrl: "https://www.newswire.co.kr/data/datafile2/thumb_480/201605/20160525105554_6279709678.jpg",
+  },
+  data: {
+    title: "Reference Case Studies",
+    text: "Compare representative regeneration cases and extract transferable insights for implementation.",
+    imageUrl: "",
+    cases: [
+      {
+        id: "patterns",
+        label: "789 Art Zone",
+        title: "Case Study 1: 789 Art Zone",
+        text: "Adaptive reuse of industrial heritage with strong creative-economy positioning, plus lessons on commercialization pressure.",
+        imageUrl: "https://museumofwander.com/wp-content/uploads/2023/03/DSC00795.jpg",
+      },
+      {
+        id: "painpoints",
+        label: "Gyeungui Line Forest Park",
+        title: "Case Study 2: Gyeungui Line Forest Park",
+        text: "Linear-park regeneration emphasizing neighborhood reconnection, participatory governance, and balancing local impacts.",
+        imageUrl: "https://parks.seoul.go.kr/images/egovframework/com/template/gus3.jpg",
+      },
+      {
+        id: "opportunities",
+        label: "Highline Park",
+        title: "Case Study 3: Highline Park",
+        text: "Citizen-led advocacy and public-private partnerships that transformed obsolete infrastructure into a global placemaking model.",
+        imageUrl: "https://cdn.vox-cdn.com/thumbor/vfP32EdfHssHtEknAq-I1Tyv0Zw=/0x0:2000x1333/2070x828/filters:focal(840x507:1160x827):format(webp)/cdn.vox-cdn.com/uploads/chorus_image/image/63748975/Highline_Guide_Max_Touhey_20190416_0082.0.jpg",
+      },
+    ],
+  },
+  alternatives: { text: "", imageUrl: "" },
+  evaluation: { text: "", imageUrl: "" },
+  report: { text: "", imageUrl: "" },
+});
+
+const emptyWorkspaceContent = (): StageWorkspaceContent => ({
+  problem: { title: "Problem Definition", text: "", imageUrl: "" },
+  data: { title: "Data Analysis", text: "", imageUrl: "", cases: defaultDataCases().map((item) => ({ ...item, text: "", imageUrl: "" })) },
+  alternatives: { text: "", imageUrl: "" },
+  evaluation: { text: "", imageUrl: "" },
+  report: { text: "", imageUrl: "" },
+});
+
 const ProjectContext = createContext<ProjectContextValue | undefined>(undefined);
 
 const nowIso = () => new Date().toISOString();
 
-const normalizeProject = (project: Partial<ProjectMeta>): ProjectMeta => ({
+const normalizeProject = (
+  project: Partial<ProjectMeta>,
+  options?: { forNewProject?: boolean }
+): ProjectMeta => ({
   projectId: project.projectId ?? `project-${Date.now()}`,
   projectName: project.projectName ?? "Untitled Project",
   createdAt: project.createdAt ?? nowIso(),
   lastModifiedAt: project.lastModifiedAt ?? nowIso(),
   projectAdmin: project.projectAdmin ?? "test@snu.ac.kr",
   accessCode: /^\d{4}$/.test(project.accessCode ?? "") ? (project.accessCode as string) : "1234",
-  workspaceContent: ((): StageWorkspaceContent => {
-    const defaults = defaultWorkspaceContent();
+  workspaceContent: (() => {
+    const defaults = options?.forNewProject
+      ? defaultWorkspaceContent()
+      : project.projectId === LEGACY_PROJECT_ID
+        ? legacyProjectWorkspaceContent()
+        : emptyWorkspaceContent();
     const incoming = project.workspaceContent ?? ({} as Partial<StageWorkspaceContent>);
     const normalizeStage = (
       value: unknown,
@@ -160,7 +214,7 @@ const normalizeProject = (project: Partial<ProjectMeta>): ProjectMeta => ({
                 };
               })
               .slice(0, 3) as CaseStudyContent[])
-          : defaultDataCases(),
+          : defaults.data.cases.map((item) => ({ ...item })),
       },
       alternatives: normalizeStage(incoming.alternatives, defaults.alternatives),
       evaluation: normalizeStage(incoming.evaluation, defaults.evaluation),
@@ -170,12 +224,15 @@ const normalizeProject = (project: Partial<ProjectMeta>): ProjectMeta => ({
 });
 
 const buildDefaultProject = (): ProjectMeta =>
-  normalizeProject({
-    projectId: LEGACY_PROJECT_ID,
-    projectName: "Project #1",
-    projectAdmin: "test@snu.ac.kr",
-    accessCode: "1234",
-  });
+  normalizeProject(
+    {
+      projectId: LEGACY_PROJECT_ID,
+      projectName: "Project #1",
+      projectAdmin: "test@snu.ac.kr",
+      accessCode: "1234",
+    },
+    { forNewProject: false }
+  );
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
@@ -186,7 +243,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     let parsed: ProjectMeta[] = [];
     try {
       const raw = JSON.parse(window.localStorage.getItem(PROJECTS_KEY) ?? "[]") as Partial<ProjectMeta>[];
-      parsed = raw.map(normalizeProject);
+      parsed = raw.map((item) => normalizeProject(item, { forNewProject: false }));
     } catch {
       parsed = [];
     }
@@ -226,19 +283,22 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   ) => {
 
     const now = nowIso();
-    const item: ProjectMeta = normalizeProject({
-      projectId: `project-${Date.now()}`,
-      projectName,
-      createdAt: now,
-      lastModifiedAt: now,
-      projectAdmin:
-        options?.projectAdmin || options?.createdByEmail || "test@snu.ac.kr",
-      accessCode: /^\d{4}$/.test(options?.accessCode ?? "")
-        ? (options?.accessCode as string)
-        : "1234",
+    const item: ProjectMeta = normalizeProject(
+      {
+        projectId: `project-${Date.now()}`,
+        projectName,
+        createdAt: now,
+        lastModifiedAt: now,
+        projectAdmin:
+          options?.projectAdmin || options?.createdByEmail || "test@snu.ac.kr",
+        accessCode: /^\d{4}$/.test(options?.accessCode ?? "")
+          ? (options?.accessCode as string)
+          : "1234",
 
-      workspaceContent: defaultWorkspaceContent(),
-    });
+        workspaceContent: defaultWorkspaceContent(),
+      },
+      { forNewProject: true }
+    );
     const next = [item, ...projects];
     persistProjects(next);
     setActiveProjectId(item.projectId);
@@ -257,15 +317,18 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const updateProject = (projectId: string, patch: Partial<ProjectMeta>) => {
     const next = projects.map((project) =>
       project.projectId === projectId
-        ? normalizeProject({
-            ...project,
-            ...patch,
-            workspaceContent: {
-              ...project.workspaceContent,
-              ...(patch.workspaceContent ?? {}),
+        ? normalizeProject(
+            {
+              ...project,
+              ...patch,
+              workspaceContent: {
+                ...project.workspaceContent,
+                ...(patch.workspaceContent ?? {}),
+              },
+              lastModifiedAt: nowIso(),
             },
-            lastModifiedAt: nowIso(),
-          })
+            { forNewProject: false }
+          )
         : project
     );
     persistProjects(next);
