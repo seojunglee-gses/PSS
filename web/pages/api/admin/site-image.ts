@@ -37,7 +37,8 @@ export default async function handler(
     const decoded = await verifyAdminRequest(authToken);
     const downloadToken = randomUUID();
 
-    const { name, type, size, lastModified, data } = req.body as {
+    const { projectId, name, type, size, lastModified, data } = req.body as {
+      projectId?: string;
       name?: string;
       type?: string;
       size?: number;
@@ -50,9 +51,10 @@ export default async function handler(
       return;
     }
 
+    const scopedProjectId = projectId || "project-1";
     const imageId = "current";
     const db = adminDb();
-    const storagePath = "ppss-site-image/current";
+    const storagePath = `ppss-site-image/${scopedProjectId}/current`;
     const token = randomUUID();
     const bucket = adminBucket();
     await bucket.file(storagePath).save(
@@ -68,7 +70,7 @@ export default async function handler(
     );
     const downloadUrl = buildDownloadUrl(storagePath, downloadToken);
     
-    await db.doc("ppssSiteImages/current").set(
+    await db.doc(`ppssSiteImages_${scopedProjectId}/current`).set(
       {
         imageId,
         storagePath,

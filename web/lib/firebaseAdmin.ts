@@ -3,7 +3,7 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
-const adminEmail = "test@snu.ac.kr";
+const adminEmails = new Set(["test@snu.ac.kr", "adm@snu.ac.kr"]);
 
 const getServiceAccount = () => {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
@@ -44,7 +44,7 @@ export const verifyAdminRequest = async (token?: string) => {
   }
   const auth = getAuth(getAdminApp());
   const decoded = await auth.verifyIdToken(token);
-  if (!decoded.email || decoded.email !== adminEmail) {
+  if (!decoded.email || !adminEmails.has(decoded.email)) {
     throw new Error("Admin access required");
   }
   return decoded;
