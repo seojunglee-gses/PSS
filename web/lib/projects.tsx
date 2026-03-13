@@ -23,7 +23,14 @@ type ProjectContextValue = {
   activeProjectId: string | null;
   activeProject: ProjectMeta | null;
   setActiveProjectId: (projectId: string) => void;
+<<<<<<< codex/add-multilingual-support-for-english,-korean,-chinese-cov8nv
+  createProject: (
+    projectName: string,
+    options?: { projectAdmin?: string; accessCode?: string; createdByEmail?: string }
+  ) => ProjectMeta;
+=======
   createProject: (projectName: string, createdByEmail?: string) => ProjectMeta;
+>>>>>>> main
   touchProject: (projectId: string) => void;
   updateProject: (projectId: string, patch: Partial<ProjectMeta>) => void;
   deleteProject: (projectId: string) => void;
@@ -133,15 +140,30 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     }
   };
 
+<<<<<<< codex/add-multilingual-support-for-english,-korean,-chinese-cov8nv
+  const createProject = (
+    projectName: string,
+    options?: { projectAdmin?: string; accessCode?: string; createdByEmail?: string }
+  ) => {
+=======
   const createProject = (projectName: string, createdByEmail?: string) => {
+>>>>>>> main
     const now = nowIso();
     const item: ProjectMeta = normalizeProject({
       projectId: `project-${Date.now()}`,
       projectName,
       createdAt: now,
       lastModifiedAt: now,
+<<<<<<< codex/add-multilingual-support-for-english,-korean,-chinese-cov8nv
+      projectAdmin:
+        options?.projectAdmin || options?.createdByEmail || "test@snu.ac.kr",
+      accessCode: /^\d{4}$/.test(options?.accessCode ?? "")
+        ? (options?.accessCode as string)
+        : "1234",
+=======
       projectAdmin: createdByEmail || "test@snu.ac.kr",
       accessCode: "1234",
+>>>>>>> main
       workspaceContent: emptyWorkspaceContent(),
     });
     const next = [item, ...projects];
