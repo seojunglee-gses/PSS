@@ -20,6 +20,11 @@ import {
   uploadString,
 } from "firebase/storage";
 
+const DEFAULT_PROJECT_ID = "project-1";
+const resolveProjectId = (projectId?: string) => projectId || DEFAULT_PROJECT_ID;
+const scopedCollection = (base: string, projectId?: string) => `${base}_${resolveProjectId(projectId)}`;
+const scopedStorage = (base: string, projectId?: string) => `${base}/${resolveProjectId(projectId)}`;
+
 type EvaluationPayload = {
   submittedAt: string;
   rankings: Record<string, number>;
@@ -30,14 +35,15 @@ type EvaluationPayload = {
 export async function saveStepChatLogs<T = unknown>(
   userId: string,
   stepId: string,
-  logs: T[]
+  logs: T[],
+  projectId?: string
 ) {
   const app = getFirebaseApp();
     if (!app) return;
 
   const db = getFirestore(app);
   
-  const ref = doc(db, "users", userId, "steps", stepId);
+  const ref = doc(db, scopedCollection("users", projectId), userId, "steps", stepId);
   await setDoc(
     ref,
     {
@@ -50,7 +56,8 @@ export async function saveStepChatLogs<T = unknown>(
 
 export async function loadStepChatLogs<T = unknown>(
   userId: string,
-  stepId: string
+  stepId: string,
+  projectId?: string
 ): Promise<T | null> {
   const app = getFirebaseApp();
   if (!app) return null;
@@ -58,7 +65,7 @@ export async function loadStepChatLogs<T = unknown>(
   const db = getFirestore(app);
 
   
-  const ref = doc(db, "users", userId, "steps", stepId);
+  const ref = doc(db, scopedCollection("users", projectId), userId, "steps", stepId);
   const snap = await getDoc(ref);
   return snap.exists() ? (snap.data().logs as T) : null;
 }
@@ -174,22 +181,22 @@ const getFirebaseStorage = () => {
   return getStorage(app);
 };
 
-export const sendEvaluationResult = async (payload: EvaluationPayload) => {
+export const sendEvaluationResult = async (payload: EvaluationPayload, projectId?: string) => {
   const app = getFirebaseApp();
   if (!app) {
     return;
   }
   const db = getFirestore(app);
-  await addDoc(collection(db, "ppssEvaluations"), payload);
+  await addDoc(collection(db, scopedCollection("ppssEvaluations", projectId)), payload);
 };
 
-export const loadEvaluationResults = async (): Promise<EvaluationPayload[]> => {
+export const loadEvaluationResults = async (projectId?: string): Promise<EvaluationPayload[]> => {
   const app = getFirebaseApp();
   if (!app) {
     return [];
   }
   const db = getFirestore(app);
-  const snapshot = await getDocs(collection(db, "ppssEvaluations"));
+  const snapshot = await getDocs(collection(db, scopedCollection("ppssEvaluations", projectId)));
   return snapshot.docs.map((docSnap) => docSnap.data() as EvaluationPayload);
 };
 
@@ -225,7 +232,8 @@ export const loadChatLogsFromStorage = async <T>(
 export const saveChatLogsToFirestore = async (
   userId: string,
   logsByStep: Record<string, unknown>,
-  updatedBy?: string
+  updatedBy?: string,
+  projectId?: string
 ) => {
   const app = getFirebaseApp();
   if (!app) {
@@ -233,7 +241,7 @@ export const saveChatLogsToFirestore = async (
   }
   const db = getFirestore(app);
   await setDoc(
-    doc(db, "ppssChatLogs", userId),
+    doc(db, scopedCollection("ppssChatLogs", projectId), userId),
     {
       logsByStep,
       updatedAt: new Date().toISOString(),
@@ -244,14 +252,15 @@ export const saveChatLogsToFirestore = async (
 };
 
 export const loadChatLogsFromFirestore = async <T>(
-  userId: string
+  userId: string,
+  projectId?: string
 ): Promise<T | null> => {
   const app = getFirebaseApp();
   if (!app) {
     return null;
   }
   const db = getFirestore(app);
-  const snapshot = await getDoc(doc(db, "ppssChatLogs", userId));
+  const snapshot = await getDoc(doc(db, scopedCollection("ppssChatLogs", projectId), userId));
   if (!snapshot.exists()) {
     return null;
   }
@@ -277,7 +286,8 @@ export const loadChatLogsFromFirestore = async <T>(
 
 export const saveWorkspaceSummary = async (
   userId: string,
-  summary: Partial<WorkspaceSummary>
+  summary: Partial<WorkspaceSummary>,
+  projectId?: string
 ) => {
   const app = getFirebaseApp();
   if (!app) {
@@ -285,7 +295,7 @@ export const saveWorkspaceSummary = async (
   }
   const db = getFirestore(app);
   await setDoc(
-    doc(db, "ppssWorkspaceSummaries", userId), 
+    doc(db, scopedCollection("ppssWorkspaceSummaries", projectId), userId), 
     {
     ...summary,
     updatedAt: new Date().toISOString(),
@@ -295,21 +305,22 @@ export const saveWorkspaceSummary = async (
   };
 
 export const loadWorkspaceSummary = async (
-  userId: string
+  userId: string,
+  projectId?: string
 ): Promise<WorkspaceSummary | null> => {
   const app = getFirebaseApp();
   if (!app) {
     return null;
   }
   const db = getFirestore(app);
-  const snapshot = await getDoc(doc(db, "ppssWorkspaceSummaries", userId));
+  const snapshot = await getDoc(doc(db, scopedCollection("ppssWorkspaceSummaries", projectId), userId));
   if (!snapshot.exists()) {
     return null;
   }
   return snapshot.data() as WorkspaceSummary;
 };
 
-export const loadAllWorkspaceSummaries = async (): Promise<
+export const loadAllWorkspaceSummaries = async (projectId?: string): Promise<
   Array<{ userId: string; summary: WorkspaceSummary }>
 > => {
   const app = getFirebaseApp();
@@ -317,14 +328,14 @@ export const loadAllWorkspaceSummaries = async (): Promise<
     return [];
   }
   const db = getFirestore(app);
-  const snapshot = await getDocs(collection(db, "ppssWorkspaceSummaries"));
+  const snapshot = await getDocs(collection(db, scopedCollection("ppssWorkspaceSummaries", projectId)));
   return snapshot.docs.map((docSnap) => ({
     userId: docSnap.id,
     summary: docSnap.data() as WorkspaceSummary,
   }));
 };
 
-export const loadLatestExecutiveSummariesByStage = async (): Promise<
+export const loadLatestExecutiveSummariesByStage = async (projectId?: string): Promise<
   Pick<ExecutiveSummary, "keywords" | "stageSummaries"> | null
 > => {
   const app = getFirebaseApp();
@@ -332,7 +343,7 @@ export const loadLatestExecutiveSummariesByStage = async (): Promise<
     return null;
   }
   const db = getFirestore(app);
-  const snapshot = await getDocs(collection(db, "ppssExecutiveSummaries"));
+  const snapshot = await getDocs(collection(db, scopedCollection("ppssExecutiveSummaries", projectId)));
   if (snapshot.empty) {
     return null;
   }
@@ -384,13 +395,13 @@ export const loadLatestExecutiveSummariesByStage = async (): Promise<
   return { keywords, stageSummaries };
 };
 
-export const loadStageLocks = async (): Promise<StageLockState | null> => {
+export const loadStageLocks = async (projectId?: string): Promise<StageLockState | null> => {
   const app = getFirebaseApp();
   if (!app) {
     return null;
   }
   const db = getFirestore(app);
-  const snapshot = await getDoc(doc(db, "ppssStageLocks", "current"));
+  const snapshot = await getDoc(doc(db, scopedCollection("ppssStageLocks", projectId), "current"));
   if (!snapshot.exists()) {
     return null;
   }
@@ -398,7 +409,8 @@ export const loadStageLocks = async (): Promise<StageLockState | null> => {
 };
 
 export const saveStageLocks = async (
-  payload: StageLockState
+  payload: StageLockState,
+  projectId?: string
 ): Promise<void> => {
   const app = getFirebaseApp();
   if (!app) {
@@ -406,7 +418,7 @@ export const saveStageLocks = async (
   }
   const db = getFirestore(app);
   await setDoc(
-    doc(db, "ppssStageLocks", "current"),
+    doc(db, scopedCollection("ppssStageLocks", projectId), "current"),
     {
       ...payload,
       updatedAt: new Date().toISOString(),
@@ -418,6 +430,7 @@ export const saveStageLocks = async (
 export const saveBackgroundKnowledge = async (payload: {
   curatedText: string;
   updatedBy: string;
+  projectId?: string;
 }) => {
   const app = getFirebaseApp();
   if (!app) {
@@ -425,7 +438,7 @@ export const saveBackgroundKnowledge = async (payload: {
   }
   const db = getFirestore(app);
   await setDoc(
-    doc(db, "ppssBackgroundKnowledge", "current"),
+    doc(db, scopedCollection("ppssBackgroundKnowledge", payload.projectId), "current"),
     {
       curatedText: payload.curatedText,
       updatedBy: payload.updatedBy,
@@ -435,7 +448,7 @@ export const saveBackgroundKnowledge = async (payload: {
   );
 };
 
-export const loadBackgroundKnowledge = async (): Promise<
+export const loadBackgroundKnowledge = async (projectId?: string): Promise<
   BackgroundKnowledge | null
 > => {
   const app = getFirebaseApp();
@@ -443,7 +456,7 @@ export const loadBackgroundKnowledge = async (): Promise<
     return null;
   }
   const db = getFirestore(app);
-  const snapshot = await getDoc(doc(db, "ppssBackgroundKnowledge", "current"));
+  const snapshot = await getDoc(doc(db, scopedCollection("ppssBackgroundKnowledge", projectId), "current"));
   if (!snapshot.exists()) {
     return null;
   }
@@ -477,7 +490,8 @@ export const archiveBackgroundKnowledgeFile = async (
   
    export const saveCurrentSiteImage = async (
     file: File,
-    updatedBy: string
+    updatedBy: string,
+    projectId?: string
   ): Promise<SiteImage | null> => {
     const app = getFirebaseApp();
     if (!app) return null;
@@ -493,7 +507,7 @@ export const archiveBackgroundKnowledgeFile = async (
           : "png";
   
     const timestamp = Date.now();
-    const storagePath = `ppss-site-image/${timestamp}.${ext}`;
+    const storagePath = `${scopedStorage("ppss-site-image", projectId)}/${timestamp}.${ext}`;
     const storageRef = ref(storage, storagePath);
   
     // 1️⃣ 업로드
@@ -511,17 +525,17 @@ export const archiveBackgroundKnowledgeFile = async (
     };
   
     // 3️⃣ Firestore current 포인터 갱신
-    await setDoc(doc(db, "ppssSiteImages", "current"), payload, { merge: true });
+    await setDoc(doc(db, scopedCollection("ppssSiteImages", projectId), "current"), payload, { merge: true });
   
     return payload;
   };
 
-export const loadCurrentSiteImage = async (): Promise<SiteImage | null> => {
+export const loadCurrentSiteImage = async (projectId?: string): Promise<SiteImage | null> => {
   const app = getFirebaseApp();
   if (!app) return null;
 
   const db = getFirestore(app);
-  const snapshot = await getDoc(doc(db, "ppssSiteImages", "current"));
+  const snapshot = await getDoc(doc(db, scopedCollection("ppssSiteImages", projectId), "current"));
   if (!snapshot.exists()) {
     return null;
   }
@@ -530,6 +544,7 @@ export const loadCurrentSiteImage = async (): Promise<SiteImage | null> => {
 };
 
 export const saveGeneratedImageFromBase64 = async (payload: {
+  projectId?: string;
   imageId: string;
   base64: string;
   label: string;
@@ -542,13 +557,13 @@ export const saveGeneratedImageFromBase64 = async (payload: {
   }
   const db = getFirestore(app);
   const existingSnapshot = await getDoc(
-    doc(db, "ppssGeneratedImages", payload.imageId)
+    doc(db, scopedCollection("ppssGeneratedImages", payload.projectId), payload.imageId)
   );
   if (existingSnapshot.exists()) {
     return existingSnapshot.data() as GeneratedImage;
   }
   const storage = getStorage(app);
-  const storagePath = `ppss-generated-images/${payload.imageId}.png`;
+  const storagePath = `${scopedStorage("ppss-generated-images", payload.projectId)}/${payload.imageId}.png`;
   const base64 = payload.base64.includes(",")
     ? payload.base64.split(",")[1]
     : payload.base64;
@@ -566,12 +581,13 @@ export const saveGeneratedImageFromBase64 = async (payload: {
     createdAt,
     userId: payload.userId,
   };
-  await setDoc(doc(db, "ppssGeneratedImages", payload.imageId), record);
+  await setDoc(doc(db, scopedCollection("ppssGeneratedImages", payload.projectId), payload.imageId), record);
   return record;
 };
 
 export const loadGeneratedImages = async (
-  userId: string
+  userId: string,
+  projectId?: string
 ): Promise<GeneratedImage[]> => {
   const app = getFirebaseApp();
   if (!app) {
@@ -580,7 +596,7 @@ export const loadGeneratedImages = async (
   const db = getFirestore(app);
   const snapshot = await getDocs(
     query(
-      collection(db, "ppssGeneratedImages"),
+      collection(db, scopedCollection("ppssGeneratedImages", projectId)),
       where("userId", "==", userId)
     )
   );
@@ -590,14 +606,15 @@ export const loadGeneratedImages = async (
 };
 
 export const loadGeneratedImage = async (
-  imageId: string
+  imageId: string,
+  projectId?: string
 ): Promise<GeneratedImage | null> => {
   const app = getFirebaseApp();
   if (!app) {
     return null;
   }
   const db = getFirestore(app);
-  const snapshot = await getDoc(doc(db, "ppssGeneratedImages", imageId));
+  const snapshot = await getDoc(doc(db, scopedCollection("ppssGeneratedImages", projectId), imageId));
   if (!snapshot.exists()) {
     return null;
   }
@@ -606,28 +623,29 @@ export const loadGeneratedImage = async (
 
 export const saveUserDesignSubmission = async (
   userId: string,
-  imageId: string
+  imageId: string,
+  projectId?: string
 ) => {
   const app = getFirebaseApp();
   if (!app) {
     return;
   }
   const db = getFirestore(app);
-  await addDoc(collection(db, "ppssUserDesignSubmissions"), {
+  await addDoc(collection(db, scopedCollection("ppssUserDesignSubmissions", projectId)), {
     userId,
     imageId,
     createdAt: new Date().toISOString(),
   });
 };
 
-export const loadSubmittedDesigns = async (): Promise<SubmittedDesign[]> => {
+export const loadSubmittedDesigns = async (projectId?: string): Promise<SubmittedDesign[]> => {
   const app = getFirebaseApp();
   if (!app) {
     return [];
   }
   const db = getFirestore(app);
   const submissionsSnap = await getDocs(
-    collection(db, "ppssUserDesignSubmissions")
+    collection(db, scopedCollection("ppssUserDesignSubmissions", projectId))
   );
   if (submissionsSnap.empty) {
     return [];
@@ -656,7 +674,7 @@ export const loadSubmittedDesigns = async (): Promise<SubmittedDesign[]> => {
   const entries = await Promise.all(
     Object.entries(latestByUser).map(async ([userId, submission]) => {
       const imageSnap = await getDoc(
-        doc(db, "ppssGeneratedImages", submission.imageId)
+        doc(db, scopedCollection("ppssGeneratedImages", projectId), submission.imageId)
       );
       if (!imageSnap.exists()) {
         return null;
@@ -678,13 +696,13 @@ export const loadSubmittedDesigns = async (): Promise<SubmittedDesign[]> => {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 };
 
-export const loadEvaluationImages = async (): Promise<EvaluationImage[]> => {
+export const loadEvaluationImages = async (projectId?: string): Promise<EvaluationImage[]> => {
   const app = getFirebaseApp();
   if (!app) {
     return [];
   }
   const db = getFirestore(app);
-  const snapshot = await getDocs(collection(db, "ppssEvaluationImages"));
+  const snapshot = await getDocs(collection(db, scopedCollection("ppssEvaluationImages", projectId)));
   if (snapshot.empty) {
     return [];
   }
