@@ -20,8 +20,11 @@ import {
 } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
+import { useProject } from "../../lib/projects";
+import { canManageProject, isSystemAdmin } from "../../lib/rbac";
 import { loadGeneratedImages } from "../../lib/firebase";
 import type { SiteImage } from "../../lib/firebase";
+import { normalizeRoleId, roleLabelKeys, useI18n } from "../../lib/i18n";
 
 const getChatModelByProvider = (provider: string) => {
   if (provider.toLowerCase() === "gemini") {
@@ -35,31 +38,11 @@ const getChatModelByProvider = (provider: string) => {
 
 
 const steps = [
-  {
-    id: "problem",
-    title: "Problem Definition",
-    icon: "1",
-  },
-  {
-    id: "data",
-    title: "Data Analysis",
-    icon: "2",
-  },
-  {
-    id: "alternatives",
-    title: "Design/Plan Alternatives",
-    icon: "3",
-  },
-  {
-    id: "evaluation",
-    title: "Design/Plan Evaluation",
-    icon: "4",
-  },
-  {
-    id: "report",
-    title: "Design/Plan Decision",
-    icon: "5",
-  },
+  { id: "problem", titleKey: "step.problem", icon: "1" },
+  { id: "data", titleKey: "step.data", icon: "2" },
+  { id: "alternatives", titleKey: "step.alternatives", icon: "3" },
+  { id: "evaluation", titleKey: "step.evaluation", icon: "4" },
+  { id: "report", titleKey: "step.report", icon: "5" },
 ];
 
 const stepSummaries: Record<string, string> = {
@@ -74,8 +57,7 @@ const stepSummaries: Record<string, string> = {
     "Prepared final decision report and supporting evidence for approval.",
 };
 
-const providerStorageKey = "ppss-active-provider";
-const adminEmail = "test@snu.ac.kr";
+const providerStorageKeyBase = "ppss-active-provider";
 const pieColors = [
   "#2563eb",
   "#38bdf8",
@@ -138,14 +120,11 @@ type WorkspaceSummaryRecord = {
   };
 };
 
-const roleDescriptions: Record<string, string> = {
-  "The Public":
-    "Focus on community impact and public-facing outcomes during each stage.",
-  "Business Owners":
-    "Track feasibility, operational impact, and process readiness metrics.",
-  Planners: "Refine PPSS sequences, validate risks, and iterate promptly.",
-  Government:
-    "Review compliance, safety, and policy alignment across all steps.",
+const roleDescriptionKeys: Record<string, string> = {
+  public: "roledesc.public",
+  business: "roledesc.business",
+  planners: "roledesc.planners",
+  government: "roledesc.government",
 };
 
 const roleIcons: Record<string, React.ReactElement> = {
@@ -168,7 +147,7 @@ const roleIcons: Record<string, React.ReactElement> = {
       />
     </svg>
   ),
-  "The Public": (
+  public: (
     <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
       <circle
         cx="12"
@@ -187,7 +166,7 @@ const roleIcons: Record<string, React.ReactElement> = {
       />
     </svg>
   ),
-  "Business Owners": (
+  business: (
     <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
       <rect
         x="5"
@@ -208,7 +187,7 @@ const roleIcons: Record<string, React.ReactElement> = {
       />
     </svg>
   ),
-  Planners: (
+  planners: (
     <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
       <path
         d="M5 5h10l4 4v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"
@@ -224,7 +203,7 @@ const roleIcons: Record<string, React.ReactElement> = {
       />
     </svg>
   ),
-  Government: (
+  government: (
     <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
       <path
         d="M4 10h16M6 10v8M10 10v8M14 10v8M18 10v8"
@@ -265,38 +244,57 @@ export default function Workspace() {
   const [currentSiteImage, setCurrentSiteImage] =
   useState<SiteImage | null>(null);
   const router = useRouter();
+  const { t } = useI18n();
+  const { activeProjectId, setActiveProjectId, touchProject, activeProject, updateProject } = useProject();
   const { user, loading } = useAuth();
   const userKey = user?.uid;
+  const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
+  const projectId = queryProjectId ?? activeProjectId ?? "project-1";
+  const providerStorageKey = `${providerStorageKeyBase}-${projectId}`;
+  const activeStepStorageKey = `ppss-active-step-${projectId}`;
   const [activeStep, setActiveStep] = useState(steps[0]);
   const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
   const [role, setRole] = useState("Guest");
+  const normalizedActiveRole = normalizeRoleId(role);
   const [activeProvider, setActiveProvider] = useState("Gemini");
+  const [accessCodeInput, setAccessCodeInput] = useState("");
+  const [accessCodeError, setAccessCodeError] = useState("");
+  const [contentDraft, setContentDraft] = useState("");
+  const [showTextEditor, setShowTextEditor] = useState(false);
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [imageDraft, setImageDraft] = useState("");
   const chatStorageKey = useMemo(
-    () => (userKey ? `ppss-chat-logs-${userKey}` : null),
-    [userKey]
+    () => (userKey ? `ppss-chat-logs-${projectId}-${userKey}` : null),
+    [userKey, projectId]
   );
   
   useEffect(() => {
+    if (queryProjectId && queryProjectId !== activeProjectId) {
+      setActiveProjectId(queryProjectId);
+    }
+  }, [queryProjectId, activeProjectId, setActiveProjectId]);
+
+  useEffect(() => {
   if (typeof window === "undefined") return;
   
-    const saved = localStorage.getItem("ppss-active-step");
+    const saved = localStorage.getItem(activeStepStorageKey);
     if (!saved) return;
   
     const step = steps.find((s) => s.id === saved);
     if (step) {
       setActiveStep(step);
     }
-  }, []);
+  }, [activeStepStorageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    localStorage.setItem("ppss-active-step", activeStep.id);
+    localStorage.setItem(activeStepStorageKey, activeStep.id);
   }, [activeStep.id]);
 
   const persistChatLogs = async (stepId: string, logs: ChatLog[]) => {
     if (!userKey) return;
-    await saveStepChatLogs(userKey, stepId, logs);
+    await saveStepChatLogs(userKey, stepId, logs, projectId);
   };
 
   const [isSending, setIsSending] = useState(false);
@@ -333,6 +331,13 @@ export default function Workspace() {
       role?: string;
     }>
   >([]);
+
+
+  useEffect(() => {
+    const current = activeProject?.workspaceContent?.[activeStep.id as keyof typeof activeProject.workspaceContent];
+    setContentDraft(current?.text ?? "");
+    setImageDraft(current?.imageUrl ?? "");
+  }, [activeProject?.projectId, activeStep.id]);
   const [chatLogsByStep, setChatLogsByStep] = useState<
     Record<string, ChatLog[]>
   >({});
@@ -364,11 +369,12 @@ export default function Workspace() {
     const map = new Map<string, string>();
     evaluationResults.forEach((result) => {
       if (result.userId && result.role) {
-        map.set(result.userId, result.role);
+        const normalized = normalizeRoleId(result.role);
+        map.set(result.userId, normalized ? t(roleLabelKeys[normalized]) : result.role);
       }
     });
     return map;
-  }, [evaluationResults]);
+  }, [evaluationResults, t]);
 
   const buildImageGenerationInput = useCallback(() => {
   const MAX_MESSAGES = 6;
@@ -408,7 +414,7 @@ export default function Workspace() {
       return;
     }
     const loadSavedSummaries = async () => {
-      const summary = await loadWorkspaceSummary(userKey);
+      const summary = await loadWorkspaceSummary(userKey, projectId);
       if (summary?.stageSummaries) {
         setSavedSummaries(summary.stageSummaries);
       }
@@ -431,7 +437,7 @@ export default function Workspace() {
       return;
     }
     const loadEvaluations = async () => {
-      const results = await loadEvaluationResults();
+      const results = await loadEvaluationResults(projectId);
       if (results.length) {
         setEvaluationResults(results);
       }
@@ -444,7 +450,7 @@ export default function Workspace() {
       return;
     }
     const loadExecutiveSummary = async () => {
-      const summary = await loadLatestExecutiveSummariesByStage();
+      const summary = await loadLatestExecutiveSummariesByStage(projectId);
       if (summary) {
         setExecutiveSummary(summary);
       }
@@ -457,7 +463,7 @@ export default function Workspace() {
       return;
     }
     const loadSummaries = async () => {
-      const summaries = await loadAllWorkspaceSummaries();
+      const summaries = await loadAllWorkspaceSummaries(projectId);
       setAllWorkspaceSummaries(summaries);
     };
     loadSummaries();
@@ -469,7 +475,8 @@ export default function Workspace() {
     }
     const storedRole = window.localStorage.getItem("ppss-role");
     if (storedRole) {
-      setRole(storedRole);
+      const normalized = normalizeRoleId(storedRole);
+      setRole(normalized ?? storedRole);
     }
     const storedProvider = window.localStorage.getItem(providerStorageKey);
     if (storedProvider) {
@@ -587,7 +594,7 @@ export default function Workspace() {
       return;
     }
     const loadLocks = async () => {
-      const state = await loadStageLocks();
+      const state = await loadStageLocks(projectId);
       if (!state) {
         setLockedStages({});
         setRevisedAfterLock({});
@@ -616,7 +623,7 @@ export default function Workspace() {
    const refreshEvaluationImages = useCallback(async () => {
     setIsLoadingEvaluationImages(true);
     try {
-      const submissions = await loadEvaluationImages();
+      const submissions = await loadEvaluationImages(projectId);
       if (!submissions.length) {
         setEvaluationImages([]);
         return;
@@ -660,7 +667,7 @@ export default function Workspace() {
   
   useEffect(() => {
     const loadSiteImage = async () => {
-      const current = await loadCurrentSiteImage();
+      const current = await loadCurrentSiteImage(projectId);
       if (current?.imageId) {
         setSiteImageConfigured(true);
         setSiteImageId(current.imageId);
@@ -719,7 +726,8 @@ export default function Workspace() {
   const roleGroups = useMemo(() => {
     return allWorkspaceSummaries.reduce<Record<string, WorkspaceSummaryRecord[]>>(
       (acc, entry) => {
-        const roleLabel = entry.summary.role ?? "Unassigned";
+        const normalizedRole = normalizeRoleId(entry.summary.role);
+        const roleLabel = normalizedRole ?? entry.summary.role ?? "unassigned";
         if (!acc[roleLabel]) {
           acc[roleLabel] = [];
         }
@@ -732,13 +740,13 @@ export default function Workspace() {
 
   const roleTabs = useMemo(
     () => [
-      { id: "all", label: "All" },
-      { id: "The Public", label: "The Public" },
-      { id: "Business Owners", label: "Business" },
-      { id: "Planners", label: "Planners" },
-      { id: "Government", label: "Government" },
+      { id: "all", label: t("workspace.role.all") },
+      { id: "public", label: t("role.public") },
+      { id: "business", label: t("role.business") },
+      { id: "planners", label: t("role.planners") },
+      { id: "government", label: t("role.government") },
     ],
-    []
+    [t]
   );
 
   useEffect(() => {
@@ -761,14 +769,14 @@ export default function Workspace() {
   const getParticipantRoleLabel = useCallback(
     (image?: DesignImage) => {
       if (!image) {
-        return "Participant";
+        return t("workspace.participant");
       }
       if (image.userId && roleByUserId.has(image.userId)) {
-        return roleByUserId.get(image.userId) ?? "Participant";
+        return roleByUserId.get(image.userId) ?? t("workspace.participant");
       }
-      return image.submittedBy ?? "Participant";
+      return image.submittedBy ?? t("workspace.participant");
     },
-    [roleByUserId]
+    [roleByUserId, t]
   );
 
   const buildWorkspaceInput = useCallback(() => {
@@ -900,6 +908,7 @@ export default function Workspace() {
     }
 
     const saved = await saveGeneratedImageFromBase64({
+      projectId,
       imageId: payload.imageId,
       base64: payload.base64,
       label,
@@ -987,7 +996,7 @@ const sanitizeLogs = (logs: ChatLog[]) =>
       if (userKey) {
         await saveWorkspaceSummary(userKey, {
           alternativesInitialized: true,
-        });
+        }, projectId);
         setAlternativesInitialized(true);
       }
     })
@@ -1157,7 +1166,7 @@ const handleSend = async () => {
       [activeStep.id]: stepSummaries[activeStep.id],
     }));
     setIsSummarizing(true);
-    setFinishNotice({ status: "uploading", message: "Uploading chat logs to Report..." });
+    setFinishNotice({ status: "uploading", message: t("workspace.finishStage") + "..." });
     
     try {
       const response = await fetch("/api/workspace-summary", {
@@ -1192,12 +1201,13 @@ const handleSend = async () => {
         overallSummary: payload.workspaceSummary.overallSummary ?? "",
         role,
         completedStages: nextCompletedStages,
-      });
+      }, projectId);
+      touchProject(projectId);
       if (stageSummary) {
         setSavedSummaries(mergedStageSummaries);
       }
       setCompletedStages(nextCompletedStages);
-      setFinishNotice({ status: "success", message: "Upload complete. Report updated." });
+      setFinishNotice({ status: "success", message: t("workspace.reportTitle") + " ✓" });
     } catch (error) {
       setFinishNotice({
         status: "error",
@@ -1251,7 +1261,7 @@ const handleSend = async () => {
       ...prev,
       [selected.id]: Object.keys(prev).length + 1,
     }));
-    await saveUserDesignSubmission(userKey, selected.id);
+    await saveUserDesignSubmission(userKey, selected.id, projectId);
     await refreshEvaluationImages();
     setHasInitializedAlternatives(true);
     setSelectedAlternative(null);
@@ -1275,7 +1285,7 @@ const handleSend = async () => {
       const updated = [...prev, payload];
       return updated;
     });
-    await sendEvaluationResult(payload);
+    await sendEvaluationResult(payload, projectId);
 
     await handleCompleteStep();
   };
@@ -1390,11 +1400,18 @@ const handleSend = async () => {
     setLastGeneratedImageId(latest?.id ?? null);
   }, [activeStep.id, alternativeImages]);
 
+  const isSystem = isSystemAdmin(user?.email);
+  const canEditContent = canManageProject(user?.email, activeProject);
+  const isProjectCodeRequired = Boolean(user && !isSystem && activeProject);
+  const accessCodeKey = `ppss-project-access-${projectId}`;
+  const hasAccess = typeof window !== "undefined" && sessionStorage.getItem(accessCodeKey) === "ok";
+  const stageContent = activeProject?.workspaceContent?.[activeStep.id as keyof typeof activeProject.workspaceContent];
+
   if (loading) {
     return (
       <AppShell>
         <div className="rounded-3xl border border-[var(--border)] bg-white p-6 text-sm text-slate-500">
-          Loading workspace...
+          {t("workspace.loading")}
         </div>
       </AppShell>
     );
@@ -1404,7 +1421,40 @@ const handleSend = async () => {
     return (
       <AppShell>
         <div className="rounded-3xl border border-[var(--border)] bg-white p-6 text-sm text-slate-500">
-          Authentication required. Redirecting to Home...
+          {t("workspace.authRedirect")}
+        </div>
+      </AppShell>
+    );
+  }
+
+
+  if (isProjectCodeRequired && !hasAccess) {
+    return (
+      <AppShell>
+        <div className="mx-auto w-full max-w-md rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-900">Project Access Code</h3>
+          <p className="mt-2 text-sm text-slate-500">Enter the 4-digit code to open this project.</p>
+          <input
+            className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+            value={accessCodeInput}
+            onChange={(event) => setAccessCodeInput(event.target.value.replace(/\D/g, "").slice(0, 4))}
+            placeholder="0000"
+          />
+          {accessCodeError && <p className="mt-2 text-xs text-rose-600">{accessCodeError}</p>}
+          <button
+            type="button"
+            className="mt-4 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white"
+            onClick={() => {
+              if (accessCodeInput === activeProject?.accessCode) {
+                sessionStorage.setItem(accessCodeKey, "ok");
+                router.replace({ pathname: "/workspace", query: { projectId } });
+                return;
+              }
+              setAccessCodeError("Invalid access code.");
+            }}
+          >
+            Enter project
+          </button>
         </div>
       </AppShell>
     );
@@ -1439,16 +1489,16 @@ const handleSend = async () => {
       });
     const isStageLocked = Boolean(lockedStages[activeStep.id]);
     return (
-    <div className="flex h-full flex-col rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+    <div className="relative flex h-full min-h-[460px] flex-col rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm lg:min-h-0 lg:p-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
             {activeProvider}
           </p>
-          <h3 className="mt-2 text-lg font-semibold">API conversation</h3>
+          <h3 className="mt-2 text-lg font-semibold">{t("workspace.apiConversation")}</h3>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {user?.email === adminEmail && (
+          {canEditContent && (
             <>
               <button
                 className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
@@ -1463,11 +1513,11 @@ const handleSend = async () => {
                     lockedStages: nextLocks,
                     revisedAfterLock,
                     updatedBy: user.email ?? user.uid,
-                  });
+                  }, projectId);
                 }}
                 disabled={isStageLocked}
               >
-                🔒 Lock stage
+                🔒 {t("workspace.lockStage")}
               </button>
               <button
                 className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
@@ -1487,11 +1537,11 @@ const handleSend = async () => {
                     lockedStages: nextLocks,
                     revisedAfterLock: nextRevised,
                     updatedBy: user.email ?? user.uid,
-                  });
+                  }, projectId);
                 }}
                 disabled={!isStageLocked}
               >
-                🔓 Reopen stage
+                🔓 {t("workspace.reopenStage")}
               </button>
             </>
           )}
@@ -1502,25 +1552,21 @@ const handleSend = async () => {
       </div>
       {isStageLocked && (
         <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-          <p className="font-semibold text-slate-700">Stage completed</p>
+          <p className="font-semibold text-slate-700">{t("workspace.stageCompleted")}</p>
           <p className="mt-1">
-            🔒 This stage is completed
-            <br />
-            Your responses have been summarized and locked for collaboration
-            consistency.
+            🔒 {t("workspace.stageCompletedDesc")}
           </p>
           {revisedAfterLock[activeStep.id] && (
             <p className="mt-2 text-[11px] text-slate-500">
-              Revised after lock.
+              {t("workspace.revisedAfterLock")}
             </p>
           )}
         </div>
       )}
-      <div className="mt-4 max-h-[420px] flex-1 space-y-4 overflow-auto text-sm text-slate-600">
+      <div className="mt-4 max-h-[46vh] flex-1 space-y-4 overflow-auto pb-24 text-sm text-slate-600 lg:max-h-[420px] lg:pb-0">
         {displayedMessages.length === 0 && (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
-            Start a conversation here to discuss the project and planning
-            needs.
+            {t("workspace.startConversation")}
           </div>
         )}
         {displayedMessages.map((message, index) => {
@@ -1556,10 +1602,10 @@ const handleSend = async () => {
         })}
         <div ref={chatEndRef} />
       </div>
-      <div className="mt-4 flex items-center gap-2">
+      <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-2 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] lg:static lg:mt-4 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:shadow-none">
         <input
           className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:border-[var(--primary)] focus:outline-none disabled:bg-slate-100"
-          placeholder="Send a prompt to the PPSS assistant..."
+          placeholder={t("workspace.promptPlaceholder")}
           value={inputValue}
           onChange={(event) => setInputValue(event.target.value)}
           onKeyDown={(event) => {
@@ -1576,8 +1622,8 @@ const handleSend = async () => {
           onClick={handleSend}
           disabled={isSending || isStageLocked || isLoadingAlternatives}
         >
-          {isLoadingAlternatives ? "Generating…" 
-          :isSending ? "Sending..." : "Send"}
+          {isLoadingAlternatives ? `${t("workspace.sending")}…`
+          :isSending ? t("workspace.sending") : t("workspace.send")}
         </button>
       </div>
       {errorMessage && (
@@ -1603,12 +1649,12 @@ const handleSend = async () => {
       </div>
       )}
       <button
-        className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
+        className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50 lg:mt-4"
         type="button"
         onClick={handleCompleteStep}
         disabled={isSummarizing}
       >
-        {isSummarizing ? "Updating..." : "Finish Stage"}
+        {isSummarizing ? t("workspace.updating") : t("workspace.finishStage")}
       </button>
     </div>
   );
@@ -1704,24 +1750,26 @@ const handleSend = async () => {
     );
   };
 
+  const responsiveWorkspaceSection = "grid gap-4 lg:gap-6 lg:grid-cols-[1.1fr_0.9fr]";
+
   return (
     <AppShell>
+      <div className="space-y-6 pb-24 lg:space-y-0 lg:pb-0">
       <section className="flex flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
-          Workspace
+          {t("workspace.badge")}
         </p>
-        <h2 className="text-3xl font-semibold">PPSS workflow dashboard</h2>
+        <h2 className="text-3xl font-semibold">{t("workspace.title")}</h2>
         <p className="max-w-3xl text-sm text-slate-500">
-          {roleDescriptions[role] ??
-            "Navigate through the five-step planning workflow and monitor progress with a live ChatGPT-powered conversation panel."}
+          {(normalizedActiveRole ? t(roleDescriptionKeys[normalizedActiveRole]) : undefined) ?? t("workspace.fallback")}
         </p>
         <div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
-          Active AI provider: {activeProvider}
+          {t("workspace.provider")}: {activeProvider}
         </div>
       </section>
 
-      <section className="rounded-3xl border border-[var(--border)] bg-white px-6 py-6 shadow-sm">
-        <div className="grid grid-cols-5 gap-3">
+      <section className="rounded-3xl border border-[var(--border)] bg-white px-4 py-4 shadow-sm lg:px-6 lg:py-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 lg:gap-3">
           {steps.map((step) => {
             const isActive = step.id === activeStep.id;
             return (
@@ -1744,7 +1792,7 @@ const handleSend = async () => {
                 >
                   {step.icon}
                 </span>
-                <span className="truncate">{step.title}</span>
+                <span className="truncate">{t(step.titleKey)}</span>
               </button>
             );
           })}
@@ -1757,12 +1805,65 @@ const handleSend = async () => {
         </div>
       </section>
 
-      {activeStep.id === "problem" && (
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+      {activeProject && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Workspace explanation template</p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <button
+              type="button"
+              className="flex h-36 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
+              onClick={() => canEditContent && setShowImageEditor(true)}
+            >
+              {stageContent?.imageUrl ? (
+                <img src={stageContent.imageUrl} alt="Stage explanation" className="h-full w-full rounded-2xl object-cover" />
+              ) : (
+                <span>{canEditContent ? "Add Image" : "No image"}</span>
+              )}
+            </button>
+            <button
+              type="button"
+              className="flex h-36 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-left text-sm text-slate-500"
+              onClick={() => canEditContent && setShowTextEditor(true)}
+            >
+              {stageContent?.text ? stageContent.text : canEditContent ? "Add Text" : "No text"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {showTextEditor && canEditContent && activeProject && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
+            <h4 className="text-lg font-semibold text-slate-900">Edit explanation text</h4>
+            <textarea className="mt-3 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={contentDraft} onChange={(event) => setContentDraft(event.target.value)} />
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setShowTextEditor(false)}>Cancel</button>
+              <button type="button" className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white" onClick={() => { updateProject(projectId, { workspaceContent: { ...activeProject.workspaceContent, [activeStep.id]: { text: contentDraft, imageUrl: stageContent?.imageUrl ?? "" } } as any }); setShowTextEditor(false); }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showImageEditor && canEditContent && activeProject && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
+            <h4 className="text-lg font-semibold text-slate-900">Edit explanation image</h4>
+            <input className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Image URL" value={imageDraft} onChange={(event) => setImageDraft(event.target.value)} />
+            <p className="mt-2 text-xs text-slate-500">Paste image URL for now (project-scoped).</p>
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setShowImageEditor(false)}>Cancel</button>
+              <button type="button" className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white" onClick={() => { updateProject(projectId, { workspaceContent: { ...activeProject.workspaceContent, [activeStep.id]: { text: stageContent?.text ?? "", imageUrl: imageDraft } } as any }); setShowImageEditor(false); }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+            {activeStep.id === "problem" && (
+        <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Problem Definition</h3>
+            <h3 className="text-lg font-semibold">{t("step.problem")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              Clarify your interest and objectives  
+              {activeProject?.workspaceContent.problem.text || t("workspace.problemIntro")}
             </p>
             {renderProblemDefinitionContext()}
           </div>
@@ -1771,12 +1872,12 @@ const handleSend = async () => {
       )}
 
       {activeStep.id === "data" && (
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className={responsiveWorkspaceSection}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
-              <h3 className="text-lg font-semibold">Data Analysis</h3>
+              <h3 className="text-lg font-semibold">{t("step.data")}</h3>
               <p className="mt-2 text-sm text-slate-500">
-                Explore other projects with similar situations.
+                {activeProject?.workspaceContent.data.text || t("workspace.dataIntro")}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
@@ -2022,18 +2123,15 @@ const handleSend = async () => {
       )}
 
       {activeStep.id === "alternatives" && (
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Image Gallery</h3>
+            <h3 className="text-lg font-semibold">{t("workspace.imageGallery")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              Generate alternatives in the chat, then select the design you
-              want to submit.
+              {t("workspace.imageGalleryDesc")}
             </p>
             <div className="mt-5 max-h-[70vh] overflow-y-auto pr-2">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                Use the chat panel to request new alternatives or edit the
-                latest concept image. Generated images will appear inline in
-                the chat history and in the gallery below.
+                {t("workspace.imageGalleryHelp")}
               </div>
 
               <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -2074,10 +2172,10 @@ const handleSend = async () => {
                     <div className="mb-3 h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
                     <span className="text-sm font-bold">
                       {groupedAlternativeImages.length === 0
-                        ? "Generating Design..."
-                        : "Updating Design..."}
+                        ? `${t("workspace.send")}...`
+                        : `${t("workspace.updating")}...`}
                     </span>
-                    <span className="mt-1 text-xs opacity-70">Generating</span>
+                    <span className="mt-1 text-xs opacity-70">{t("workspace.sending")}</span>
                   </div>
                 </div>
               )}
@@ -2086,7 +2184,7 @@ const handleSend = async () => {
                 !isLoadingAlternatives && (
                   <div className="flex flex-col items-center justify-center gap-3 py-6">
                     <span className="text-center text-sm text-slate-500">
-                      Generated images will appear here
+                      {t("workspace.generatedImagesHint")}
                     </span>
                   </div>
                 )}
@@ -2098,10 +2196,10 @@ const handleSend = async () => {
                 onClick={handleSubmitAlternative}
                 disabled={!selectedAlternative}
               >
-                Submit Design
+                {t("workspace.submitDesign")}
               </button>
               <p className="text-xs text-slate-500">
-                Submit your best design to share.
+                {t("workspace.submitDesignHint")}
               </p>
             </div>
           </div>
@@ -2110,23 +2208,21 @@ const handleSend = async () => {
       )}
 
       {activeStep.id === "evaluation" && (
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Design/Plan Evaluation</h3>
+            <h3 className="text-lg font-semibold">{t("step.evaluation")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              Review submitted alternatives, compare intent notes, and assign
-              overall rankings.
+              {activeProject?.workspaceContent.evaluation.text || t("workspace.evaluationIntro")}
             </p>
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {isLoadingEvaluationImages && (
                 <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                  Loading submitted designs...
+                  {t("workspace.loadingSubmitted")}
                 </div>
               )}
               {!isLoadingEvaluationImages && evaluationImages.length === 0 && (
                 <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                  Submitted designs will appear here once participants finish
-                  the Design/Plan Alternatives stage.
+                  {t("workspace.noSubmitted")}
                 </div>
               )}
               {evaluationImages.map((image) => (
@@ -2153,7 +2249,7 @@ const handleSend = async () => {
                         {image.label}
                       </span>
                       <div className="flex items-center gap-2">
-                        <span>Rank</span>
+                        <span>{t("workspace.rank")}</span>
                         <select
                           className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs"
                           value={String(rankings[image.id] ?? 1)}
@@ -2189,7 +2285,7 @@ const handleSend = async () => {
               onClick={handleSubmitRankings}
               disabled={!evaluationImages.length || isSummarizing}
             >
-              Submit ranking &amp; finish stage
+              {t("workspace.submitRanking")}
             </button>
           </div>
           {renderChatPanel()}
@@ -2197,12 +2293,11 @@ const handleSend = async () => {
       )}
 
       {activeStep.id === "report" && (
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Evaluation Report</h3>
+            <h3 className="text-lg font-semibold">{t("workspace.reportTitle")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              Consolidate the final PPSS report for audit and stakeholder
-              sign-off.
+              {activeProject?.workspaceContent.report.text || t("workspace.reportIntro")}
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
               {roleTabs.map((tab) => (
@@ -2278,26 +2373,26 @@ const handleSend = async () => {
                           : "border border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:text-blue-600"
                       }`}
                     >
-                      User {index + 1}
+                      {t("workspace.user")} {index + 1}
                     </button>
                   ))}
                 </div>
                 {activeRoleEntries.length === 0 ? (
                   <p className="text-sm text-slate-500">
-                    No workspace summaries for this role yet.
+                    {t("workspace.noRoleSummary")}
                   </p>
                 ) : (
                   <div className="space-y-4">
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                       <p className="text-xs font-semibold uppercase text-slate-400">
-                        Overall summary
+                        {t("workspace.overallSummary")}
                       </p>
                       <div className="mt-3 space-y-2">
                         {activeUserEntry?.summary.overallSummary
                           ? renderSummaryLines(
                               activeUserEntry.summary.overallSummary
                             )
-                          : "No overall summary available for this user."}
+                          : t("workspace.noOverallSummary")}
                       </div>
                     </div>
                     <div className="grid gap-4">
@@ -2307,7 +2402,7 @@ const handleSend = async () => {
                           className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                         >
                           <p className="text-sm font-semibold text-slate-700">
-                            {step.title}
+                            {t(step.titleKey)}
                           </p>
                           <div className="mt-2 space-y-2 text-sm text-slate-600">
                             {activeUserEntry?.summary.stageSummaries?.[
@@ -2318,7 +2413,7 @@ const handleSend = async () => {
                                     step.id
                                   ]
                                 )
-                              : "Finish the stage to generate this summary."}
+                              : t("workspace.finishToGenerate")}
                           </div>
                         </div>
                       ))}
@@ -2332,18 +2427,18 @@ const handleSend = async () => {
               type="button"
               onClick={handleCompleteStep}
             >
-              Finish Stage
+              {t("workspace.finishStage")}
             </button>
           </div>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">Evidence &amp; statistics</h3>
+            <h3 className="text-lg font-semibold">{t("workspace.evidenceTitle")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              Visual evidence and key metrics supporting the evaluation.
+              {t("workspace.evidenceIntro")}
             </p>
             <div className="mt-6 space-y-4">
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="text-xs font-semibold uppercase text-slate-400">
-                  Top preference
+                  {t("workspace.topPreference")}
                 </p>
                 <div className="mt-3 h-56 overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100">
                   {topPreference?.imageUrl && (
@@ -2355,19 +2450,19 @@ const handleSend = async () => {
                   )}
                 </div>
                 <p className="mt-3 text-sm font-semibold text-slate-700">
-                  {topPreference?.label ?? "Top concept"}
+                  {topPreference?.label ?? t("workspace.topConcept")}
                 </p>
                 <p className="mt-1 text-xs text-slate-400">
-                  {topPreference?.label ?? "Design"} ·{" "}
+                  {topPreference?.label ?? t("workspace.design")} ·{" "}
                   {getParticipantRoleLabel(topPreference)}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  Highest-rated design based on submitted rankings.
+                  {t("workspace.highestRated")}
                 </p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="text-xs font-semibold uppercase text-slate-400">
-                  Top choice share (pie)
+                  {t("workspace.topChoiceShare")}
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-4">
                   <div
@@ -2385,10 +2480,10 @@ const handleSend = async () => {
                         }}
                       />
                         <span className="font-semibold text-slate-700">
-                          Rank {item.rank}
+                          {t("workspace.rank")} {item.rank}
                         </span>
                         <span className="ml-auto text-slate-500">
-                          {item.value} votes
+                          {item.value} {t("workspace.votes")}
                         </span>
                       </div>
                     ))}
@@ -2397,14 +2492,14 @@ const handleSend = async () => {
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                 <p className="text-xs font-semibold uppercase text-slate-400">
-                  Ranking overview
+                  {t("workspace.rankingOverview")}
                 </p>
                 <div className="mt-3 space-y-3">
                   <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-3 text-[11px] font-semibold uppercase text-slate-400">
-                    <span>Alternative</span>
-                    <span>Participant role</span>
-                    <span>Average rank</span>
-                    <span>Votes</span>
+                    <span>{t("workspace.alternative")}</span>
+                    <span>{t("workspace.participantRole")}</span>
+                    <span>{t("workspace.averageRank")}</span>
+                    <span>{t("workspace.votes")}</span>
                   </div>
                   {aggregatedResults.map((result) => (
                     <div key={result.id} className="space-y-2">
@@ -2467,6 +2562,7 @@ const handleSend = async () => {
           </div>
         </section>
       )}
+      </div>
       {selectedImage && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4"

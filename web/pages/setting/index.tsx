@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
 import {
@@ -8,13 +9,15 @@ import {
   loadStageLocks,
   saveStageLocks,
 } from "../../lib/firebase";
+import { useI18n } from "../../lib/i18n";
+import { useProject } from "../../lib/projects";
+import { canManageProject } from "../../lib/rbac";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
 
 type Provider = (typeof providers)[number];
 
-const providerStorageKey = "ppss-active-provider";
-const adminEmail = "test@snu.ac.kr";
+const providerStorageKeyBase = "ppss-active-provider";
 
 const fileToBase64 = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -28,7 +31,16 @@ const fileToBase64 = (file: File) =>
   });
 
 export default function Setting() {
+  const router = useRouter();
   const { user } = useAuth();
+  const { activeProjectId, setActiveProjectId, activeProject } = useProject();
+  const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
+  const projectId = queryProjectId ?? activeProjectId ?? "project-1";
+  const { t } = useI18n();
+  const providerStorageKey = `${providerStorageKeyBase}-${projectId}`;
+  useEffect(() => {
+    if (queryProjectId && queryProjectId !== activeProjectId) setActiveProjectId(queryProjectId);
+  }, [queryProjectId, activeProjectId, setActiveProjectId]);
   const [activeProvider, setActiveProvider] = useState<Provider>("ChatGPT");
   const [isAdmin, setIsAdmin] = useState(false);
   const [siteImageFiles, setSiteImageFiles] = useState<File[]>([]);
@@ -65,9 +77,11 @@ export default function Setting() {
     "success" | "error" | null
   >(null);
 
+  const canAccessAdminSettings = canManageProject(user?.email, activeProject);
+
   useEffect(() => {
-    setIsAdmin(Boolean(user && user.email === adminEmail));
-  }, [user]);
+    setIsAdmin(canAccessAdminSettings);
+  }, [canAccessAdminSettings]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -77,11 +91,11 @@ export default function Setting() {
     if (storedProvider && providers.includes(storedProvider as Provider)) {
       setActiveProvider(storedProvider as Provider);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     let isMounted = true;
-    loadBackgroundKnowledge()
+    loadBackgroundKnowledge(projectId)
       .then((data) => {
         if (isMounted && data?.curatedText) {
           setBackgroundText(data.curatedText);
@@ -94,7 +108,7 @@ export default function Setting() {
           );
         }
       });
-    loadCurrentSiteImage()
+    loadCurrentSiteImage(projectId)
       .then((data) => {
         if (isMounted && data?.downloadUrl) {
           setSiteImagePreview(data.downloadUrl);
@@ -116,7 +130,7 @@ export default function Setting() {
     }
     let isMounted = true;
     const loadWorkspaceProgress = async () => {
-      const summaries = await loadAllWorkspaceSummaries();
+      const summaries = await loadAllWorkspaceSummaries(projectId);
       if (!isMounted) {
         return;
       }
@@ -137,7 +151,7 @@ export default function Setting() {
     return () => {
       isMounted = false;
     };
-  }, [isAdmin]);
+  }, [isAdmin, projectId]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -145,7 +159,7 @@ export default function Setting() {
     }
     let isMounted = true;
     const loadLocks = async () => {
-      const state = await loadStageLocks();
+      const state = await loadStageLocks(projectId);
       if (!isMounted) {
         return;
       }
@@ -155,7 +169,7 @@ export default function Setting() {
     return () => {
       isMounted = false;
     };
-  }, [isAdmin]);
+  }, [isAdmin, projectId]);
 
   const handleExecutiveSummaryGenerate = async (stageId: string) => {
     if (!user) {
@@ -181,7 +195,7 @@ export default function Setting() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ stageId }),
+        body: JSON.stringify({ stageId, projectId }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -216,7 +230,7 @@ export default function Setting() {
     await saveStageLocks({
       lockedStages: nextLocks,
       updatedBy: user.email ?? user.uid,
-    });
+    }, projectId);
   };
 
   const handleProjectReset = async () => {
@@ -242,6 +256,7 @@ export default function Setting() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ projectId }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -331,7 +346,7 @@ export default function Setting() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ files: filesPayload }),
+        body: JSON.stringify({ projectId, files: filesPayload }),
       });
 
       const text = await res.text();
@@ -375,7 +390,7 @@ export default function Setting() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
+        body: JSON.stringify({ projectId,
           name: file.name,
           type: file.type,
           size: file.size,
@@ -399,27 +414,35 @@ export default function Setting() {
     }
   };
 
+  if (!canAccessAdminSettings) {
+    return (
+      <AppShell>
+        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 text-sm text-slate-600">
+          Administrator settings are available only to Project Admin and System Admin.
+        </section>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <section className="flex flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-400">
-          Setting
+          {t("setting.badge")}
         </p>
-        <h2 className="text-3xl font-semibold">Platform settings</h2>
+        <h2 className="text-3xl font-semibold">{t("setting.title")}</h2>
         <p className="max-w-3xl text-sm text-slate-500">
-          Configure access levels, connect background knowledge, and choose the
-          AI provider that powers each workspace conversation.
+          {t("setting.desc")}
         </p>
       </section>
 
       <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-        <h3 className="text-lg font-semibold">LLM provider</h3>
+        <h3 className="text-lg font-semibold">{t("setting.llm")}</h3>
         <p className="mt-2 text-sm text-slate-500">
-          Choose the LLM provider for the workspace without entering admin
-          mode.
+          {t("setting.llm.desc")}
         </p>
         <p className="mt-4 text-xs text-slate-500">
-          Current workspace provider:{" "}
+          {t("setting.currentProvider")}: {" "}
           <span className="font-semibold text-slate-700">
             {activeProvider}
           </span>
@@ -447,13 +470,13 @@ export default function Setting() {
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1fr]">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
             <p className="text-xs font-semibold uppercase text-slate-500">
-              Active provider
+              {t("setting.activeProvider")}
             </p>
             <p className="mt-3 text-sm font-semibold text-slate-700">
               {activeProvider}
             </p>
             <p className="mt-2 text-xs text-slate-500">
-              The server will use the stored API credentials for this provider.
+              {t("setting.activeProvider.desc")}
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <button
@@ -461,7 +484,7 @@ export default function Setting() {
                 type="button"
                 onClick={handleUseInWorkspace}
               >
-                Use in workspace
+                {t("setting.useWorkspace")}
               </button>
             </div>
           </div>
@@ -469,10 +492,9 @@ export default function Setting() {
       </section>
       {isAdmin && (
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">Administrator settings</h3>
+          <h3 className="text-lg font-semibold">{t("setting.admin")}</h3>
           <p className="mt-2 text-sm text-slate-500">
-            Manage background knowledge and upload the current site image for
-            workspace generation.
+            {t("setting.admin.desc")}
           </p>
           <div className="mt-6 grid gap-6">
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
@@ -492,11 +514,11 @@ export default function Setting() {
               </div>
               <div className="mt-4 grid gap-3 text-xs">
                 {[
-                  { id: "problem", label: "Problem Definition" },
-                  { id: "data", label: "Data Analysis" },
-                  { id: "alternatives", label: "Design/Plan Alternatives" },
-                  { id: "evaluation", label: "Design/Plan Evaluation" },
-                  { id: "report", label: "Design/Plan Decision" },
+                  { id: "problem", label: t("step.problem") },
+                  { id: "data", label: t("step.data") },
+                  { id: "alternatives", label: t("step.alternatives") },
+                  { id: "evaluation", label: t("step.evaluation") },
+                  { id: "report", label: t("step.report") },
                 ].map((stage) => (
                   <div
                     key={stage.id}

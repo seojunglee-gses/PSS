@@ -69,7 +69,8 @@ export default async function handler(
       return res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
     }
 
-    const { files } = req.body as { files?: UploadedFile[] };
+    const { files, projectId } = req.body as { files?: UploadedFile[]; projectId?: string };
+    const scopedProjectId = projectId || "project-1";
     if (!files?.length) {
       res.status(400).json({ error: "At least one file is required." });
       return;
@@ -85,7 +86,7 @@ export default async function handler(
   await Promise.all(
   files.map(async (file) => {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const storagePath = `ppss-background-knowledge/originals/${timestamp}-${safeName}`;
+    const storagePath = `ppss-background-knowledge/originals/${scopedProjectId}/${timestamp}-${safeName}`;
     const raw = stripDataPrefix(file.data);
     const buffer = Buffer.from(raw, "base64");
 
@@ -94,7 +95,7 @@ export default async function handler(
       contentType: file.type || "application/octet-stream",
     });
 
-    await db.collection("ppssBackgroundKnowledgeArchives").add({
+    await db.collection(`ppssBackgroundKnowledgeArchives_${scopedProjectId}`).add({
       fileName: file.name,
       storagePath,
       contentType: file.type || "application/octet-stream",
@@ -209,7 +210,7 @@ export default async function handler(
       return;
     }
 
-    await db.doc("ppssBackgroundKnowledge/current").set(
+    await db.doc(`ppssBackgroundKnowledge_${scopedProjectId}/current`).set(
       {
         curatedText,
         updatedBy: decoded.email ?? decoded.uid,
