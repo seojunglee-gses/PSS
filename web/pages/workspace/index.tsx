@@ -1419,35 +1419,92 @@ const handleSend = async () => {
   const accessCodeKey = `ppss-project-access-${projectId}`;
   const hasAccess = typeof window !== "undefined" && sessionStorage.getItem(accessCodeKey) === "ok";
 
-  const saveStageContent = useCallback(
-    (
-      stageId: "problem" | "data" | "alternatives" | "evaluation" | "report",
-      patch: Record<string, unknown>
-    ) => {
-      if (!activeProject) return;
+  type EditableStageId = "problem" | "data";
+  const [editingStageId, setEditingStageId] = useState<EditableStageId | null>(null);
+  const [problemDraft, setProblemDraft] = useState(() => activeProject?.workspaceContent.problem ?? { title: "", text: "", imageUrl: "" });
+  const [dataDraft, setDataDraft] = useState(() => activeProject?.workspaceContent.data ?? { title: "", text: "", imageUrl: "", cases: [] });
+
+  useEffect(() => {
+    if (!activeProject) return;
+    setProblemDraft(activeProject.workspaceContent.problem);
+    setDataDraft(activeProject.workspaceContent.data);
+    setEditingStageId(null);
+  }, [activeProject?.projectId]);
+
+  const isEditingExplanation = editingStageId !== null;
+  const hasUnsavedExplanationChanges = useMemo(() => {
+    if (!activeProject || !editingStageId) return false;
+    if (editingStageId === "problem") {
+      return JSON.stringify(problemDraft) !== JSON.stringify(activeProject.workspaceContent.problem);
+    }
+    return JSON.stringify(dataDraft) !== JSON.stringify(activeProject.workspaceContent.data);
+  }, [activeProject, editingStageId, problemDraft, dataDraft]);
+
+  const confirmDiscardUnsaved = useCallback(() => {
+    if (!hasUnsavedExplanationChanges) return true;
+    return window.confirm("You have unsaved explanation changes. Discard them?");
+  }, [hasUnsavedExplanationChanges]);
+
+  const beginEditStage = useCallback(
+    (stageId: EditableStageId) => {
+      if (!activeProject || !canEditContent) return;
+      if (!confirmDiscardUnsaved()) return;
+      setProblemDraft(activeProject.workspaceContent.problem);
+      setDataDraft(activeProject.workspaceContent.data);
+      setEditingStageId(stageId);
+    },
+    [activeProject, canEditContent, confirmDiscardUnsaved]
+  );
+
+  const cancelEditStage = useCallback(() => {
+    if (!activeProject) return;
+    if (!confirmDiscardUnsaved()) return;
+    setProblemDraft(activeProject.workspaceContent.problem);
+    setDataDraft(activeProject.workspaceContent.data);
+    setEditingStageId(null);
+  }, [activeProject, confirmDiscardUnsaved]);
+
+  const saveEditStage = useCallback(() => {
+    if (!activeProject || !editingStageId) return;
+    if (editingStageId === "problem") {
       updateProject(projectId, {
         workspaceContent: {
           ...activeProject.workspaceContent,
-          [stageId]: {
-            ...(activeProject.workspaceContent as Record<string, any>)[stageId],
-            ...patch,
-          },
+          problem: problemDraft,
         } as any,
       });
-    },
-    [activeProject, projectId, updateProject]
-  );
+    }
+    if (editingStageId === "data") {
+      updateProject(projectId, {
+        workspaceContent: {
+          ...activeProject.workspaceContent,
+          data: dataDraft,
+        } as any,
+      });
+    }
+    setEditingStageId(null);
+  }, [activeProject, editingStageId, problemDraft, dataDraft, projectId, updateProject]);
 
-  const saveDataCase = useCallback(
-    (caseId: string, patch: Record<string, unknown>) => {
-      if (!activeProject) return;
-      const cases = activeProject.workspaceContent.data.cases.map((item) =>
-        item.id === caseId ? { ...item, ...patch } : item
-      );
-      saveStageContent("data", { cases });
-    },
-    [activeProject, saveStageContent]
-  );
+  const saveDataCaseDraft = useCallback((caseId: string, patch: Record<string, unknown>) => {
+    setDataDraft((prev) => ({
+      ...prev,
+      cases: prev.cases.map((item) => (item.id === caseId ? { ...item, ...patch } : item)),
+    }));
+  }, []);
+
+  useEffect(() => {
+    const onRouteChangeStart = () => {
+      if (!isEditingExplanation || !hasUnsavedExplanationChanges) return;
+      if (!window.confirm("You have unsaved explanation changes. Leave this page?")) {
+        router.events.emit("routeChangeError");
+        throw "Abort route change. Unsaved explanation changes.";
+      }
+    };
+    router.events.on("routeChangeStart", onRouteChangeStart);
+    return () => {
+      router.events.off("routeChangeStart", onRouteChangeStart);
+    };
+  }, [router.events, isEditingExplanation, hasUnsavedExplanationChanges]);
 
   if (loading) {
     return (
@@ -1733,7 +1790,17 @@ const handleSend = async () => {
                     : "border border-slate-200 bg-slate-50 text-slate-600 hover:border-[var(--primary)]"
                 }`}
                 type="button"
-                onClick={() => setActiveStep(step)}
+                onClick={() => {
+                  if (step.id === activeStep.id) return;
+                  if (isEditingExplanation && hasUnsavedExplanationChanges) {
+                    const ok = window.confirm("You have unsaved explanation changes. Switch stage and discard them?");
+                    if (!ok) return;
+                    setProblemDraft(activeProject?.workspaceContent.problem ?? problemDraft);
+                    setDataDraft(activeProject?.workspaceContent.data ?? dataDraft);
+                    setEditingStageId(null);
+                  }
+                  setActiveStep(step);
+                }}
               >
                 <span
                   className={`flex h-7 w-7 items-center justify-center rounded-full text-xs ${
@@ -1760,36 +1827,50 @@ const handleSend = async () => {
       {activeStep.id === "problem" && (
         <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
             <h3
-              className={`text-lg font-semibold ${canEditContent ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-              contentEditable={canEditContent}
+              className={`text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
+              contentEditable={canEditContent && editingStageId === "problem"}
               suppressContentEditableWarning
-              onBlur={(event) => saveStageContent("problem", { title: event.currentTarget.textContent ?? "" })}
+              onBlur={(event) => setProblemDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
             >
-              {activeProject?.workspaceContent.problem.title || t("step.problem")}
+              {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || t("step.problem")}
             </h3>
+            {canEditContent && (
+              <div className="flex items-center gap-2">
+                {editingStageId === "problem" ? (
+                  <>
+                    <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>Cancel</button>
+                    <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>Save</button>
+                  </>
+                ) : (
+                  <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={() => beginEditStage("problem")}>Edit</button>
+                )}
+              </div>
+            )}
+            </div>
             <p
-              className={`mt-2 text-sm text-slate-500 ${canEditContent ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-              contentEditable={canEditContent}
+              className={`mt-2 text-sm text-slate-500 ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
+              contentEditable={canEditContent && editingStageId === "problem"}
               suppressContentEditableWarning
-              onBlur={(event) => saveStageContent("problem", { text: event.currentTarget.textContent ?? "" })}
+              onBlur={(event) => setProblemDraft((prev) => ({ ...prev, text: event.currentTarget.textContent ?? "" }))}
             >
-              {activeProject?.workspaceContent.problem.text || t("workspace.problemIntro")}
+              {(editingStageId === "problem" ? problemDraft.text : activeProject?.workspaceContent.problem.text) || t("workspace.problemIntro")}
             </p>
             <button
               type="button"
               className="mt-4 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
               onClick={() => {
-                if (!canEditContent) return;
-                const next = window.prompt("Problem definition image URL", activeProject?.workspaceContent.problem.imageUrl ?? "");
+                if (!canEditContent || editingStageId !== "problem") return;
+                const next = window.prompt("Problem definition image URL", problemDraft.imageUrl ?? "");
                 if (next === null) return;
-                saveStageContent("problem", { imageUrl: next.trim() });
+                setProblemDraft((prev) => ({ ...prev, imageUrl: next.trim() }));
               }}
             >
-              {activeProject?.workspaceContent.problem.imageUrl ? (
-                <img src={activeProject.workspaceContent.problem.imageUrl} alt="Problem definition" className="h-auto w-full object-contain" />
+              {(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ? (
+                <img src={(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ?? ""} alt="Problem definition" className="h-auto w-full object-contain" />
               ) : (
-                <span>{canEditContent ? "Click to add image" : "No image"}</span>
+                <span>{canEditContent && editingStageId === "problem" ? "Click to add image" : "No image"}</span>
               )}
             </button>
           </div>
@@ -1801,24 +1882,38 @@ const handleSend = async () => {
         <section className={responsiveWorkspaceSection}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
+              <div className="flex items-start justify-between gap-3">
               <h3
-                className={`text-lg font-semibold ${canEditContent ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-                contentEditable={canEditContent}
+                className={`text-lg font-semibold ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
+                contentEditable={canEditContent && editingStageId === "data"}
                 suppressContentEditableWarning
-                onBlur={(event) => saveStageContent("data", { title: event.currentTarget.textContent ?? "" })}
+                onBlur={(event) => setDataDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
               >
-                {activeProject?.workspaceContent.data.title || t("step.data")}
+                {(editingStageId === "data" ? dataDraft.title : activeProject?.workspaceContent.data.title) || t("step.data")}
               </h3>
+              {canEditContent && (
+                <div className="flex items-center gap-2">
+                  {editingStageId === "data" ? (
+                    <>
+                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>Cancel</button>
+                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>Save</button>
+                    </>
+                  ) : (
+                    <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={() => beginEditStage("data")}>Edit</button>
+                  )}
+                </div>
+              )}
+              </div>
               <p
-                className={`mt-2 text-sm text-slate-500 ${canEditContent ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-                contentEditable={canEditContent}
+                className={`mt-2 text-sm text-slate-500 ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
+                contentEditable={canEditContent && editingStageId === "data"}
                 suppressContentEditableWarning
-                onBlur={(event) => saveStageContent("data", { text: event.currentTarget.textContent ?? "" })}
+                onBlur={(event) => setDataDraft((prev) => ({ ...prev, text: event.currentTarget.textContent ?? "" }))}
               >
-                {activeProject?.workspaceContent.data.text || t("workspace.dataIntro")}
+                {(editingStageId === "data" ? dataDraft.text : activeProject?.workspaceContent.data.text) || t("workspace.dataIntro")}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
-                {(activeProject?.workspaceContent.data.cases ?? [
+                {((editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases) ?? [
                   { label: "789 Art Zone", id: "patterns" },
                   { label: "Gyeungui Line Forest Park", id: "painpoints" },
                   { label: "Highline Park", id: "opportunities" },
@@ -1836,11 +1931,11 @@ const handleSend = async () => {
                       onClick={() => setActiveTab(tab.id)}
                     >
                       <span
-                        contentEditable={canEditContent}
+                        contentEditable={canEditContent && editingStageId === "data"}
                         suppressContentEditableWarning
-                        onBlur={(event) => saveDataCase(tab.id, { label: event.currentTarget.textContent ?? "" })}
+                        onBlur={(event) => saveDataCaseDraft(tab.id, { label: event.currentTarget.textContent ?? "" })}
                         onClick={(event) => event.stopPropagation()}
-                        className={canEditContent ? "rounded px-1 hover:bg-white/70" : ""}
+                        className={canEditContent && editingStageId === "data" ? "rounded px-1 hover:bg-white/70" : ""}
                       >
                         {tab.label}
                       </span>
@@ -1854,17 +1949,18 @@ const handleSend = async () => {
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
                   {(() => {
-                    const activeCase = activeProject?.workspaceContent.data.cases.find((item) => item.id === activeTab);
+                    const cases = editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases;
+                    const activeCase = cases?.find((item) => item.id === activeTab);
                     if (!activeCase) {
                       return <p className="text-sm text-slate-500">No case study content.</p>;
                     }
                     return (
                       <>
                         <h4
-                          className={`text-base font-semibold text-slate-800 ${canEditContent ? "cursor-text rounded px-1 hover:bg-white" : ""}`}
-                          contentEditable={canEditContent}
+                          className={`text-base font-semibold text-slate-800 ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-white" : ""}`}
+                          contentEditable={canEditContent && editingStageId === "data"}
                           suppressContentEditableWarning
-                          onBlur={(event) => saveDataCase(activeCase.id, { title: event.currentTarget.textContent ?? "" })}
+                          onBlur={(event) => saveDataCaseDraft(activeCase.id, { title: event.currentTarget.textContent ?? "" })}
                         >
                           {activeCase.title}
                         </h4>
@@ -1872,23 +1968,23 @@ const handleSend = async () => {
                           type="button"
                           className="mt-3 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-500"
                           onClick={() => {
-                            if (!canEditContent) return;
+                            if (!canEditContent || editingStageId !== "data") return;
                             const next = window.prompt("Case study image URL", activeCase.imageUrl ?? "");
                             if (next === null) return;
-                            saveDataCase(activeCase.id, { imageUrl: next.trim() });
+                            saveDataCaseDraft(activeCase.id, { imageUrl: next.trim() });
                           }}
                         >
                           {activeCase.imageUrl ? (
                             <img src={activeCase.imageUrl} alt={activeCase.label} className="h-auto w-full object-contain" />
                           ) : (
-                            <span>{canEditContent ? "Click to add image" : "No image"}</span>
+                            <span>{canEditContent && editingStageId === "data" ? "Click to add image" : "No image"}</span>
                           )}
                         </button>
                         <p
-                          className={`mt-3 whitespace-pre-wrap text-sm text-slate-600 ${canEditContent ? "cursor-text rounded px-1 hover:bg-white" : ""}`}
-                          contentEditable={canEditContent}
+                          className={`mt-3 whitespace-pre-wrap text-sm text-slate-600 ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-white" : ""}`}
+                          contentEditable={canEditContent && editingStageId === "data"}
                           suppressContentEditableWarning
-                          onBlur={(event) => saveDataCase(activeCase.id, { text: event.currentTarget.textContent ?? "" })}
+                          onBlur={(event) => saveDataCaseDraft(activeCase.id, { text: event.currentTarget.textContent ?? "" })}
                         >
                           {activeCase.text}
                         </p>
