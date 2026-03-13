@@ -11,13 +11,13 @@ import {
 } from "../../lib/firebase";
 import { useI18n } from "../../lib/i18n";
 import { useProject } from "../../lib/projects";
+import { canManageProject } from "../../lib/rbac";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
 
 type Provider = (typeof providers)[number];
 
 const providerStorageKeyBase = "ppss-active-provider";
-const adminEmail = "test@snu.ac.kr";
 
 const fileToBase64 = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -33,7 +33,7 @@ const fileToBase64 = (file: File) =>
 export default function Setting() {
   const router = useRouter();
   const { user } = useAuth();
-  const { activeProjectId, setActiveProjectId } = useProject();
+  const { activeProjectId, setActiveProjectId, activeProject } = useProject();
   const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
   const projectId = queryProjectId ?? activeProjectId ?? "project-1";
   const { t } = useI18n();
@@ -77,9 +77,11 @@ export default function Setting() {
     "success" | "error" | null
   >(null);
 
+  const canAccessAdminSettings = canManageProject(user?.email, activeProject);
+
   useEffect(() => {
-    setIsAdmin(Boolean(user && user.email === adminEmail));
-  }, [user]);
+    setIsAdmin(canAccessAdminSettings);
+  }, [canAccessAdminSettings]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -411,6 +413,16 @@ export default function Setting() {
       );
     }
   };
+
+  if (!canAccessAdminSettings) {
+    return (
+      <AppShell>
+        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 text-sm text-slate-600">
+          Administrator settings are available only to Project Admin and System Admin.
+        </section>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>

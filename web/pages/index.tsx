@@ -5,6 +5,7 @@ import { useAuth } from "../lib/auth";
 import { loadCurrentSiteImage } from "../lib/firebase";
 import { normalizeRoleId, roleLabelKeys, useI18n, type RoleId } from "../lib/i18n";
 import { useProject } from "../lib/projects";
+import { getRoleForProject, isSystemAdmin } from "../lib/rbac";
 
 type RoleItem = {
   id: RoleId;
@@ -114,10 +115,16 @@ export default function Home() {
   const router = useRouter();
   const { signIn, signInWithGoogle, isConfigured, user } = useAuth();
   const { t } = useI18n();
-  const { projects, createProject, setActiveProjectId } = useProject();
+  const { projects, createProject, setActiveProjectId, updateProject, deleteProject } = useProject();
   const [projectName, setProjectName] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [projectThumbnails, setProjectThumbnails] = useState<Record<string, string>>({});
+  const userEmail = user?.email ?? null;
+  const userIsSystemAdmin = isSystemAdmin(userEmail);
+  const visibleProjects = projects.filter((project) => {
+    const role = getRoleForProject(userEmail, project);
+    return role === "system_admin" || role === "project_admin" || role === "participant";
+  });
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -154,6 +161,26 @@ export default function Home() {
       mounted = false;
     };
   }, [user, projects]);
+
+  const handleManageProject = (projectId: string) => {
+    if (!userIsSystemAdmin) return;
+    const target = projects.find((project) => project.projectId === projectId);
+    if (!target) return;
+    const nextAdmin = window.prompt("Project admin email", target.projectAdmin) ?? target.projectAdmin;
+    const nextCode = window.prompt("4-digit access code", target.accessCode) ?? target.accessCode;
+    if (!/^\d{4}$/.test(nextCode)) {
+      window.alert("Access code must be 4 digits.");
+      return;
+    }
+    updateProject(projectId, { projectAdmin: nextAdmin, accessCode: nextCode });
+  };
+
+  const handleDeleteProject = (projectId: string) => {
+    if (!userIsSystemAdmin) return;
+    const ok = window.confirm("Delete this project?");
+    if (!ok) return;
+    deleteProject(projectId);
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -201,7 +228,7 @@ export default function Home() {
   const handleCreateProject = () => {
     const trimmed = projectName.trim();
     if (!trimmed) return;
-    const next = createProject(trimmed);
+    const next = createProject(trimmed, userEmail ?? undefined);
     setProjectName("");
     setActiveProjectId(next.projectId);
     setShowCreateModal(false);
@@ -223,7 +250,7 @@ export default function Home() {
           </section>
 
           <section className="grid grid-cols-1 gap-5 md:grid-cols-3 xl:grid-cols-4">
-            {projects.map((project) => (
+            {visibleProjects.map((project) => (
               <button
                 key={project.projectId}
                 type="button"
@@ -244,12 +271,26 @@ export default function Home() {
                   )}
                 </div>
                 <div className="p-4">
-                  <h3 className="text-base font-semibold text-slate-900">{project.projectName}</h3>
-                  <p className="mt-1 text-xs text-slate-500">Last modified: {new Date(project.lastModifiedAt).toLocaleString()}</p>
+                  <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">{project.projectName}</h3>
+                    <p className="mt-1 text-xs text-slate-500">Last modified: {new Date(project.lastModifiedAt).toLocaleString()}</p>
+                    <p className="text-xs text-slate-400">Admin: {project.projectAdmin}</p>
+                  </div>
+                  {userIsSystemAdmin && (
+                    <div className="flex gap-1">
+                      <button type="button" className="rounded-md border border-slate-200 px-2 py-1 text-[10px]" onClick={(e) => { e.stopPropagation(); handleManageProject(project.projectId); }}>Manage</button>
+                      {project.projectId !== "project-1" && (
+                        <button type="button" className="rounded-md border border-rose-200 px-2 py-1 text-[10px] text-rose-600" onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.projectId); }}>Delete</button>
+                      )}
+                    </div>
+                  )}
+                  </div>
                 </div>
               </button>
             ))}
 
+            {userIsSystemAdmin && (
             <button
               type="button"
               onClick={() => setShowCreateModal(true)}
@@ -258,6 +299,7 @@ export default function Home() {
               <span className="text-5xl leading-none">+</span>
               <span className="mt-2 text-sm font-semibold">Create Project</span>
             </button>
+          )}
           </section>
 
           {showCreateModal && (

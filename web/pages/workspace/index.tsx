@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
 import { useProject } from "../../lib/projects";
+import { canManageProject, isSystemAdmin } from "../../lib/rbac";
 import { loadGeneratedImages } from "../../lib/firebase";
 import type { SiteImage } from "../../lib/firebase";
 import { normalizeRoleId, roleLabelKeys, useI18n } from "../../lib/i18n";
@@ -57,7 +58,6 @@ const stepSummaries: Record<string, string> = {
 };
 
 const providerStorageKeyBase = "ppss-active-provider";
-const adminEmail = "test@snu.ac.kr";
 const pieColors = [
   "#2563eb",
   "#38bdf8",
@@ -245,7 +245,7 @@ export default function Workspace() {
   useState<SiteImage | null>(null);
   const router = useRouter();
   const { t } = useI18n();
-  const { activeProjectId, setActiveProjectId, touchProject } = useProject();
+  const { activeProjectId, setActiveProjectId, touchProject, activeProject, updateProject } = useProject();
   const { user, loading } = useAuth();
   const userKey = user?.uid;
   const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
@@ -258,6 +258,9 @@ export default function Workspace() {
   const [role, setRole] = useState("Guest");
   const normalizedActiveRole = normalizeRoleId(role);
   const [activeProvider, setActiveProvider] = useState("Gemini");
+  const [accessCodeInput, setAccessCodeInput] = useState("");
+  const [accessCodeError, setAccessCodeError] = useState("");
+  const [contentDraft, setContentDraft] = useState("");
   const chatStorageKey = useMemo(
     () => (userKey ? `ppss-chat-logs-${projectId}-${userKey}` : null),
     [userKey, projectId]
@@ -325,6 +328,11 @@ export default function Workspace() {
       role?: string;
     }>
   >([]);
+
+
+  useEffect(() => {
+    setContentDraft(activeProject?.workspaceContent?.[activeStep.id as keyof typeof activeProject.workspaceContent] ?? "");
+  }, [activeProject?.projectId, activeStep.id]);
   const [chatLogsByStep, setChatLogsByStep] = useState<
     Record<string, ChatLog[]>
   >({});
@@ -1387,6 +1395,12 @@ const handleSend = async () => {
     setLastGeneratedImageId(latest?.id ?? null);
   }, [activeStep.id, alternativeImages]);
 
+  const isSystem = isSystemAdmin(user?.email);
+  const canEditContent = canManageProject(user?.email, activeProject);
+  const isProjectCodeRequired = Boolean(user && !isSystem && activeProject);
+  const accessCodeKey = `ppss-project-access-${projectId}`;
+  const hasAccess = typeof window !== "undefined" && sessionStorage.getItem(accessCodeKey) === "ok";
+
   if (loading) {
     return (
       <AppShell>
@@ -1402,6 +1416,39 @@ const handleSend = async () => {
       <AppShell>
         <div className="rounded-3xl border border-[var(--border)] bg-white p-6 text-sm text-slate-500">
           {t("workspace.authRedirect")}
+        </div>
+      </AppShell>
+    );
+  }
+
+
+  if (isProjectCodeRequired && !hasAccess) {
+    return (
+      <AppShell>
+        <div className="mx-auto w-full max-w-md rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-semibold text-slate-900">Project Access Code</h3>
+          <p className="mt-2 text-sm text-slate-500">Enter the 4-digit code to open this project.</p>
+          <input
+            className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+            value={accessCodeInput}
+            onChange={(event) => setAccessCodeInput(event.target.value.replace(/\D/g, "").slice(0, 4))}
+            placeholder="0000"
+          />
+          {accessCodeError && <p className="mt-2 text-xs text-rose-600">{accessCodeError}</p>}
+          <button
+            type="button"
+            className="mt-4 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white"
+            onClick={() => {
+              if (accessCodeInput === activeProject?.accessCode) {
+                sessionStorage.setItem(accessCodeKey, "ok");
+                router.replace({ pathname: "/workspace", query: { projectId } });
+                return;
+              }
+              setAccessCodeError("Invalid access code.");
+            }}
+          >
+            Enter project
+          </button>
         </div>
       </AppShell>
     );
@@ -1445,7 +1492,7 @@ const handleSend = async () => {
           <h3 className="mt-2 text-lg font-semibold">{t("workspace.apiConversation")}</h3>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {user?.email === adminEmail && (
+          {canEditContent && (
             <>
               <button
                 className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
@@ -1752,12 +1799,35 @@ const handleSend = async () => {
         </div>
       </section>
 
+      {canEditContent && activeProject && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Workspace explanation content</p>
+          <textarea
+            className="mt-3 h-24 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            value={contentDraft}
+            onChange={(event) => setContentDraft(event.target.value)}
+          />
+          <button
+            type="button"
+            className="mt-3 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)]"
+            onClick={() => updateProject(projectId, {
+              workspaceContent: {
+                ...activeProject.workspaceContent,
+                [activeStep.id]: contentDraft,
+              } as any,
+            })}
+          >
+            Save explanation
+          </button>
+        </section>
+      )}
+
       {activeStep.id === "problem" && (
         <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("step.problem")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              {t("workspace.problemIntro")}
+              {activeProject?.workspaceContent.problem || t("workspace.problemIntro")}
             </p>
             {renderProblemDefinitionContext()}
           </div>
@@ -1771,7 +1841,7 @@ const handleSend = async () => {
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
               <h3 className="text-lg font-semibold">{t("step.data")}</h3>
               <p className="mt-2 text-sm text-slate-500">
-                {t("workspace.dataIntro")}
+                {activeProject?.workspaceContent.data || t("workspace.dataIntro")}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
@@ -2106,7 +2176,7 @@ const handleSend = async () => {
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("step.evaluation")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              {t("workspace.evaluationIntro")}
+              {activeProject?.workspaceContent.evaluation || t("workspace.evaluationIntro")}
             </p>
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {isLoadingEvaluationImages && (
@@ -2191,7 +2261,7 @@ const handleSend = async () => {
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("workspace.reportTitle")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              {t("workspace.reportIntro")}
+              {activeProject?.workspaceContent.report || t("workspace.reportIntro")}
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
               {roleTabs.map((tab) => (

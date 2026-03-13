@@ -1,10 +1,21 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+export type StageWorkspaceContent = {
+  problem: string;
+  data: string;
+  alternatives: string;
+  evaluation: string;
+  report: string;
+};
+
 export type ProjectMeta = {
   projectId: string;
   projectName: string;
   createdAt: string;
   lastModifiedAt: string;
+  projectAdmin: string;
+  accessCode: string;
+  workspaceContent: StageWorkspaceContent;
 };
 
 type ProjectContextValue = {
@@ -12,27 +23,48 @@ type ProjectContextValue = {
   activeProjectId: string | null;
   activeProject: ProjectMeta | null;
   setActiveProjectId: (projectId: string) => void;
-  createProject: (projectName: string) => ProjectMeta;
+  createProject: (projectName: string, createdByEmail?: string) => ProjectMeta;
   touchProject: (projectId: string) => void;
+  updateProject: (projectId: string, patch: Partial<ProjectMeta>) => void;
+  deleteProject: (projectId: string) => void;
 };
 
 const PROJECTS_KEY = "ppss-projects";
 const ACTIVE_PROJECT_KEY = "ppss-active-project-id";
 const LEGACY_PROJECT_ID = "project-1";
 
+const emptyWorkspaceContent = (): StageWorkspaceContent => ({
+  problem: "",
+  data: "",
+  alternatives: "",
+  evaluation: "",
+  report: "",
+});
+
 const ProjectContext = createContext<ProjectContextValue | undefined>(undefined);
 
 const nowIso = () => new Date().toISOString();
 
-const buildDefaultProject = (): ProjectMeta => {
-  const now = nowIso();
-  return {
+const normalizeProject = (project: Partial<ProjectMeta>): ProjectMeta => ({
+  projectId: project.projectId ?? `project-${Date.now()}`,
+  projectName: project.projectName ?? "Untitled Project",
+  createdAt: project.createdAt ?? nowIso(),
+  lastModifiedAt: project.lastModifiedAt ?? nowIso(),
+  projectAdmin: project.projectAdmin ?? "test@snu.ac.kr",
+  accessCode: /^\d{4}$/.test(project.accessCode ?? "") ? (project.accessCode as string) : "1234",
+  workspaceContent: {
+    ...emptyWorkspaceContent(),
+    ...(project.workspaceContent ?? {}),
+  },
+});
+
+const buildDefaultProject = (): ProjectMeta =>
+  normalizeProject({
     projectId: LEGACY_PROJECT_ID,
     projectName: "Project #1",
-    createdAt: now,
-    lastModifiedAt: now,
-  };
-};
+    projectAdmin: "test@snu.ac.kr",
+    accessCode: "1234",
+  });
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
@@ -42,7 +74,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     if (typeof window === "undefined") return;
     let parsed: ProjectMeta[] = [];
     try {
-      parsed = JSON.parse(window.localStorage.getItem(PROJECTS_KEY) ?? "[]") as ProjectMeta[];
+      const raw = JSON.parse(window.localStorage.getItem(PROJECTS_KEY) ?? "[]") as Partial<ProjectMeta>[];
+      parsed = raw.map(normalizeProject);
     } catch {
       parsed = [];
     }
@@ -76,14 +109,17 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const createProject = (projectName: string) => {
+  const createProject = (projectName: string, createdByEmail?: string) => {
     const now = nowIso();
-    const item: ProjectMeta = {
+    const item: ProjectMeta = normalizeProject({
       projectId: `project-${Date.now()}`,
       projectName,
       createdAt: now,
       lastModifiedAt: now,
-    };
+      projectAdmin: createdByEmail || "test@snu.ac.kr",
+      accessCode: "1234",
+      workspaceContent: emptyWorkspaceContent(),
+    });
     const next = [item, ...projects];
     persistProjects(next);
     setActiveProjectId(item.projectId);
@@ -99,6 +135,31 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     persistProjects(next);
   };
 
+  const updateProject = (projectId: string, patch: Partial<ProjectMeta>) => {
+    const next = projects.map((project) =>
+      project.projectId === projectId
+        ? normalizeProject({
+            ...project,
+            ...patch,
+            workspaceContent: {
+              ...project.workspaceContent,
+              ...(patch.workspaceContent ?? {}),
+            },
+            lastModifiedAt: nowIso(),
+          })
+        : project
+    );
+    persistProjects(next);
+  };
+
+  const deleteProject = (projectId: string) => {
+    const next = projects.filter((project) => project.projectId !== projectId);
+    persistProjects(next);
+    if (activeProjectId === projectId && next[0]) {
+      setActiveProjectId(next[0].projectId);
+    }
+  };
+
   const value = useMemo(
     () => ({
       projects,
@@ -107,6 +168,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       setActiveProjectId,
       createProject,
       touchProject,
+      updateProject,
+      deleteProject,
     }),
     [projects, activeProjectId]
   );
