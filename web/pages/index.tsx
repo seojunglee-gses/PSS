@@ -232,11 +232,16 @@ export default function Home() {
     const trimmed = projectName.trim();
     if (!trimmed) return;
     if (!/^\d{4}$/.test(projectAccessCodeInput)) return;
+<<<<<<< codex/add-multilingual-support-for-english,-korean,-chinese-cov8nv
     const next = createProject(trimmed, {
       projectAdmin: projectAdminInput || userEmail || "test@snu.ac.kr",
       accessCode: projectAccessCodeInput,
       createdByEmail: userEmail || undefined,
     });
+=======
+    const next = createProject(trimmed, (projectAdminInput || userEmail) ?? undefined);
+    updateProject(next.projectId, { projectAdmin: projectAdminInput, accessCode: projectAccessCodeInput });
+>>>>>>> main
     setProjectName("");
     setActiveProjectId(next.projectId);
     setShowProjectModal(false);
