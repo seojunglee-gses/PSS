@@ -1,12 +1,22 @@
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../lib/auth";
+import { normalizeRoleId, roleLabelKeys, useI18n, type RoleId } from "../lib/i18n";
+import { useProject } from "../lib/projects";
 
-const roles = [
+type RoleItem = {
+  id: RoleId;
+  titleKey: string;
+  descriptionKey: string;
+  icon: ReactNode;
+};
+
+const roles: RoleItem[] = [
   {
-    title: "The Public",
-    description: "Review shared PPSS updates and community impact summaries.",
+    id: "public",
+    titleKey: "role.public",
+    descriptionKey: "roledesc.public",
     icon: (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <circle
@@ -28,9 +38,9 @@ const roles = [
     ),
   },
   {
-    title: "Business Owners",
-    description:
-      "Coordinate manufacturing objectives and monitor process plan progress.",
+    id: "business",
+    titleKey: "role.business",
+    descriptionKey: "roledesc.business",
     icon: (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <rect
@@ -54,9 +64,9 @@ const roles = [
     ),
   },
   {
-    title: "Planners",
-    description:
-      "Develop prompt-driven plans, assess safety checks, and validate outputs.",
+    id: "planners",
+    titleKey: "role.planners",
+    descriptionKey: "roledesc.planners",
     icon: (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <path
@@ -75,9 +85,9 @@ const roles = [
     ),
   },
   {
-    title: "Government",
-    description:
-      "Audit compliance, review reports, and manage policy-driven oversight.",
+    id: "government",
+    titleKey: "role.government",
+    descriptionKey: "roledesc.government",
     icon: (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <path
@@ -102,23 +112,32 @@ const roles = [
 export default function Home() {
   const router = useRouter();
   const { signIn, signInWithGoogle, isConfigured, user } = useAuth();
+  const { t } = useI18n();
+  const { projects, createProject, setActiveProjectId } = useProject();
+  const [projectName, setProjectName] = useState("");
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedRole, setSelectedRole] = useState<string>("");
+  const [selectedRole, setSelectedRole] = useState<RoleId | "">("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  useEffect(() => {
-    if (user) {
-      router.push("/workspace");
-    }
-  }, [user, router]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem("ppss-role");
+    const normalized = normalizeRoleId(stored);
+    if (stored && normalized && stored !== normalized) {
+      window.localStorage.setItem("ppss-role", normalized);
+    }
+  }, []);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage("");
     if (!selectedRole) {
-      setErrorMessage("Select a role before signing in.");
+      setErrorMessage(t("home.error.roleSignIn"));
       return;
     }
     try {
@@ -127,12 +146,10 @@ export default function Home() {
         window.localStorage.setItem("ppss-role", selectedRole);
       }
       setShowLogin(false);
-      router.push("/workspace");
+      router.push("/");
     } catch (error) {
       setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to sign in. Please try again."
+        error instanceof Error ? error.message : t("home.error.signIn")
       );
     }
   };
@@ -140,7 +157,7 @@ export default function Home() {
   const handleGoogleSignUp = async () => {
     setErrorMessage("");
     if (!selectedRole) {
-      setErrorMessage("Select a role before signing up.");
+      setErrorMessage(t("home.error.roleSignUp"));
       return;
     }
     try {
@@ -149,56 +166,104 @@ export default function Home() {
         window.localStorage.setItem("ppss-role", selectedRole);
       }
       setShowLogin(false);
-      router.push("/workspace");
+      router.push("/");
     } catch (error) {
       setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Google sign up failed. Please try again."
+        error instanceof Error ? error.message : t("home.error.google")
       );
     }
   };
 
+
+
+  const handleCreateProject = () => {
+    const trimmed = projectName.trim();
+    if (!trimmed) return;
+    const next = createProject(trimmed);
+    setProjectName("");
+    setActiveProjectId(next.projectId);
+    router.push({ pathname: "/workspace", query: { projectId: next.projectId } });
+  };
+
+  const handleOpenProject = (projectId: string) => {
+    setActiveProjectId(projectId);
+    router.push({ pathname: "/workspace", query: { projectId } });
+  };
   return (
     <AppShell>
+      {user ? (
+        <>
+          <section className="flex flex-col gap-3">
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">Projects</p>
+            <h2 className="text-3xl font-semibold text-slate-900">Select a project</h2>
+            <p className="max-w-3xl text-sm text-slate-500">All workflow data is now isolated per project.</p>
+          </section>
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input
+                className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
+                placeholder="New project name"
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+              />
+              <button
+                className="rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white"
+                type="button"
+                onClick={handleCreateProject}
+              >
+                Create project
+              </button>
+            </div>
+          </section>
+          <section className="grid gap-4 md:grid-cols-2">
+            {projects.map((project) => (
+              <div key={project.projectId} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-900">{project.projectName}</h3>
+                <p className="mt-2 text-xs text-slate-500">Created: {new Date(project.createdAt).toLocaleString()}</p>
+                <p className="text-xs text-slate-500">Last modified: {new Date(project.lastModifiedAt).toLocaleString()}</p>
+                <button className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)]" type="button" onClick={() => handleOpenProject(project.projectId)}>
+                  Open project
+                </button>
+              </div>
+            ))}
+          </section>
+        </>
+      ) : (
+        <>
       <section className="flex flex-col gap-3">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
-          Home
+          {t("home.badge")}
         </p>
-        <h2 className="text-3xl font-semibold text-slate-900">
-          AI-assisted PPSS portal
-        </h2>
-        <p className="max-w-3xl text-sm text-slate-500">
-          Select your role to sign in and access the PPSS platform, matching the
-          stakeholder flow presented in the study.
-        </p>
+        <h2 className="text-3xl font-semibold text-slate-900">{t("home.title")}</h2>
+        <p className="max-w-3xl text-sm text-slate-500">{t("home.description")}</p>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
-        {roles.map((role) => (
-          <div
-            key={role.title}
-            className="rounded-3xl border border-slate-200 bg-white px-6 py-8 text-center shadow-sm"
-          >
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-8 border-slate-100 text-[var(--primary)]">
-              {role.icon}
-            </div>
-            <h3 className="mt-6 text-lg font-semibold text-slate-900">
-              {role.title}
-            </h3>
-            <p className="mt-2 text-sm text-slate-500">{role.description}</p>
-            <button
-              className="mt-6 rounded-full bg-[var(--primary)] px-6 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
-              type="button"
-              onClick={() => {
-                setSelectedRole(role.title);
-                setShowLogin(true);
-              }}
+        {roles.map((role) => {
+          const roleTitle = t(role.titleKey);
+          return (
+            <div
+              key={role.id}
+              className="rounded-3xl border border-slate-200 bg-white px-6 py-8 text-center shadow-sm"
             >
-              Sign in
-            </button>
-          </div>
-        ))}
+              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-8 border-slate-100 text-[var(--primary)]">
+                {role.icon}
+              </div>
+              <h3 className="mt-6 text-lg font-semibold text-slate-900">{roleTitle}</h3>
+              <p className="mt-2 text-sm text-slate-500">{t(role.descriptionKey)}</p>
+              <button
+                className="mt-6 rounded-full bg-[var(--primary)] px-6 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
+                type="button"
+                onClick={() => {
+                  setSelectedRole(role.id);
+                  setShowLogin(true);
+                }}
+              >
+                {t("home.signIn")}
+              </button>
+            </div>
+          );
+        })}
       </section>
 
       {showLogin && (
@@ -207,13 +272,13 @@ export default function Home() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
-                  Secure access
+                  {t("home.secureAccess")}
                 </p>
                 <h3 className="mt-2 text-2xl font-semibold text-slate-900">
-                  Sign in to Workspace
+                  {t("home.signInWorkspace")}
                 </h3>
                 <p className="mt-2 text-sm text-slate-500">
-                  Role: <span className="font-semibold">{selectedRole}</span>
+                  {t("home.role")}: <span className="font-semibold">{selectedRole ? t(roleLabelKeys[selectedRole]) : ""}</span>
                 </p>
               </div>
               <button
@@ -221,19 +286,18 @@ export default function Home() {
                 type="button"
                 onClick={() => setShowLogin(false)}
               >
-                Close
+                {t("home.close")}
               </button>
             </div>
             <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
               {!isConfigured && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-                  Firebase authentication is not configured. Provide
-                  NEXT_PUBLIC_FIREBASE_* environment variables to enable login.
+                  {t("home.authNotConfigured")}
                 </div>
               )}
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500">
-                  Email
+                  {t("home.email")}
                 </label>
                 <input
                   className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
@@ -246,7 +310,7 @@ export default function Home() {
               </div>
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500">
-                  Password
+                  {t("home.password")}
                 </label>
                 <input
                   className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
@@ -267,20 +331,22 @@ export default function Home() {
                 type="submit"
                 disabled={!isConfigured}
               >
-                Continue to Workspace
+                {t("home.continue")}
               </button>
-              <div className="text-center text-xs text-slate-400">or</div>
+              <div className="text-center text-xs text-slate-400">{t("home.or")}</div>
               <button
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-[var(--primary)] hover:text-[var(--primary)]"
                 type="button"
                 onClick={handleGoogleSignUp}
                 disabled={!isConfigured}
               >
-                Sign up with Google
+                {t("home.google")}
               </button>
             </form>
           </div>
         </div>
+      )}
+        </>
       )}
     </AppShell>
   );
