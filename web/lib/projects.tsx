@@ -1,8 +1,16 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+export type CaseStudyContent = {
+  id: string;
+  label: string;
+  title: string;
+  text: string;
+  imageUrl: string;
+};
+
 export type StageWorkspaceContent = {
-  problem: { text: string; imageUrl: string };
-  data: { text: string; imageUrl: string };
+  problem: { title: string; text: string; imageUrl: string };
+  data: { title: string; text: string; imageUrl: string; cases: CaseStudyContent[] };
   alternatives: { text: string; imageUrl: string };
   evaluation: { text: string; imageUrl: string };
   report: { text: string; imageUrl: string };
@@ -37,9 +45,42 @@ const PROJECTS_KEY = "ppss-projects";
 const ACTIVE_PROJECT_KEY = "ppss-active-project-id";
 const LEGACY_PROJECT_ID = "project-1";
 
-const emptyWorkspaceContent = (): StageWorkspaceContent => ({
-  problem: { text: "", imageUrl: "" },
-  data: { text: "", imageUrl: "" },
+const defaultDataCases = (): CaseStudyContent[] => [
+  {
+    id: "patterns",
+    label: "789 Art Zone",
+    title: "Case Study 1: 789 Art Zone",
+    text: "Describe key regeneration patterns observed in this case.",
+    imageUrl: "",
+  },
+  {
+    id: "painpoints",
+    label: "Gyeungui Line Forest Park",
+    title: "Case Study 2: Gyeungui Line Forest Park",
+    text: "Summarize major constraints, trade-offs, and local concerns.",
+    imageUrl: "",
+  },
+  {
+    id: "opportunities",
+    label: "Highline Park",
+    title: "Case Study 3: Highline Park",
+    text: "Capture transferable opportunities for this project context.",
+    imageUrl: "",
+  },
+];
+
+const defaultWorkspaceContent = (): StageWorkspaceContent => ({
+  problem: {
+    title: "Problem Definition",
+    text: "Add the core project challenge, context, and desired outcomes here.",
+    imageUrl: "",
+  },
+  data: {
+    title: "Data Analysis",
+    text: "Add framing notes for the case studies and analytical focus.",
+    imageUrl: "",
+    cases: defaultDataCases(),
+  },
   alternatives: { text: "", imageUrl: "" },
   evaluation: { text: "", imageUrl: "" },
   report: { text: "", imageUrl: "" },
@@ -57,7 +98,7 @@ const normalizeProject = (project: Partial<ProjectMeta>): ProjectMeta => ({
   projectAdmin: project.projectAdmin ?? "test@snu.ac.kr",
   accessCode: /^\d{4}$/.test(project.accessCode ?? "") ? (project.accessCode as string) : "1234",
   workspaceContent: ((): StageWorkspaceContent => {
-    const defaults = emptyWorkspaceContent();
+    const defaults = defaultWorkspaceContent();
     const incoming = project.workspaceContent ?? ({} as Partial<StageWorkspaceContent>);
     const normalizeStage = (
       value: unknown,
@@ -77,8 +118,50 @@ const normalizeProject = (project: Partial<ProjectMeta>): ProjectMeta => ({
       return fallback;
     };
     return {
-      problem: normalizeStage(incoming.problem, defaults.problem),
-      data: normalizeStage(incoming.data, defaults.data),
+      problem: {
+        ...normalizeStage(incoming.problem, defaults.problem),
+        title:
+          typeof (incoming.problem as { title?: string } | undefined)?.title ===
+          "string"
+            ? (incoming.problem as { title: string }).title
+            : defaults.problem.title,
+      },
+      data: {
+        ...normalizeStage(incoming.data, defaults.data),
+        title:
+          typeof (incoming.data as { title?: string } | undefined)?.title === "string"
+            ? (incoming.data as { title: string }).title
+            : defaults.data.title,
+        cases: Array.isArray((incoming.data as { cases?: unknown[] } | undefined)?.cases)
+          ? ((incoming.data as { cases: unknown[] }).cases
+              .map((item, index) => {
+                const fallback = defaults.data.cases[index] ?? {
+                  id: `case-${index + 1}`,
+                  label: `Case ${index + 1}`,
+                  title: `Case ${index + 1}`,
+                  text: "",
+                  imageUrl: "",
+                };
+                if (!item || typeof item !== "object") {
+                  return fallback;
+                }
+                const value = item as Partial<CaseStudyContent>;
+                return {
+                  id: typeof value.id === "string" ? value.id : fallback.id,
+                  label:
+                    typeof value.label === "string" ? value.label : fallback.label,
+                  title:
+                    typeof value.title === "string" ? value.title : fallback.title,
+                  text: typeof value.text === "string" ? value.text : fallback.text,
+                  imageUrl:
+                    typeof value.imageUrl === "string"
+                      ? value.imageUrl
+                      : fallback.imageUrl,
+                };
+              })
+              .slice(0, 3) as CaseStudyContent[])
+          : defaultDataCases(),
+      },
       alternatives: normalizeStage(incoming.alternatives, defaults.alternatives),
       evaluation: normalizeStage(incoming.evaluation, defaults.evaluation),
       report: normalizeStage(incoming.report, defaults.report),
@@ -154,7 +237,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         ? (options?.accessCode as string)
         : "1234",
 
-      workspaceContent: emptyWorkspaceContent(),
+      workspaceContent: defaultWorkspaceContent(),
     });
     const next = [item, ...projects];
     persistProjects(next);
