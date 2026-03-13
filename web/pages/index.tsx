@@ -2,6 +2,7 @@ import { useRouter } from "next/router";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../lib/auth";
+import { loadCurrentSiteImage } from "../lib/firebase";
 import { normalizeRoleId, roleLabelKeys, useI18n, type RoleId } from "../lib/i18n";
 import { useProject } from "../lib/projects";
 
@@ -115,6 +116,8 @@ export default function Home() {
   const { t } = useI18n();
   const { projects, createProject, setActiveProjectId } = useProject();
   const [projectName, setProjectName] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [projectThumbnails, setProjectThumbnails] = useState<Record<string, string>>({});
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -132,6 +135,25 @@ export default function Home() {
       window.localStorage.setItem("ppss-role", normalized);
     }
   }, []);
+
+  useEffect(() => {
+    if (!user || projects.length === 0) return;
+    let mounted = true;
+    const loadThumbnails = async () => {
+      const entries = await Promise.all(
+        projects.map(async (project) => {
+          const image = await loadCurrentSiteImage(project.projectId);
+          return [project.projectId, image?.downloadUrl ?? ""] as const;
+        })
+      );
+      if (!mounted) return;
+      setProjectThumbnails(Object.fromEntries(entries));
+    };
+    loadThumbnails();
+    return () => {
+      mounted = false;
+    };
+  }, [user, projects]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -182,6 +204,7 @@ export default function Home() {
     const next = createProject(trimmed);
     setProjectName("");
     setActiveProjectId(next.projectId);
+    setShowCreateModal(false);
     router.push({ pathname: "/workspace", query: { projectId: next.projectId } });
   };
 
@@ -196,37 +219,72 @@ export default function Home() {
           <section className="flex flex-col gap-3">
             <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">Projects</p>
             <h2 className="text-3xl font-semibold text-slate-900">Select a project</h2>
-            <p className="max-w-3xl text-sm text-slate-500">All workflow data is now isolated per project.</p>
+            <p className="max-w-3xl text-sm text-slate-500">Open an existing workspace or create a new one from the gallery.</p>
           </section>
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <input
-                className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
-                placeholder="New project name"
-                value={projectName}
-                onChange={(event) => setProjectName(event.target.value)}
-              />
-              <button
-                className="rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white"
-                type="button"
-                onClick={handleCreateProject}
-              >
-                Create project
-              </button>
-            </div>
-          </section>
-          <section className="grid gap-4 md:grid-cols-2">
+
+          <section className="grid grid-cols-1 gap-5 md:grid-cols-3 xl:grid-cols-4">
             {projects.map((project) => (
-              <div key={project.projectId} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-lg font-semibold text-slate-900">{project.projectName}</h3>
-                <p className="mt-2 text-xs text-slate-500">Created: {new Date(project.createdAt).toLocaleString()}</p>
-                <p className="text-xs text-slate-500">Last modified: {new Date(project.lastModifiedAt).toLocaleString()}</p>
-                <button className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)]" type="button" onClick={() => handleOpenProject(project.projectId)}>
-                  Open project
+              <button
+                key={project.projectId}
+                type="button"
+                onClick={() => handleOpenProject(project.projectId)}
+                className="group overflow-hidden rounded-3xl border border-slate-200 bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+              >
+                <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100">
+                  {projectThumbnails[project.projectId] ? (
+                    <img
+                      src={projectThumbnails[project.projectId]}
+                      alt={`${project.projectName} thumbnail`}
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400">
+                      <span className="text-sm font-semibold">No preview</span>
+                    </div>
+                  )}
+                </div>
+                <div className="p-4">
+                  <h3 className="text-base font-semibold text-slate-900">{project.projectName}</h3>
+                  <p className="mt-1 text-xs text-slate-500">Last modified: {new Date(project.lastModifiedAt).toLocaleString()}</p>
+                </div>
+              </button>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="flex aspect-[4/3] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white text-slate-500 shadow-sm transition hover:-translate-y-1 hover:border-[var(--primary)] hover:text-[var(--primary)] hover:shadow-lg"
+            >
+              <span className="text-5xl leading-none">+</span>
+              <span className="mt-2 text-sm font-semibold">Create Project</span>
+            </button>
+          </section>
+
+          {showCreateModal && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
+              <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-semibold text-slate-900">Create Project</h3>
+                  <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs" onClick={() => setShowCreateModal(false)}>Close</button>
+                </div>
+                <div className="mt-4">
+                  <input
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
+                    placeholder="New project name"
+                    value={projectName}
+                    onChange={(event) => setProjectName(event.target.value)}
+                  />
+                </div>
+                <button
+                  className="mt-4 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white"
+                  type="button"
+                  onClick={handleCreateProject}
+                >
+                  Create project
                 </button>
               </div>
-            ))}
-          </section>
+            </div>
+          )}
         </>
       ) : (
         <>
