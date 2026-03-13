@@ -1,12 +1,24 @@
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../lib/auth";
+import { loadCurrentSiteImage } from "../lib/firebase";
+import { normalizeRoleId, roleLabelKeys, useI18n, type RoleId } from "../lib/i18n";
+import { useProject } from "../lib/projects";
+import { getRoleForProject, isSystemAdmin } from "../lib/rbac";
 
-const roles = [
+type RoleItem = {
+  id: RoleId;
+  titleKey: string;
+  descriptionKey: string;
+  icon: ReactNode;
+};
+
+const roles: RoleItem[] = [
   {
-    title: "The Public",
-    description: "Review shared PPSS updates and community impact summaries.",
+    id: "public",
+    titleKey: "role.public",
+    descriptionKey: "roledesc.public",
     icon: (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <circle
@@ -28,9 +40,9 @@ const roles = [
     ),
   },
   {
-    title: "Business Owners",
-    description:
-      "Coordinate manufacturing objectives and monitor process plan progress.",
+    id: "business",
+    titleKey: "role.business",
+    descriptionKey: "roledesc.business",
     icon: (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <rect
@@ -54,9 +66,9 @@ const roles = [
     ),
   },
   {
-    title: "Planners",
-    description:
-      "Develop prompt-driven plans, assess safety checks, and validate outputs.",
+    id: "planners",
+    titleKey: "role.planners",
+    descriptionKey: "roledesc.planners",
     icon: (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <path
@@ -75,9 +87,9 @@ const roles = [
     ),
   },
   {
-    title: "Government",
-    description:
-      "Audit compliance, review reports, and manage policy-driven oversight.",
+    id: "government",
+    titleKey: "role.government",
+    descriptionKey: "roledesc.government",
     icon: (
       <svg viewBox="0 0 24 24" className="h-7 w-7" aria-hidden="true">
         <path
@@ -102,23 +114,79 @@ const roles = [
 export default function Home() {
   const router = useRouter();
   const { signIn, signInWithGoogle, isConfigured, user } = useAuth();
+  const { t } = useI18n();
+  const { projects, createProject, setActiveProjectId, updateProject, deleteProject } = useProject();
+  const [projectName, setProjectName] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [projectThumbnails, setProjectThumbnails] = useState<Record<string, string>>({});
+  const userEmail = user?.email ?? null;
+  const userIsSystemAdmin = isSystemAdmin(userEmail);
+  const visibleProjects = projects.filter((project) => {
+    const role = getRoleForProject(userEmail, project);
+    return role === "system_admin" || role === "project_admin" || role === "participant";
+  });
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedRole, setSelectedRole] = useState<string>("");
+  const [selectedRole, setSelectedRole] = useState<RoleId | "">("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  useEffect(() => {
-    if (user) {
-      router.push("/workspace");
-    }
-  }, [user, router]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem("ppss-role");
+    const normalized = normalizeRoleId(stored);
+    if (stored && normalized && stored !== normalized) {
+      window.localStorage.setItem("ppss-role", normalized);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user || projects.length === 0) return;
+    let mounted = true;
+    const loadThumbnails = async () => {
+      const entries = await Promise.all(
+        projects.map(async (project) => {
+          const image = await loadCurrentSiteImage(project.projectId);
+          return [project.projectId, image?.downloadUrl ?? ""] as const;
+        })
+      );
+      if (!mounted) return;
+      setProjectThumbnails(Object.fromEntries(entries));
+    };
+    loadThumbnails();
+    return () => {
+      mounted = false;
+    };
+  }, [user, projects]);
+
+  const handleManageProject = (projectId: string) => {
+    if (!userIsSystemAdmin) return;
+    const target = projects.find((project) => project.projectId === projectId);
+    if (!target) return;
+    const nextAdmin = window.prompt("Project admin email", target.projectAdmin) ?? target.projectAdmin;
+    const nextCode = window.prompt("4-digit access code", target.accessCode) ?? target.accessCode;
+    if (!/^\d{4}$/.test(nextCode)) {
+      window.alert("Access code must be 4 digits.");
+      return;
+    }
+    updateProject(projectId, { projectAdmin: nextAdmin, accessCode: nextCode });
+  };
+
+  const handleDeleteProject = (projectId: string) => {
+    if (!userIsSystemAdmin) return;
+    const ok = window.confirm("Delete this project?");
+    if (!ok) return;
+    deleteProject(projectId);
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setErrorMessage("");
     if (!selectedRole) {
-      setErrorMessage("Select a role before signing in.");
+      setErrorMessage(t("home.error.roleSignIn"));
       return;
     }
     try {
@@ -127,12 +195,10 @@ export default function Home() {
         window.localStorage.setItem("ppss-role", selectedRole);
       }
       setShowLogin(false);
-      router.push("/workspace");
+      router.push("/");
     } catch (error) {
       setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to sign in. Please try again."
+        error instanceof Error ? error.message : t("home.error.signIn")
       );
     }
   };
@@ -140,7 +206,7 @@ export default function Home() {
   const handleGoogleSignUp = async () => {
     setErrorMessage("");
     if (!selectedRole) {
-      setErrorMessage("Select a role before signing up.");
+      setErrorMessage(t("home.error.roleSignUp"));
       return;
     }
     try {
@@ -149,56 +215,155 @@ export default function Home() {
         window.localStorage.setItem("ppss-role", selectedRole);
       }
       setShowLogin(false);
-      router.push("/workspace");
+      router.push("/");
     } catch (error) {
       setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Google sign up failed. Please try again."
+        error instanceof Error ? error.message : t("home.error.google")
       );
     }
   };
 
+
+
+  const handleCreateProject = () => {
+    const trimmed = projectName.trim();
+    if (!trimmed) return;
+    const next = createProject(trimmed, userEmail ?? undefined);
+    setProjectName("");
+    setActiveProjectId(next.projectId);
+    setShowCreateModal(false);
+    router.push({ pathname: "/workspace", query: { projectId: next.projectId } });
+  };
+
+  const handleOpenProject = (projectId: string) => {
+    setActiveProjectId(projectId);
+    router.push({ pathname: "/workspace", query: { projectId } });
+  };
   return (
     <AppShell>
+      {user ? (
+        <>
+          <section className="flex flex-col gap-3">
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">Projects</p>
+            <h2 className="text-3xl font-semibold text-slate-900">Select a project</h2>
+            <p className="max-w-3xl text-sm text-slate-500">Open an existing workspace or create a new one from the gallery.</p>
+          </section>
+
+          <section className="grid grid-cols-1 gap-5 md:grid-cols-3 xl:grid-cols-4">
+            {visibleProjects.map((project) => (
+              <button
+                key={project.projectId}
+                type="button"
+                onClick={() => handleOpenProject(project.projectId)}
+                className="group overflow-hidden rounded-3xl border border-slate-200 bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+              >
+                <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100">
+                  {projectThumbnails[project.projectId] ? (
+                    <img
+                      src={projectThumbnails[project.projectId]}
+                      alt={`${project.projectName} thumbnail`}
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400">
+                      <span className="text-sm font-semibold">No preview</span>
+                    </div>
+                  )}
+                </div>
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">{project.projectName}</h3>
+                    <p className="mt-1 text-xs text-slate-500">Last modified: {new Date(project.lastModifiedAt).toLocaleString()}</p>
+                    <p className="text-xs text-slate-400">Admin: {project.projectAdmin}</p>
+                  </div>
+                  {userIsSystemAdmin && (
+                    <div className="flex gap-1">
+                      <button type="button" className="rounded-md border border-slate-200 px-2 py-1 text-[10px]" onClick={(e) => { e.stopPropagation(); handleManageProject(project.projectId); }}>Manage</button>
+                      {project.projectId !== "project-1" && (
+                        <button type="button" className="rounded-md border border-rose-200 px-2 py-1 text-[10px] text-rose-600" onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.projectId); }}>Delete</button>
+                      )}
+                    </div>
+                  )}
+                  </div>
+                </div>
+              </button>
+            ))}
+
+            {userIsSystemAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowCreateModal(true)}
+              className="flex aspect-[4/3] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white text-slate-500 shadow-sm transition hover:-translate-y-1 hover:border-[var(--primary)] hover:text-[var(--primary)] hover:shadow-lg"
+            >
+              <span className="text-5xl leading-none">+</span>
+              <span className="mt-2 text-sm font-semibold">Create Project</span>
+            </button>
+          )}
+          </section>
+
+          {showCreateModal && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
+              <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-semibold text-slate-900">Create Project</h3>
+                  <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs" onClick={() => setShowCreateModal(false)}>Close</button>
+                </div>
+                <div className="mt-4">
+                  <input
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
+                    placeholder="New project name"
+                    value={projectName}
+                    onChange={(event) => setProjectName(event.target.value)}
+                  />
+                </div>
+                <button
+                  className="mt-4 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white"
+                  type="button"
+                  onClick={handleCreateProject}
+                >
+                  Create project
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
       <section className="flex flex-col gap-3">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
-          Home
+          {t("home.badge")}
         </p>
-        <h2 className="text-3xl font-semibold text-slate-900">
-          AI-assisted PPSS portal
-        </h2>
-        <p className="max-w-3xl text-sm text-slate-500">
-          Select your role to sign in and access the PPSS platform, matching the
-          stakeholder flow presented in the study.
-        </p>
+        <h2 className="text-3xl font-semibold text-slate-900">{t("home.title")}</h2>
+        <p className="max-w-3xl text-sm text-slate-500">{t("home.description")}</p>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
-        {roles.map((role) => (
-          <div
-            key={role.title}
-            className="rounded-3xl border border-slate-200 bg-white px-6 py-8 text-center shadow-sm"
-          >
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-8 border-slate-100 text-[var(--primary)]">
-              {role.icon}
-            </div>
-            <h3 className="mt-6 text-lg font-semibold text-slate-900">
-              {role.title}
-            </h3>
-            <p className="mt-2 text-sm text-slate-500">{role.description}</p>
-            <button
-              className="mt-6 rounded-full bg-[var(--primary)] px-6 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
-              type="button"
-              onClick={() => {
-                setSelectedRole(role.title);
-                setShowLogin(true);
-              }}
+        {roles.map((role) => {
+          const roleTitle = t(role.titleKey);
+          return (
+            <div
+              key={role.id}
+              className="rounded-3xl border border-slate-200 bg-white px-6 py-8 text-center shadow-sm"
             >
-              Sign in
-            </button>
-          </div>
-        ))}
+              <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border-8 border-slate-100 text-[var(--primary)]">
+                {role.icon}
+              </div>
+              <h3 className="mt-6 text-lg font-semibold text-slate-900">{roleTitle}</h3>
+              <p className="mt-2 text-sm text-slate-500">{t(role.descriptionKey)}</p>
+              <button
+                className="mt-6 rounded-full bg-[var(--primary)] px-6 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
+                type="button"
+                onClick={() => {
+                  setSelectedRole(role.id);
+                  setShowLogin(true);
+                }}
+              >
+                {t("home.signIn")}
+              </button>
+            </div>
+          );
+        })}
       </section>
 
       {showLogin && (
@@ -207,13 +372,13 @@ export default function Home() {
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
-                  Secure access
+                  {t("home.secureAccess")}
                 </p>
                 <h3 className="mt-2 text-2xl font-semibold text-slate-900">
-                  Sign in to Workspace
+                  {t("home.signInWorkspace")}
                 </h3>
                 <p className="mt-2 text-sm text-slate-500">
-                  Role: <span className="font-semibold">{selectedRole}</span>
+                  {t("home.role")}: <span className="font-semibold">{selectedRole ? t(roleLabelKeys[selectedRole]) : ""}</span>
                 </p>
               </div>
               <button
@@ -221,19 +386,18 @@ export default function Home() {
                 type="button"
                 onClick={() => setShowLogin(false)}
               >
-                Close
+                {t("home.close")}
               </button>
             </div>
             <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
               {!isConfigured && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
-                  Firebase authentication is not configured. Provide
-                  NEXT_PUBLIC_FIREBASE_* environment variables to enable login.
+                  {t("home.authNotConfigured")}
                 </div>
               )}
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500">
-                  Email
+                  {t("home.email")}
                 </label>
                 <input
                   className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
@@ -246,7 +410,7 @@ export default function Home() {
               </div>
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-500">
-                  Password
+                  {t("home.password")}
                 </label>
                 <input
                   className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
@@ -267,20 +431,22 @@ export default function Home() {
                 type="submit"
                 disabled={!isConfigured}
               >
-                Continue to Workspace
+                {t("home.continue")}
               </button>
-              <div className="text-center text-xs text-slate-400">or</div>
+              <div className="text-center text-xs text-slate-400">{t("home.or")}</div>
               <button
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-[var(--primary)] hover:text-[var(--primary)]"
                 type="button"
                 onClick={handleGoogleSignUp}
                 disabled={!isConfigured}
               >
-                Sign up with Google
+                {t("home.google")}
               </button>
             </form>
           </div>
         </div>
+      )}
+        </>
       )}
     </AppShell>
   );

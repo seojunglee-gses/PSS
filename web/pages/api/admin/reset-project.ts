@@ -11,7 +11,9 @@ const COLLECTIONS_TO_RESET = [
   "ppssExecutiveSummaries",
 ];
 
-const STORAGE_PREFIXES_TO_RESET = ["ppss-generated-images/", "ppss-chat-logs/"];
+const storagePrefixesToReset = (projectId?: string) => [`ppss-generated-images/${projectId || "project-1"}/`, `ppss-chat-logs/${projectId || "project-1"}/`];
+
+const resolveCollection = (base: string, projectId?: string) => `${base}_${projectId || "project-1"}`;
 
 const deleteCollection = async (collectionPath: string) => {
   const db = adminDb();
@@ -51,8 +53,9 @@ export default async function handler(
     const token = authHeader.replace("Bearer ", "");
     await verifyAdminRequest(token);
 
-    await Promise.all(COLLECTIONS_TO_RESET.map(deleteCollection));
-    await Promise.all(STORAGE_PREFIXES_TO_RESET.map(deleteStoragePrefix));
+    const { projectId } = req.body as { projectId?: string };
+    await Promise.all(COLLECTIONS_TO_RESET.map((name) => deleteCollection(resolveCollection(name, projectId))));
+    await Promise.all(storagePrefixesToReset(projectId).map(deleteStoragePrefix));
 
     res.status(200).json({ ok: true });
   } catch (error) {

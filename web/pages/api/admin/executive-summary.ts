@@ -26,6 +26,8 @@ type WorkspaceSummary = {
   overallSummary: string;
 };
 
+const scopedCollection = (base: string, projectId?: string) => `${base}_${projectId || "project-1"}`;
+
 const stageOrder = [
   { id: "problem", label: "Problem Definition" },
   { id: "data", label: "Data Analysis" },
@@ -82,7 +84,7 @@ export default async function handler(
       return;
     }
 
-    const { stageId } = req.body as { stageId?: string };
+    const { stageId, projectId } = req.body as { stageId?: string; projectId?: string };
     const stage = stageOrder.find((entry) => entry.id === stageId);
     if (!stage) {
       res.status(400).json({ error: "Invalid stage selection." });
@@ -90,7 +92,7 @@ export default async function handler(
     }
 
     const db = adminDb();
-    const snapshot = await db.collection("ppssWorkspaceSummaries").get();
+    const snapshot = await db.collection(scopedCollection("ppssWorkspaceSummaries", projectId)).get();
     const summaries = snapshot.docs.map((docSnap) => ({
       userId: docSnap.id,
       summary: docSnap.data() as WorkspaceSummary,
@@ -134,7 +136,7 @@ export default async function handler(
       })
       .filter((text): text is string => Boolean(text));
 
-    const backgroundKnowledge = await loadBackgroundKnowledge();
+    const backgroundKnowledge = await loadBackgroundKnowledge(projectId);
     const curatedBackground = backgroundKnowledge?.curatedText?.trim();
 
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -224,11 +226,11 @@ export default async function handler(
       createdAt: new Date().toISOString(),
     };
 
-    await db.collection("ppssExecutiveSummaries").add(payload);
+    await db.collection(scopedCollection("ppssExecutiveSummaries", projectId)).add(payload);
 
     if (stage.id === "alternatives") {
       const submissionsSnap = await db
-        .collection("ppssUserDesignSubmissions")
+        .collection(scopedCollection("ppssUserDesignSubmissions", projectId))
         .get();
       const latestByUser = submissionsSnap.docs.reduce<
         Record<string, { imageId: string; createdAt: string }>
@@ -254,7 +256,7 @@ export default async function handler(
       const evaluationImages = await Promise.all(
         Object.entries(latestByUser).map(async ([userId, submission]) => {
           const imageSnap = await db
-            .collection("ppssGeneratedImages")
+            .collection(scopedCollection("ppssGeneratedImages", projectId))
             .doc(submission.imageId)
             .get();
           if (!imageSnap.exists) {
@@ -279,7 +281,7 @@ export default async function handler(
         })
       );
 
-      const evaluationCollection = db.collection("ppssEvaluationImages");
+      const evaluationCollection = db.collection(scopedCollection("ppssEvaluationImages", projectId));
       const existing = await evaluationCollection.get();
       const batch = db.batch();
       existing.docs.forEach((docSnap) => {
