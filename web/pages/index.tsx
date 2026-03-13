@@ -232,7 +232,7 @@ export default function Home() {
     const trimmed = projectName.trim();
     if (!trimmed) return;
     if (!/^\d{4}$/.test(projectAccessCodeInput)) return;
-    const next = createProject(trimmed, projectAdminInput || userEmail ?? undefined);
+    const next = createProject(trimmed, (projectAdminInput || userEmail) ?? undefined);
     updateProject(next.projectId, { projectAdmin: projectAdminInput, accessCode: projectAccessCodeInput });
     setProjectName("");
     setActiveProjectId(next.projectId);
