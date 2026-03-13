@@ -261,6 +261,9 @@ export default function Workspace() {
   const [accessCodeInput, setAccessCodeInput] = useState("");
   const [accessCodeError, setAccessCodeError] = useState("");
   const [contentDraft, setContentDraft] = useState("");
+  const [showTextEditor, setShowTextEditor] = useState(false);
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [imageDraft, setImageDraft] = useState("");
   const chatStorageKey = useMemo(
     () => (userKey ? `ppss-chat-logs-${projectId}-${userKey}` : null),
     [userKey, projectId]
@@ -331,7 +334,9 @@ export default function Workspace() {
 
 
   useEffect(() => {
-    setContentDraft(activeProject?.workspaceContent?.[activeStep.id as keyof typeof activeProject.workspaceContent] ?? "");
+    const current = activeProject?.workspaceContent?.[activeStep.id as keyof typeof activeProject.workspaceContent];
+    setContentDraft(current?.text ?? "");
+    setImageDraft(current?.imageUrl ?? "");
   }, [activeProject?.projectId, activeStep.id]);
   const [chatLogsByStep, setChatLogsByStep] = useState<
     Record<string, ChatLog[]>
@@ -1400,6 +1405,7 @@ const handleSend = async () => {
   const isProjectCodeRequired = Boolean(user && !isSystem && activeProject);
   const accessCodeKey = `ppss-project-access-${projectId}`;
   const hasAccess = typeof window !== "undefined" && sessionStorage.getItem(accessCodeKey) === "ok";
+  const stageContent = activeProject?.workspaceContent?.[activeStep.id as keyof typeof activeProject.workspaceContent];
 
   if (loading) {
     return (
@@ -1799,35 +1805,65 @@ const handleSend = async () => {
         </div>
       </section>
 
-      {canEditContent && activeProject && (
+      {activeProject && (
         <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Workspace explanation content</p>
-          <textarea
-            className="mt-3 h-24 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            value={contentDraft}
-            onChange={(event) => setContentDraft(event.target.value)}
-          />
-          <button
-            type="button"
-            className="mt-3 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)]"
-            onClick={() => updateProject(projectId, {
-              workspaceContent: {
-                ...activeProject.workspaceContent,
-                [activeStep.id]: contentDraft,
-              } as any,
-            })}
-          >
-            Save explanation
-          </button>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Workspace explanation template</p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <button
+              type="button"
+              className="flex h-36 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
+              onClick={() => canEditContent && setShowImageEditor(true)}
+            >
+              {stageContent?.imageUrl ? (
+                <img src={stageContent.imageUrl} alt="Stage explanation" className="h-full w-full rounded-2xl object-cover" />
+              ) : (
+                <span>{canEditContent ? "Add Image" : "No image"}</span>
+              )}
+            </button>
+            <button
+              type="button"
+              className="flex h-36 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-3 text-left text-sm text-slate-500"
+              onClick={() => canEditContent && setShowTextEditor(true)}
+            >
+              {stageContent?.text ? stageContent.text : canEditContent ? "Add Text" : "No text"}
+            </button>
+          </div>
         </section>
       )}
 
-      {activeStep.id === "problem" && (
+      {showTextEditor && canEditContent && activeProject && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
+            <h4 className="text-lg font-semibold text-slate-900">Edit explanation text</h4>
+            <textarea className="mt-3 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" value={contentDraft} onChange={(event) => setContentDraft(event.target.value)} />
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setShowTextEditor(false)}>Cancel</button>
+              <button type="button" className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white" onClick={() => { updateProject(projectId, { workspaceContent: { ...activeProject.workspaceContent, [activeStep.id]: { text: contentDraft, imageUrl: stageContent?.imageUrl ?? "" } } as any }); setShowTextEditor(false); }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showImageEditor && canEditContent && activeProject && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-xl">
+            <h4 className="text-lg font-semibold text-slate-900">Edit explanation image</h4>
+            <input className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Image URL" value={imageDraft} onChange={(event) => setImageDraft(event.target.value)} />
+            <p className="mt-2 text-xs text-slate-500">Paste image URL for now (project-scoped).</p>
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setShowImageEditor(false)}>Cancel</button>
+              <button type="button" className="rounded-xl bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white" onClick={() => { updateProject(projectId, { workspaceContent: { ...activeProject.workspaceContent, [activeStep.id]: { text: stageContent?.text ?? "", imageUrl: imageDraft } } as any }); setShowImageEditor(false); }}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+            {activeStep.id === "problem" && (
         <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("step.problem")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              {activeProject?.workspaceContent.problem || t("workspace.problemIntro")}
+              {activeProject?.workspaceContent.problem.text || t("workspace.problemIntro")}
             </p>
             {renderProblemDefinitionContext()}
           </div>
@@ -1841,7 +1877,7 @@ const handleSend = async () => {
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
               <h3 className="text-lg font-semibold">{t("step.data")}</h3>
               <p className="mt-2 text-sm text-slate-500">
-                {activeProject?.workspaceContent.data || t("workspace.dataIntro")}
+                {activeProject?.workspaceContent.data.text || t("workspace.dataIntro")}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
@@ -2176,7 +2212,7 @@ const handleSend = async () => {
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("step.evaluation")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              {activeProject?.workspaceContent.evaluation || t("workspace.evaluationIntro")}
+              {activeProject?.workspaceContent.evaluation.text || t("workspace.evaluationIntro")}
             </p>
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {isLoadingEvaluationImages && (
@@ -2261,7 +2297,7 @@ const handleSend = async () => {
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("workspace.reportTitle")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              {activeProject?.workspaceContent.report || t("workspace.reportIntro")}
+              {activeProject?.workspaceContent.report.text || t("workspace.reportIntro")}
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
               {roleTabs.map((tab) => (

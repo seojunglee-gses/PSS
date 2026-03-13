@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 export type StageWorkspaceContent = {
-  problem: string;
-  data: string;
-  alternatives: string;
-  evaluation: string;
-  report: string;
+  problem: { text: string; imageUrl: string };
+  data: { text: string; imageUrl: string };
+  alternatives: { text: string; imageUrl: string };
+  evaluation: { text: string; imageUrl: string };
+  report: { text: string; imageUrl: string };
 };
 
 export type ProjectMeta = {
@@ -34,11 +34,11 @@ const ACTIVE_PROJECT_KEY = "ppss-active-project-id";
 const LEGACY_PROJECT_ID = "project-1";
 
 const emptyWorkspaceContent = (): StageWorkspaceContent => ({
-  problem: "",
-  data: "",
-  alternatives: "",
-  evaluation: "",
-  report: "",
+  problem: { text: "", imageUrl: "" },
+  data: { text: "", imageUrl: "" },
+  alternatives: { text: "", imageUrl: "" },
+  evaluation: { text: "", imageUrl: "" },
+  report: { text: "", imageUrl: "" },
 });
 
 const ProjectContext = createContext<ProjectContextValue | undefined>(undefined);
@@ -52,10 +52,34 @@ const normalizeProject = (project: Partial<ProjectMeta>): ProjectMeta => ({
   lastModifiedAt: project.lastModifiedAt ?? nowIso(),
   projectAdmin: project.projectAdmin ?? "test@snu.ac.kr",
   accessCode: /^\d{4}$/.test(project.accessCode ?? "") ? (project.accessCode as string) : "1234",
-  workspaceContent: {
-    ...emptyWorkspaceContent(),
-    ...(project.workspaceContent ?? {}),
-  },
+  workspaceContent: ((): StageWorkspaceContent => {
+    const defaults = emptyWorkspaceContent();
+    const incoming = project.workspaceContent ?? ({} as Partial<StageWorkspaceContent>);
+    const normalizeStage = (
+      value: unknown,
+      fallback: { text: string; imageUrl: string }
+    ) => {
+      if (typeof value === "string") {
+        return { text: value, imageUrl: "" };
+      }
+      if (value && typeof value === "object") {
+        const stage = value as { text?: string; imageUrl?: string };
+        return {
+          text: typeof stage.text === "string" ? stage.text : fallback.text,
+          imageUrl:
+            typeof stage.imageUrl === "string" ? stage.imageUrl : fallback.imageUrl,
+        };
+      }
+      return fallback;
+    };
+    return {
+      problem: normalizeStage(incoming.problem, defaults.problem),
+      data: normalizeStage(incoming.data, defaults.data),
+      alternatives: normalizeStage(incoming.alternatives, defaults.alternatives),
+      evaluation: normalizeStage(incoming.evaluation, defaults.evaluation),
+      report: normalizeStage(incoming.report, defaults.report),
+    };
+  })(),
 });
 
 const buildDefaultProject = (): ProjectMeta =>
