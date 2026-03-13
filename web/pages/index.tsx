@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../lib/auth";
 import { normalizeRoleId, roleLabelKeys, useI18n, type RoleId } from "../lib/i18n";
+import { useProject } from "../lib/projects";
 
 type RoleItem = {
   id: RoleId;
@@ -112,17 +113,14 @@ export default function Home() {
   const router = useRouter();
   const { signIn, signInWithGoogle, isConfigured, user } = useAuth();
   const { t } = useI18n();
+  const { projects, createProject, setActiveProjectId } = useProject();
+  const [projectName, setProjectName] = useState("");
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [selectedRole, setSelectedRole] = useState<RoleId | "">("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  useEffect(() => {
-    if (user) {
-      router.push("/workspace");
-    }
-  }, [user, router]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -148,7 +146,7 @@ export default function Home() {
         window.localStorage.setItem("ppss-role", selectedRole);
       }
       setShowLogin(false);
-      router.push("/workspace");
+      router.push("/");
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : t("home.error.signIn")
@@ -168,7 +166,7 @@ export default function Home() {
         window.localStorage.setItem("ppss-role", selectedRole);
       }
       setShowLogin(false);
-      router.push("/workspace");
+      router.push("/");
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : t("home.error.google")
@@ -176,8 +174,62 @@ export default function Home() {
     }
   };
 
+
+
+  const handleCreateProject = () => {
+    const trimmed = projectName.trim();
+    if (!trimmed) return;
+    const next = createProject(trimmed);
+    setProjectName("");
+    setActiveProjectId(next.projectId);
+    router.push({ pathname: "/workspace", query: { projectId: next.projectId } });
+  };
+
+  const handleOpenProject = (projectId: string) => {
+    setActiveProjectId(projectId);
+    router.push({ pathname: "/workspace", query: { projectId } });
+  };
   return (
     <AppShell>
+      {user ? (
+        <>
+          <section className="flex flex-col gap-3">
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">Projects</p>
+            <h2 className="text-3xl font-semibold text-slate-900">Select a project</h2>
+            <p className="max-w-3xl text-sm text-slate-500">All workflow data is now isolated per project.</p>
+          </section>
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input
+                className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[var(--primary)] focus:outline-none"
+                placeholder="New project name"
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+              />
+              <button
+                className="rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white"
+                type="button"
+                onClick={handleCreateProject}
+              >
+                Create project
+              </button>
+            </div>
+          </section>
+          <section className="grid gap-4 md:grid-cols-2">
+            {projects.map((project) => (
+              <div key={project.projectId} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-900">{project.projectName}</h3>
+                <p className="mt-2 text-xs text-slate-500">Created: {new Date(project.createdAt).toLocaleString()}</p>
+                <p className="text-xs text-slate-500">Last modified: {new Date(project.lastModifiedAt).toLocaleString()}</p>
+                <button className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)]" type="button" onClick={() => handleOpenProject(project.projectId)}>
+                  Open project
+                </button>
+              </div>
+            ))}
+          </section>
+        </>
+      ) : (
+        <>
       <section className="flex flex-col gap-3">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
           {t("home.badge")}
@@ -293,6 +345,8 @@ export default function Home() {
             </form>
           </div>
         </div>
+      )}
+        </>
       )}
     </AppShell>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
 import {
@@ -9,12 +10,13 @@ import {
   saveStageLocks,
 } from "../../lib/firebase";
 import { useI18n } from "../../lib/i18n";
+import { useProject } from "../../lib/projects";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
 
 type Provider = (typeof providers)[number];
 
-const providerStorageKey = "ppss-active-provider";
+const providerStorageKeyBase = "ppss-active-provider";
 const adminEmail = "test@snu.ac.kr";
 
 const fileToBase64 = (file: File) =>
@@ -29,8 +31,16 @@ const fileToBase64 = (file: File) =>
   });
 
 export default function Setting() {
+  const router = useRouter();
   const { user } = useAuth();
+  const { activeProjectId, setActiveProjectId } = useProject();
+  const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
+  const projectId = queryProjectId ?? activeProjectId ?? "project-1";
   const { t } = useI18n();
+  const providerStorageKey = `${providerStorageKeyBase}-${projectId}`;
+  useEffect(() => {
+    if (queryProjectId && queryProjectId !== activeProjectId) setActiveProjectId(queryProjectId);
+  }, [queryProjectId, activeProjectId, setActiveProjectId]);
   const [activeProvider, setActiveProvider] = useState<Provider>("ChatGPT");
   const [isAdmin, setIsAdmin] = useState(false);
   const [siteImageFiles, setSiteImageFiles] = useState<File[]>([]);
@@ -79,11 +89,11 @@ export default function Setting() {
     if (storedProvider && providers.includes(storedProvider as Provider)) {
       setActiveProvider(storedProvider as Provider);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     let isMounted = true;
-    loadBackgroundKnowledge()
+    loadBackgroundKnowledge(projectId)
       .then((data) => {
         if (isMounted && data?.curatedText) {
           setBackgroundText(data.curatedText);
@@ -96,7 +106,7 @@ export default function Setting() {
           );
         }
       });
-    loadCurrentSiteImage()
+    loadCurrentSiteImage(projectId)
       .then((data) => {
         if (isMounted && data?.downloadUrl) {
           setSiteImagePreview(data.downloadUrl);
@@ -118,7 +128,7 @@ export default function Setting() {
     }
     let isMounted = true;
     const loadWorkspaceProgress = async () => {
-      const summaries = await loadAllWorkspaceSummaries();
+      const summaries = await loadAllWorkspaceSummaries(projectId);
       if (!isMounted) {
         return;
       }
@@ -139,7 +149,7 @@ export default function Setting() {
     return () => {
       isMounted = false;
     };
-  }, [isAdmin]);
+  }, [isAdmin, projectId]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -147,7 +157,7 @@ export default function Setting() {
     }
     let isMounted = true;
     const loadLocks = async () => {
-      const state = await loadStageLocks();
+      const state = await loadStageLocks(projectId);
       if (!isMounted) {
         return;
       }
@@ -157,7 +167,7 @@ export default function Setting() {
     return () => {
       isMounted = false;
     };
-  }, [isAdmin]);
+  }, [isAdmin, projectId]);
 
   const handleExecutiveSummaryGenerate = async (stageId: string) => {
     if (!user) {
@@ -183,7 +193,7 @@ export default function Setting() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ stageId }),
+        body: JSON.stringify({ stageId, projectId }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -218,7 +228,7 @@ export default function Setting() {
     await saveStageLocks({
       lockedStages: nextLocks,
       updatedBy: user.email ?? user.uid,
-    });
+    }, projectId);
   };
 
   const handleProjectReset = async () => {
@@ -244,6 +254,7 @@ export default function Setting() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ projectId }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -333,7 +344,7 @@ export default function Setting() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ files: filesPayload }),
+        body: JSON.stringify({ projectId, files: filesPayload }),
       });
 
       const text = await res.text();
@@ -377,7 +388,7 @@ export default function Setting() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
+        body: JSON.stringify({ projectId,
           name: file.name,
           type: file.type,
           size: file.size,

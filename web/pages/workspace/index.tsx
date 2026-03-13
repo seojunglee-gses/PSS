@@ -20,6 +20,7 @@ import {
 } from "../../lib/firebase";
 import { useAuth } from "../../lib/auth";
 import { useRouter } from "next/router";
+import { useProject } from "../../lib/projects";
 import { loadGeneratedImages } from "../../lib/firebase";
 import type { SiteImage } from "../../lib/firebase";
 import { normalizeRoleId, roleLabelKeys, useI18n } from "../../lib/i18n";
@@ -55,7 +56,7 @@ const stepSummaries: Record<string, string> = {
     "Prepared final decision report and supporting evidence for approval.",
 };
 
-const providerStorageKey = "ppss-active-provider";
+const providerStorageKeyBase = "ppss-active-provider";
 const adminEmail = "test@snu.ac.kr";
 const pieColors = [
   "#2563eb",
@@ -244,8 +245,13 @@ export default function Workspace() {
   useState<SiteImage | null>(null);
   const router = useRouter();
   const { t } = useI18n();
+  const { activeProjectId, setActiveProjectId, touchProject } = useProject();
   const { user, loading } = useAuth();
   const userKey = user?.uid;
+  const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
+  const projectId = queryProjectId ?? activeProjectId ?? "project-1";
+  const providerStorageKey = `${providerStorageKeyBase}-${projectId}`;
+  const activeStepStorageKey = `ppss-active-step-${projectId}`;
   const [activeStep, setActiveStep] = useState(steps[0]);
   const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
@@ -253,30 +259,36 @@ export default function Workspace() {
   const normalizedActiveRole = normalizeRoleId(role);
   const [activeProvider, setActiveProvider] = useState("Gemini");
   const chatStorageKey = useMemo(
-    () => (userKey ? `ppss-chat-logs-${userKey}` : null),
-    [userKey]
+    () => (userKey ? `ppss-chat-logs-${projectId}-${userKey}` : null),
+    [userKey, projectId]
   );
   
   useEffect(() => {
+    if (queryProjectId && queryProjectId !== activeProjectId) {
+      setActiveProjectId(queryProjectId);
+    }
+  }, [queryProjectId, activeProjectId, setActiveProjectId]);
+
+  useEffect(() => {
   if (typeof window === "undefined") return;
   
-    const saved = localStorage.getItem("ppss-active-step");
+    const saved = localStorage.getItem(activeStepStorageKey);
     if (!saved) return;
   
     const step = steps.find((s) => s.id === saved);
     if (step) {
       setActiveStep(step);
     }
-  }, []);
+  }, [activeStepStorageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    localStorage.setItem("ppss-active-step", activeStep.id);
+    localStorage.setItem(activeStepStorageKey, activeStep.id);
   }, [activeStep.id]);
 
   const persistChatLogs = async (stepId: string, logs: ChatLog[]) => {
     if (!userKey) return;
-    await saveStepChatLogs(userKey, stepId, logs);
+    await saveStepChatLogs(userKey, stepId, logs, projectId);
   };
 
   const [isSending, setIsSending] = useState(false);
@@ -389,7 +401,7 @@ export default function Workspace() {
       return;
     }
     const loadSavedSummaries = async () => {
-      const summary = await loadWorkspaceSummary(userKey);
+      const summary = await loadWorkspaceSummary(userKey, projectId);
       if (summary?.stageSummaries) {
         setSavedSummaries(summary.stageSummaries);
       }
@@ -412,7 +424,7 @@ export default function Workspace() {
       return;
     }
     const loadEvaluations = async () => {
-      const results = await loadEvaluationResults();
+      const results = await loadEvaluationResults(projectId);
       if (results.length) {
         setEvaluationResults(results);
       }
@@ -425,7 +437,7 @@ export default function Workspace() {
       return;
     }
     const loadExecutiveSummary = async () => {
-      const summary = await loadLatestExecutiveSummariesByStage();
+      const summary = await loadLatestExecutiveSummariesByStage(projectId);
       if (summary) {
         setExecutiveSummary(summary);
       }
@@ -438,7 +450,7 @@ export default function Workspace() {
       return;
     }
     const loadSummaries = async () => {
-      const summaries = await loadAllWorkspaceSummaries();
+      const summaries = await loadAllWorkspaceSummaries(projectId);
       setAllWorkspaceSummaries(summaries);
     };
     loadSummaries();
@@ -569,7 +581,7 @@ export default function Workspace() {
       return;
     }
     const loadLocks = async () => {
-      const state = await loadStageLocks();
+      const state = await loadStageLocks(projectId);
       if (!state) {
         setLockedStages({});
         setRevisedAfterLock({});
@@ -598,7 +610,7 @@ export default function Workspace() {
    const refreshEvaluationImages = useCallback(async () => {
     setIsLoadingEvaluationImages(true);
     try {
-      const submissions = await loadEvaluationImages();
+      const submissions = await loadEvaluationImages(projectId);
       if (!submissions.length) {
         setEvaluationImages([]);
         return;
@@ -642,7 +654,7 @@ export default function Workspace() {
   
   useEffect(() => {
     const loadSiteImage = async () => {
-      const current = await loadCurrentSiteImage();
+      const current = await loadCurrentSiteImage(projectId);
       if (current?.imageId) {
         setSiteImageConfigured(true);
         setSiteImageId(current.imageId);
@@ -883,6 +895,7 @@ export default function Workspace() {
     }
 
     const saved = await saveGeneratedImageFromBase64({
+      projectId,
       imageId: payload.imageId,
       base64: payload.base64,
       label,
@@ -970,7 +983,7 @@ const sanitizeLogs = (logs: ChatLog[]) =>
       if (userKey) {
         await saveWorkspaceSummary(userKey, {
           alternativesInitialized: true,
-        });
+        }, projectId);
         setAlternativesInitialized(true);
       }
     })
@@ -1175,7 +1188,8 @@ const handleSend = async () => {
         overallSummary: payload.workspaceSummary.overallSummary ?? "",
         role,
         completedStages: nextCompletedStages,
-      });
+      }, projectId);
+      touchProject(projectId);
       if (stageSummary) {
         setSavedSummaries(mergedStageSummaries);
       }
@@ -1234,7 +1248,7 @@ const handleSend = async () => {
       ...prev,
       [selected.id]: Object.keys(prev).length + 1,
     }));
-    await saveUserDesignSubmission(userKey, selected.id);
+    await saveUserDesignSubmission(userKey, selected.id, projectId);
     await refreshEvaluationImages();
     setHasInitializedAlternatives(true);
     setSelectedAlternative(null);
@@ -1258,7 +1272,7 @@ const handleSend = async () => {
       const updated = [...prev, payload];
       return updated;
     });
-    await sendEvaluationResult(payload);
+    await sendEvaluationResult(payload, projectId);
 
     await handleCompleteStep();
   };
@@ -1446,7 +1460,7 @@ const handleSend = async () => {
                     lockedStages: nextLocks,
                     revisedAfterLock,
                     updatedBy: user.email ?? user.uid,
-                  });
+                  }, projectId);
                 }}
                 disabled={isStageLocked}
               >
@@ -1470,7 +1484,7 @@ const handleSend = async () => {
                     lockedStages: nextLocks,
                     revisedAfterLock: nextRevised,
                     updatedBy: user.email ?? user.uid,
-                  });
+                  }, projectId);
                 }}
                 disabled={!isStageLocked}
               >

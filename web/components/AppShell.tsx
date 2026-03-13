@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../lib/auth";
 import { normalizeRoleId, roleLabelKeys, useI18n, type Locale } from "../lib/i18n";
+import { useProject } from "../lib/projects";
 
 const navigation = [
   {
@@ -101,6 +102,7 @@ export default function AppShell({ children }: AppShellProps) {
   const [role, setRole] = useState<string>("Guest");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showMobileAccount, setShowMobileAccount] = useState(false);
+  const { activeProjectId, activeProject } = useProject();
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -136,7 +138,7 @@ export default function AppShell({ children }: AppShellProps) {
         </h1>
         {!isMobile && (
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-blue-100">
-            {t("shell.role")} · {displayRole}
+            {t("shell.role")} · {displayRole}{activeProject ? ` · ${activeProject.projectName}` : ""}
           </p>
         )}
       </div>
@@ -160,7 +162,7 @@ export default function AppShell({ children }: AppShellProps) {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={item.href === "/" ? item.href : { pathname: item.href, query: activeProjectId ? { projectId: activeProjectId } : {} }}
               className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
                 isActive
                   ? "bg-white/20 text-white"

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppShell from "../../components/AppShell";
+import { useRouter } from "next/router";
 import { useAuth } from "../../lib/auth";
 import {
   loadChatLogsFromFirestore,
@@ -7,6 +8,7 @@ import {
   loadWorkspaceSummary,
 } from "../../lib/firebase";
 import { useI18n } from "../../lib/i18n";
+import { useProject } from "../../lib/projects";
 
 const workflowStepKeys = ["step.problem", "step.data", "step.alternatives", "step.evaluation", "step.report"];
 
@@ -84,9 +86,16 @@ export default function Report() {
   "executive" | "workspace"
 >("executive");
 
+  const router = useRouter();
   const { user } = useAuth();
+  const { activeProjectId, setActiveProjectId } = useProject();
+  const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
+  const projectId = queryProjectId ?? activeProjectId ?? "project-1";
   const userKey = user?.uid;
   const { t } = useI18n();
+  useEffect(() => {
+    if (queryProjectId && queryProjectId !== activeProjectId) setActiveProjectId(queryProjectId);
+  }, [queryProjectId, activeProjectId, setActiveProjectId]);
   const [activeStep] = useState(workflowStepKeys[0]);
   const [chatLogs, setChatLogs] = useState<ChatLog[]>([]);
   const [executiveSummary, setExecutiveSummary] =
@@ -111,7 +120,7 @@ export default function Report() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const summary = await loadWorkspaceSummary(userKey);
+      const summary = await loadWorkspaceSummary(userKey, projectId);
       if (summary) {
         setWorkspaceSummary(summary);
       } else {
@@ -126,7 +135,7 @@ export default function Report() {
     } finally {
       setLoading(false);
     }
-  }, [userKey]);
+  }, [userKey, projectId]);
 
   useEffect(() => {
     if (!userKey) {
@@ -136,21 +145,21 @@ export default function Report() {
       return;
     }
     const loadData = async () => {
-      const logs = await loadChatLogsFromFirestore<ChatLog[]>(userKey);
+      const logs = await loadChatLogsFromFirestore<ChatLog[]>(userKey, projectId);
       if (logs) {
         setChatLogs(logs);
       }
-      const summary = await loadWorkspaceSummary(userKey);
+      const summary = await loadWorkspaceSummary(userKey, projectId);
       if (summary) {
         setWorkspaceSummary(summary);
       }
-      const executive = await loadLatestExecutiveSummariesByStage();
+      const executive = await loadLatestExecutiveSummariesByStage(projectId);
       if (executive) {
         setExecutiveSummary(executive);
       }
     };
     loadData();
-  }, [userKey]);
+  }, [userKey, projectId]);
 
 
   return (
