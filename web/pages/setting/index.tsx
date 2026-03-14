@@ -414,16 +414,6 @@ export default function Setting() {
     }
   };
 
-  if (!canAccessAdminSettings) {
-    return (
-      <AppShell>
-        <section className="rounded-3xl border border-[var(--border)] bg-white p-6 text-sm text-slate-600">
-          Administrator settings are available only to Project Admin and System Admin.
-        </section>
-      </AppShell>
-    );
-  }
-
   return (
     <AppShell>
       <section className="flex flex-col gap-2">
