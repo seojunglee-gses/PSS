@@ -2,7 +2,6 @@ import { useRouter } from "next/router";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../lib/auth";
-import { loadCurrentSiteImage } from "../lib/firebase";
 import { normalizeRoleId, roleLabelKeys, useI18n, type RoleId } from "../lib/i18n";
 import { useProject } from "../lib/projects";
 import { getRoleForProject, isSystemAdmin } from "../lib/rbac";
@@ -148,21 +147,11 @@ export default function Home() {
 
   useEffect(() => {
     if (!user || projects.length === 0) return;
-    let mounted = true;
-    const loadThumbnails = async () => {
-      const entries = await Promise.all(
-        projects.map(async (project) => {
-          const image = await loadCurrentSiteImage(project.projectId);
-          return [project.projectId, image?.downloadUrl ?? ""] as const;
-        })
-      );
-      if (!mounted) return;
-      setProjectThumbnails(Object.fromEntries(entries));
-    };
-    loadThumbnails();
-    return () => {
-      mounted = false;
-    };
+    const entries = projects.map((project) => {
+      const preview = project.workspaceContent?.problem?.imageUrl ?? "";
+      return [project.projectId, preview] as const;
+    });
+    setProjectThumbnails(Object.fromEntries(entries));
   }, [user, projects]);
 
   const handleManageProject = (projectId: string) => {
