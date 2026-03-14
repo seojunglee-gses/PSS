@@ -1827,19 +1827,9 @@ const handleSend = async () => {
       {activeStep.id === "problem" && (
         <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <h3 className="text-lg font-semibold text-slate-900">{t("step.problem")}</h3>
-              <p className="mt-1 text-sm text-slate-500">{t("workspace.problemIntro")}</p>
-            </div>
-            <div className="flex items-start justify-between gap-3">
-              <h4
-                className={`text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-                contentEditable={canEditContent && editingStageId === "problem"}
-                suppressContentEditableWarning
-                onBlur={(event) => setProblemDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
-              >
-                {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || "Project Title"}
-              </h4>
+            <h3 className="text-lg font-semibold text-slate-900">Problem Definition</h3>
+            <p className="mt-1 text-sm text-slate-500">Clarify your interest and objectives</p>
+            <div className="mt-4 flex items-start justify-end gap-3">
               {canEditContent && (
                 <div className="flex items-center gap-2">
                   <button
@@ -1866,7 +1856,7 @@ const handleSend = async () => {
             </div>
             <button
               type="button"
-              className="mt-4 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
+              className="mt-2 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
               onClick={() => {
                 if (!canEditContent || editingStageId !== "problem") return;
                 const next = window.prompt("Problem definition image URL", problemDraft.imageUrl ?? "");
@@ -1880,6 +1870,14 @@ const handleSend = async () => {
                 <span>{canEditContent && editingStageId === "problem" ? "Click to add image" : "No image"}</span>
               )}
             </button>
+            <h4
+              className={`mt-4 text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
+              contentEditable={canEditContent && editingStageId === "problem"}
+              suppressContentEditableWarning
+              onBlur={(event) => setProblemDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
+            >
+              {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || "Project Title"}
+            </h4>
             <p
               className={`mt-4 text-sm text-slate-500 ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
               contentEditable={canEditContent && editingStageId === "problem"}
@@ -1897,10 +1895,8 @@ const handleSend = async () => {
         <section className={responsiveWorkspaceSection}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
-              <div className="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                <h3 className="text-lg font-semibold text-slate-900">{t("step.data")}</h3>
-                <p className="mt-1 text-sm text-slate-500">{t("workspace.dataIntro")}</p>
-              </div>
+              <h3 className="text-lg font-semibold text-slate-900">Data Analysis</h3>
+              <p className="mt-1 text-sm text-slate-500">Summarize what to compare across similar projects.</p>
               <div className="flex items-start justify-between gap-3">
               <h4
                 className={`text-lg font-semibold ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
