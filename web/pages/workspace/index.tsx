@@ -1930,14 +1930,6 @@ const handleSend = async () => {
                 </div>
               )}
               </div>
-              <p
-                className={`mt-2 text-sm text-slate-500 ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-                contentEditable={canEditContent && editingStageId === "data"}
-                suppressContentEditableWarning
-                onBlur={(event) => setDataDraft((prev) => ({ ...prev, text: event.currentTarget.textContent ?? "" }))}
-              >
-                {(editingStageId === "data" ? dataDraft.text : activeProject?.workspaceContent.data.text) || "Summarize what to compare across similar projects."}
-              </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {((editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases) ?? [
                   { label: "789 Art Zone", id: "patterns" },
