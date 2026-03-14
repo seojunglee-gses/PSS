@@ -2,7 +2,6 @@ import { useRouter } from "next/router";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../lib/auth";
-import { loadCurrentSiteImage } from "../lib/firebase";
 import { normalizeRoleId, roleLabelKeys, useI18n, type RoleId } from "../lib/i18n";
 import { useProject } from "../lib/projects";
 import { getRoleForProject, isSystemAdmin } from "../lib/rbac";
@@ -120,7 +119,6 @@ export default function Home() {
   const [projectAdminInput, setProjectAdminInput] = useState("test@snu.ac.kr");
   const [projectAccessCodeInput, setProjectAccessCodeInput] = useState("1234");
   const [showProjectModal, setShowProjectModal] = useState(false);
-  const [projectModalMode, setProjectModalMode] = useState<"create" | "manage">("create");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [projectThumbnails, setProjectThumbnails] = useState<Record<string, string>>({});
   const userEmail = user?.email ?? null;
@@ -149,28 +147,17 @@ export default function Home() {
 
   useEffect(() => {
     if (!user || projects.length === 0) return;
-    let mounted = true;
-    const loadThumbnails = async () => {
-      const entries = await Promise.all(
-        projects.map(async (project) => {
-          const image = await loadCurrentSiteImage(project.projectId);
-          return [project.projectId, image?.downloadUrl ?? ""] as const;
-        })
-      );
-      if (!mounted) return;
-      setProjectThumbnails(Object.fromEntries(entries));
-    };
-    loadThumbnails();
-    return () => {
-      mounted = false;
-    };
+    const entries = projects.map((project) => {
+      const preview = project.workspaceContent?.problem?.imageUrl ?? "";
+      return [project.projectId, preview] as const;
+    });
+    setProjectThumbnails(Object.fromEntries(entries));
   }, [user, projects]);
 
   const handleManageProject = (projectId: string) => {
     if (!userIsSystemAdmin) return;
     const target = projects.find((project) => project.projectId === projectId);
     if (!target) return;
-    setProjectModalMode("manage");
     setEditingProjectId(projectId);
     setProjectName(target.projectName);
     setProjectAdminInput(target.projectAdmin);
@@ -312,7 +299,7 @@ export default function Home() {
             {userIsSystemAdmin && (
             <button
               type="button"
-              onClick={() => { setProjectModalMode("create"); setEditingProjectId(null); setProjectName(""); setProjectAdminInput("test@snu.ac.kr"); setProjectAccessCodeInput("1234"); setShowProjectModal(true); }}
+              onClick={() => { setEditingProjectId(null); setProjectName(""); setProjectAdminInput("test@snu.ac.kr"); setProjectAccessCodeInput("1234"); setShowProjectModal(true); }}
               className="flex aspect-[4/3] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white text-slate-500 shadow-sm transition hover:-translate-y-1 hover:border-[var(--primary)] hover:text-[var(--primary)] hover:shadow-lg"
             >
               <span className="text-5xl leading-none">+</span>
@@ -325,19 +312,19 @@ export default function Home() {
             <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
               <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-semibold text-slate-900">{projectModalMode === "create" ? "Create Project" : "Manage Project"}</h3>
+                  <h3 className="text-xl font-semibold text-slate-900">Manage Project</h3>
                   <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs" onClick={() => setShowProjectModal(false)}>Close</button>
                 </div>
                 <div className="mt-4 space-y-3">
                   <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} />
                   <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="Project admin email" value={projectAdminInput} onChange={(event) => setProjectAdminInput(event.target.value)} />
                   <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="4-digit access code" value={projectAccessCodeInput} onChange={(event) => setProjectAccessCodeInput(event.target.value.replace(/\D/g, "").slice(0, 4))} />
-                  <p className="text-xs text-slate-500">Explanation template content is edited inside the workspace placeholders.</p>
+
                 </div>
-                <button className="mt-4 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white" type="button" onClick={projectModalMode === "create" ? handleCreateProject : handleSaveProject}>
-                  {projectModalMode === "create" ? "Create project" : "Save project"}
+                <button className="mt-4 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white" type="button" onClick={editingProjectId ? handleSaveProject : handleCreateProject}>
+                  {editingProjectId ? "Save project" : "Create project"}
                 </button>
-                {projectModalMode === "manage" && editingProjectId && editingProjectId !== "project-1" && (
+                {editingProjectId && editingProjectId !== "project-1" && (
                   <button className="mt-2 w-full rounded-xl border border-rose-200 px-4 py-3 text-sm font-semibold text-rose-600" type="button" onClick={() => { handleDeleteProject(editingProjectId); setShowProjectModal(false); }}>
                     Delete project
                   </button>
