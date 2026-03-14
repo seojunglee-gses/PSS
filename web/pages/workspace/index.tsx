@@ -1828,35 +1828,38 @@ const handleSend = async () => {
         <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <div className="flex items-start justify-between gap-3">
-            <h3
-              className={`text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-              contentEditable={canEditContent && editingStageId === "problem"}
-              suppressContentEditableWarning
-              onBlur={(event) => setProblemDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
-            >
-              {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || t("step.problem")}
-            </h3>
-            {canEditContent && (
-              <div className="flex items-center gap-2">
-                {editingStageId === "problem" ? (
-                  <>
-                    <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>Cancel</button>
-                    <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>Save</button>
-                  </>
-                ) : (
-                  <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={() => beginEditStage("problem")}>Edit</button>
-                )}
-              </div>
-            )}
+              <h3
+                className={`text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
+                contentEditable={canEditContent && editingStageId === "problem"}
+                suppressContentEditableWarning
+                onBlur={(event) => setProblemDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
+              >
+                {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || t("step.problem")}
+              </h3>
+              {canEditContent && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${editingStageId === "problem" ? "border-[var(--primary)] text-[var(--primary)]" : "border-slate-200"}`}
+                    onClick={() => {
+                      if (editingStageId === "problem") {
+                        cancelEditStage();
+                        return;
+                      }
+                      beginEditStage("problem");
+                    }}
+                  >
+                    {editingStageId === "problem" ? "Editing" : "Edit"}
+                  </button>
+                  {editingStageId === "problem" && (
+                    <>
+                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>Cancel</button>
+                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>Save</button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
-            <p
-              className={`mt-2 text-sm text-slate-500 ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-              contentEditable={canEditContent && editingStageId === "problem"}
-              suppressContentEditableWarning
-              onBlur={(event) => setProblemDraft((prev) => ({ ...prev, text: event.currentTarget.textContent ?? "" }))}
-            >
-              {(editingStageId === "problem" ? problemDraft.text : activeProject?.workspaceContent.problem.text) || t("workspace.problemIntro")}
-            </p>
             <button
               type="button"
               className="mt-4 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
@@ -1873,6 +1876,14 @@ const handleSend = async () => {
                 <span>{canEditContent && editingStageId === "problem" ? "Click to add image" : "No image"}</span>
               )}
             </button>
+            <p
+              className={`mt-4 text-sm text-slate-500 ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
+              contentEditable={canEditContent && editingStageId === "problem"}
+              suppressContentEditableWarning
+              onBlur={(event) => setProblemDraft((prev) => ({ ...prev, text: event.currentTarget.textContent ?? "" }))}
+            >
+              {(editingStageId === "problem" ? problemDraft.text : activeProject?.workspaceContent.problem.text) || t("workspace.problemIntro")}
+            </p>
           </div>
           {renderChatPanel()}
         </section>
@@ -1893,13 +1904,24 @@ const handleSend = async () => {
               </h3>
               {canEditContent && (
                 <div className="flex items-center gap-2">
-                  {editingStageId === "data" ? (
+                  <button
+                    type="button"
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${editingStageId === "data" ? "border-[var(--primary)] text-[var(--primary)]" : "border-slate-200"}`}
+                    onClick={() => {
+                      if (editingStageId === "data") {
+                        cancelEditStage();
+                        return;
+                      }
+                      beginEditStage("data");
+                    }}
+                  >
+                    {editingStageId === "data" ? "Editing" : "Edit"}
+                  </button>
+                  {editingStageId === "data" && (
                     <>
                       <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>Cancel</button>
                       <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>Save</button>
                     </>
-                  ) : (
-                    <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={() => beginEditStage("data")}>Edit</button>
                   )}
                 </div>
               )}
