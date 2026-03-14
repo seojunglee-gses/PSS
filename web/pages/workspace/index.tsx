@@ -1827,15 +1827,19 @@ const handleSend = async () => {
       {activeStep.id === "problem" && (
         <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+            <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <h3 className="text-lg font-semibold text-slate-900">{t("step.problem")}</h3>
+              <p className="mt-1 text-sm text-slate-500">{t("workspace.problemIntro")}</p>
+            </div>
             <div className="flex items-start justify-between gap-3">
-              <h3
+              <h4
                 className={`text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
                 contentEditable={canEditContent && editingStageId === "problem"}
                 suppressContentEditableWarning
                 onBlur={(event) => setProblemDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
               >
-                {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || t("step.problem")}
-              </h3>
+                {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || "Project Title"}
+              </h4>
               {canEditContent && (
                 <div className="flex items-center gap-2">
                   <button
@@ -1882,7 +1886,7 @@ const handleSend = async () => {
               suppressContentEditableWarning
               onBlur={(event) => setProblemDraft((prev) => ({ ...prev, text: event.currentTarget.textContent ?? "" }))}
             >
-              {(editingStageId === "problem" ? problemDraft.text : activeProject?.workspaceContent.problem.text) || t("workspace.problemIntro")}
+              {(editingStageId === "problem" ? problemDraft.text : activeProject?.workspaceContent.problem.text) || "Write your project context and objectives here."}
             </p>
           </div>
           {renderChatPanel()}
@@ -1893,15 +1897,19 @@ const handleSend = async () => {
         <section className={responsiveWorkspaceSection}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
+              <div className="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <h3 className="text-lg font-semibold text-slate-900">{t("step.data")}</h3>
+                <p className="mt-1 text-sm text-slate-500">{t("workspace.dataIntro")}</p>
+              </div>
               <div className="flex items-start justify-between gap-3">
-              <h3
+              <h4
                 className={`text-lg font-semibold ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
                 contentEditable={canEditContent && editingStageId === "data"}
                 suppressContentEditableWarning
                 onBlur={(event) => setDataDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
               >
-                {(editingStageId === "data" ? dataDraft.title : activeProject?.workspaceContent.data.title) || t("step.data")}
-              </h3>
+                {(editingStageId === "data" ? dataDraft.title : activeProject?.workspaceContent.data.title) || "Case Study Notes"}
+              </h4>
               {canEditContent && (
                 <div className="flex items-center gap-2">
                   <button
@@ -1932,7 +1940,7 @@ const handleSend = async () => {
                 suppressContentEditableWarning
                 onBlur={(event) => setDataDraft((prev) => ({ ...prev, text: event.currentTarget.textContent ?? "" }))}
               >
-                {(editingStageId === "data" ? dataDraft.text : activeProject?.workspaceContent.data.text) || t("workspace.dataIntro")}
+                {(editingStageId === "data" ? dataDraft.text : activeProject?.workspaceContent.data.text) || "Summarize what to compare across similar projects."}
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {((editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases) ?? [
