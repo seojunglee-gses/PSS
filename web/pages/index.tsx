@@ -4,7 +4,7 @@ import AppShell from "../components/AppShell";
 import { useAuth } from "../lib/auth";
 import { normalizeRoleId, roleLabelKeys, useI18n, type RoleId } from "../lib/i18n";
 import { useProject } from "../lib/projects";
-import { getRoleForProject, isSystemAdmin } from "../lib/rbac";
+import { canManageProject, getRoleForProject, isSystemAdmin } from "../lib/rbac";
 
 type RoleItem = {
   id: RoleId;
@@ -155,8 +155,8 @@ export default function Home() {
   }, [user, projects]);
 
   const handleManageProject = (projectId: string) => {
-    if (!userIsSystemAdmin) return;
     const target = projects.find((project) => project.projectId === projectId);
+    if (!canManageProject(userEmail, target)) return;
     if (!target) return;
     setEditingProjectId(projectId);
     setProjectName(target.projectName);
@@ -283,10 +283,10 @@ export default function Home() {
                     <p className="mt-1 text-xs text-slate-500">Last modified: {new Date(project.lastModifiedAt).toLocaleString()}</p>
                     <p className="text-xs text-slate-400">Admin: {project.projectAdmin}</p>
                   </div>
-                  {userIsSystemAdmin && (
+                  {canManageProject(userEmail, project) && (
                     <div className="flex gap-1">
                       <button type="button" className="rounded-md border border-slate-200 px-2 py-1 text-[10px]" onClick={(e) => { e.stopPropagation(); handleManageProject(project.projectId); }}>Manage</button>
-                      {project.projectId !== "project-1" && (
+                      {userIsSystemAdmin && project.projectId !== "project-1" && (
                         <button type="button" className="rounded-md border border-rose-200 px-2 py-1 text-[10px] text-rose-600" onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.projectId); }}>Delete</button>
                       )}
                     </div>

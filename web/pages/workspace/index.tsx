@@ -1897,15 +1897,7 @@ const handleSend = async () => {
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
               <h3 className="text-lg font-semibold text-slate-900">Data Analysis</h3>
               <p className="mt-1 text-sm text-slate-500">Summarize what to compare across similar projects.</p>
-              <div className="flex items-start justify-between gap-3">
-              <h4
-                className={`text-lg font-semibold ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-                contentEditable={canEditContent && editingStageId === "data"}
-                suppressContentEditableWarning
-                onBlur={(event) => setDataDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
-              >
-                {(editingStageId === "data" ? dataDraft.title : activeProject?.workspaceContent.data.title) || "Case Study Notes"}
-              </h4>
+              <div className="flex items-start justify-end gap-3">
               {canEditContent && (
                 <div className="flex items-center gap-2">
                   <button
