@@ -2,7 +2,7 @@ import type { ProjectMeta } from "./projects";
 
 export type UserRole = "system_admin" | "project_admin" | "participant";
 
-const SYSTEM_ADMIN_EMAILS = new Set(["adm@snu.ac.kr", "test@snu.ac.kr"]);
+const SYSTEM_ADMIN_EMAILS = new Set(["adm@snu.ac.kr"]);
 
 export const getRoleForProject = (
   email?: string | null,
