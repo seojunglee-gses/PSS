@@ -173,6 +173,14 @@ const getFirebaseApp = () => {
   return getApps()[0];
 };
 
+export const getFirebaseDb = () => {
+  const app = getFirebaseApp();
+  if (!app) {
+    return null;
+  }
+  return getFirestore(app);
+};
+
 const getFirebaseStorage = () => {
   const app = getFirebaseApp();
   if (!app) {
