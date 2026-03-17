@@ -1442,7 +1442,7 @@ const handleSend = async () => {
 
   const confirmDiscardUnsaved = useCallback(() => {
     if (!hasUnsavedExplanationChanges) return true;
-    return window.confirm("You have unsaved explanation changes. Discard them?");
+    return window.confirm(t("workspace.unsavedDiscard"));
   }, [hasUnsavedExplanationChanges]);
 
   const beginEditStage = useCallback(
@@ -1495,7 +1495,7 @@ const handleSend = async () => {
   useEffect(() => {
     const onRouteChangeStart = () => {
       if (!isEditingExplanation || !hasUnsavedExplanationChanges) return;
-      if (!window.confirm("You have unsaved explanation changes. Leave this page?")) {
+      if (!window.confirm(t("workspace.unsavedLeave"))) {
         router.events.emit("routeChangeError");
         throw "Abort route change. Unsaved explanation changes.";
       }
@@ -1531,8 +1531,8 @@ const handleSend = async () => {
     return (
       <AppShell>
         <div className="mx-auto w-full max-w-md rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">Project Access Code</h3>
-          <p className="mt-2 text-sm text-slate-500">Enter the 4-digit code to open this project.</p>
+          <h3 className="text-lg font-semibold text-slate-900">{t("workspace.projectAccessCode")}</h3>
+          <p className="mt-2 text-sm text-slate-500">{t("workspace.projectAccessDesc")}</p>
           <input
             className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
             value={accessCodeInput}
@@ -1549,10 +1549,10 @@ const handleSend = async () => {
                 router.replace({ pathname: "/workspace", query: { projectId } });
                 return;
               }
-              setAccessCodeError("Invalid access code.");
+              setAccessCodeError(t("workspace.invalidAccessCode"));
             }}
           >
-            Enter project
+            {t("workspace.projectEnter")}
           </button>
         </div>
       </AppShell>
@@ -1793,7 +1793,7 @@ const handleSend = async () => {
                 onClick={() => {
                   if (step.id === activeStep.id) return;
                   if (isEditingExplanation && hasUnsavedExplanationChanges) {
-                    const ok = window.confirm("You have unsaved explanation changes. Switch stage and discard them?");
+                    const ok = window.confirm(t("workspace.unsavedSwitchStage"));
                     if (!ok) return;
                     setProblemDraft(activeProject?.workspaceContent.problem ?? problemDraft);
                     setDataDraft(activeProject?.workspaceContent.data ?? dataDraft);
@@ -1827,8 +1827,8 @@ const handleSend = async () => {
       {activeStep.id === "problem" && (
         <section className={responsiveWorkspaceSection}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">Problem Definition</h3>
-            <p className="mt-1 text-sm text-slate-500">Clarify your interest and objectives</p>
+            <h3 className="text-lg font-semibold text-slate-900">{t("step.problem")}</h3>
+            <p className="mt-1 text-sm text-slate-500">{t("workspace.problemIntro")}</p>
             <div className="mt-4 flex items-start justify-end gap-3">
               {canEditContent && (
                 <div className="flex items-center gap-2">
@@ -1843,12 +1843,12 @@ const handleSend = async () => {
                       beginEditStage("problem");
                     }}
                   >
-                    {editingStageId === "problem" ? "Editing" : "Edit"}
+                    {editingStageId === "problem" ? t("workspace.editing") : t("workspace.edit")}
                   </button>
                   {editingStageId === "problem" && (
                     <>
-                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>Cancel</button>
-                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>Save</button>
+                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>{t("workspace.cancel")}</button>
+                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>{t("workspace.save")}</button>
                     </>
                   )}
                 </div>
@@ -1859,15 +1859,15 @@ const handleSend = async () => {
               className="mt-2 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
               onClick={() => {
                 if (!canEditContent || editingStageId !== "problem") return;
-                const next = window.prompt("Problem definition image URL", problemDraft.imageUrl ?? "");
+                const next = window.prompt(t("workspace.problemImageUrlPrompt"), problemDraft.imageUrl ?? "");
                 if (next === null) return;
                 setProblemDraft((prev) => ({ ...prev, imageUrl: next.trim() }));
               }}
             >
               {(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ? (
-                <img src={(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ?? ""} alt="Problem definition" className="h-auto w-full object-contain" />
+                <img src={(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ?? ""} alt={t("step.problem")} className="h-auto w-full object-contain" />
               ) : (
-                <span>{canEditContent && editingStageId === "problem" ? "Click to add image" : "No image"}</span>
+                <span>{canEditContent && editingStageId === "problem" ? t("workspace.clickToAddImage") : t("workspace.noImage")}</span>
               )}
             </button>
             <h4
@@ -1876,7 +1876,7 @@ const handleSend = async () => {
               suppressContentEditableWarning
               onBlur={(event) => setProblemDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
             >
-              {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || "Project Title"}
+              {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || t("workspace.defaultProjectTitle")}
             </h4>
             <p
               className={`mt-4 text-sm text-slate-500 ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
@@ -1884,7 +1884,7 @@ const handleSend = async () => {
               suppressContentEditableWarning
               onBlur={(event) => setProblemDraft((prev) => ({ ...prev, text: event.currentTarget.textContent ?? "" }))}
             >
-              {(editingStageId === "problem" ? problemDraft.text : activeProject?.workspaceContent.problem.text) || "Write your project context and objectives here."}
+              {(editingStageId === "problem" ? problemDraft.text : activeProject?.workspaceContent.problem.text) || t("workspace.defaultProblemText")}
             </p>
           </div>
           {renderChatPanel()}
@@ -1895,8 +1895,8 @@ const handleSend = async () => {
         <section className={responsiveWorkspaceSection}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
-              <h3 className="text-lg font-semibold text-slate-900">Data Analysis</h3>
-              <p className="mt-1 text-sm text-slate-500">Summarize what to compare across similar projects.</p>
+              <h3 className="text-lg font-semibold text-slate-900">{t("step.data")}</h3>
+              <p className="mt-1 text-sm text-slate-500">{t("workspace.dataIntro")}</p>
               <div className="flex items-start justify-end gap-3">
               {canEditContent && (
                 <div className="flex items-center gap-2">
@@ -1911,12 +1911,12 @@ const handleSend = async () => {
                       beginEditStage("data");
                     }}
                   >
-                    {editingStageId === "data" ? "Editing" : "Edit"}
+                    {editingStageId === "data" ? t("workspace.editing") : t("workspace.edit")}
                   </button>
                   {editingStageId === "data" && (
                     <>
-                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>Cancel</button>
-                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>Save</button>
+                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>{t("workspace.cancel")}</button>
+                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>{t("workspace.save")}</button>
                     </>
                   )}
                 </div>
@@ -1962,7 +1962,7 @@ const handleSend = async () => {
                     const cases = editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases;
                     const activeCase = cases?.find((item) => item.id === activeTab);
                     if (!activeCase) {
-                      return <p className="text-sm text-slate-500">No case study content.</p>;
+                      return <p className="text-sm text-slate-500">{t("workspace.noCaseStudyContent")}</p>;
                     }
                     return (
                       <>
@@ -1979,7 +1979,7 @@ const handleSend = async () => {
                           className="mt-3 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-500"
                           onClick={() => {
                             if (!canEditContent || editingStageId !== "data") return;
-                            const next = window.prompt("Case study image URL", activeCase.imageUrl ?? "");
+                            const next = window.prompt(t("workspace.caseImageUrlPrompt"), activeCase.imageUrl ?? "");
                             if (next === null) return;
                             saveDataCaseDraft(activeCase.id, { imageUrl: next.trim() });
                           }}
@@ -1987,7 +1987,7 @@ const handleSend = async () => {
                           {activeCase.imageUrl ? (
                             <img src={activeCase.imageUrl} alt={activeCase.label} className="h-auto w-full object-contain" />
                           ) : (
-                            <span>{canEditContent && editingStageId === "data" ? "Click to add image" : "No image"}</span>
+                            <span>{canEditContent && editingStageId === "data" ? t("workspace.clickToAddImage") : t("workspace.noImage")}</span>
                           )}
                         </button>
                         <p
@@ -2210,7 +2210,7 @@ const handleSend = async () => {
               <div className="mt-6 space-y-4">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-xs font-semibold uppercase text-slate-400">
-                    Project keywords
+                    {t("report.keywords")}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {(executiveSummary?.keywords ?? []).length > 0 ? (
@@ -2224,21 +2224,21 @@ const handleSend = async () => {
                       ))
                     ) : (
                       <span className="text-xs text-slate-400">
-                        Keywords will appear after executive summary generation.
+                        {t("report.keywords.empty")}
                       </span>
                     )}
                   </div>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-xs font-semibold uppercase text-slate-400">
-                    Executive summary
+                    {t("report.tab.executive")}
                   </p>
                   <div className="mt-3 space-y-2">
                     {executiveSummary?.stageSummaries.decision
                       ? renderSummaryLines(
                           executiveSummary.stageSummaries.decision
                         )
-                      : "Generate the decision summary to see the final executive overview."}
+                      : t("workspace.executiveDecisionHint")}
                   </div>
                 </div>
               </div>
