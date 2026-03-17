@@ -1,4 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { collection, deleteDoc, doc, getDocs, orderBy, query, setDoc } from "firebase/firestore";
+import { getFirebaseDb } from "./firebase";
+import { useAuth } from "./auth";
 
 export type CaseStudyContent = {
   id: string;
@@ -44,6 +47,7 @@ type ProjectContextValue = {
 const PROJECTS_KEY = "ppss-projects";
 const ACTIVE_PROJECT_KEY = "ppss-active-project-id";
 const LEGACY_PROJECT_ID = "project-1";
+const CLOUD_PROJECTS_COLLECTION = "ppssProjects";
 
 const defaultDataCases = (): CaseStudyContent[] => [
   {
@@ -234,7 +238,15 @@ const buildDefaultProject = (): ProjectMeta =>
     { forNewProject: false }
   );
 
+const createProjectId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `project-${crypto.randomUUID()}`;
+  }
+  return `project-${Date.now()}`;
+};
+
 export function ProjectProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const [activeProjectId, setActiveProjectIdState] = useState<string | null>(null);
 
@@ -263,11 +275,71 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    const syncProjects = async () => {
+      if (!user) {
+        return;
+      }
+      const db = getFirebaseDb();
+      if (!db) {
+        return;
+      }
+
+      const cloudCollection = collection(db, CLOUD_PROJECTS_COLLECTION);
+      const snapshot = await getDocs(query(cloudCollection, orderBy("lastModifiedAt", "desc")));
+      const remoteProjects = snapshot.docs
+        .map((docSnap) => normalizeProject(docSnap.data() as Partial<ProjectMeta>, { forNewProject: false }))
+        .sort((a, b) => new Date(b.lastModifiedAt).getTime() - new Date(a.lastModifiedAt).getTime());
+
+      if (remoteProjects.length > 0) {
+        setProjects(remoteProjects);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(remoteProjects));
+        }
+        if (!activeProjectId || !remoteProjects.some((project) => project.projectId === activeProjectId)) {
+          const nextActive = remoteProjects[0]?.projectId ?? null;
+          setActiveProjectIdState(nextActive);
+          if (nextActive && typeof window !== "undefined") {
+            window.localStorage.setItem(ACTIVE_PROJECT_KEY, nextActive);
+          }
+        }
+        return;
+      }
+
+      if (projects.length > 0) {
+        await Promise.allSettled(
+          projects.map((project) =>
+            setDoc(doc(db, CLOUD_PROJECTS_COLLECTION, project.projectId), {
+              ...project,
+              lastModifiedAt: project.lastModifiedAt ?? nowIso(),
+            })
+          )
+        );
+      }
+    };
+
+    syncProjects().catch(() => {
+      // keep local data as fallback when cloud sync fails
+    });
+  }, [user, projects.length]);
+
   const persistProjects = (next: ProjectMeta[]) => {
     setProjects(next);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(next));
     }
+    const db = getFirebaseDb();
+    if (!db || !user) {
+      return;
+    }
+    void Promise.allSettled(
+      next.map((project) =>
+        setDoc(doc(db, CLOUD_PROJECTS_COLLECTION, project.projectId), {
+          ...project,
+          lastModifiedAt: project.lastModifiedAt ?? nowIso(),
+        })
+      )
+    );
   };
 
   const setActiveProjectId = (projectId: string) => {
@@ -285,7 +357,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     const now = nowIso();
     const item: ProjectMeta = normalizeProject(
       {
-        projectId: `project-${Date.now()}`,
+        projectId: createProjectId(),
         projectName,
         createdAt: now,
         lastModifiedAt: now,
@@ -340,6 +412,12 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     if (activeProjectId === projectId && next[0]) {
       setActiveProjectId(next[0].projectId);
     }
+
+    const db = getFirebaseDb();
+    if (!db || !user) {
+      return;
+    }
+    void deleteDoc(doc(db, CLOUD_PROJECTS_COLLECTION, projectId));
   };
 
   const value = useMemo(
