@@ -272,7 +272,7 @@ export default function Workspace() {
   useEffect(() => () => { analysisAbortRef.current?.abort(); }, [projectId]);
   const [role, setRole] = useState("Guest");
   const normalizedActiveRole = normalizeRoleId(role);
-  const [activeProvider, setActiveProvider] = useState("Gemini");
+  const [activeProvider, setActiveProvider] = useState("ChatGPT");
   const [accessCodeInput, setAccessCodeInput] = useState("");
   const [accessCodeError, setAccessCodeError] = useState("");
 
