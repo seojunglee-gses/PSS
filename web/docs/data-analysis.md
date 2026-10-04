@@ -1,6 +1,8 @@
 # Data Analysis evidence sources
 
-The existing workspace keeps its two columns: Evidence on the left and Analysis Chat on the right. The `+` menu beside the input selects Case Studies, Research Papers, or both. Removing all chips restores the default of both sources. Existing case browsing/editing remains under “Browse / edit project case materials”; other planning stages use their existing chat endpoints.
+The existing workspace keeps its two columns: Case Studies / Answer Evidence on the left and Analysis Chat on the right. Case Studies is the default view when entering Data Analysis and preserves full saved case reading and comparison, regardless of chat source selection. Authorized users retain secondary “Edit cases” controls. The `+` menu beside the input selects Case Studies, Research Papers, or both. Removing all chips restores the default of both sources; other planning stages use their existing chat endpoints.
+
+Sending a question preserves the current left-panel view. Each structured response shows its used case/paper counts and a “View evidence” control. That control and citation buttons open Answer Evidence for that specific response without changing the next question's source selection. Only evidence cited by the response's findings is displayed, in separate Case Evidence and Research Evidence sections. “View full case” opens the matching saved case where it still exists, and “Back to Case Studies” returns to reading. Historical records retain their original evidence; filtering is display-only.
 
 ## Data flow
 
@@ -12,7 +14,7 @@ Case selection ranks the actual saved excerpts by matching question terms. When 
 
 `lib/research/openalex.ts` uses OpenAlex Works search for concise queries and `search.semantic` for longer natural-language questions (at least ten words or 100 characters). It retrieves up to 25 works, removes duplicate/retracted works, prefers abstracts within relevance-ranked results and returns up to eight papers. Citation counts are metadata, not a retrieval ranking signal. The server caches results for five minutes, up to 50 questions, and uses a 12-second retrieval timeout.
 
-Research statistics describe only the retrieved papers: publication range, topics, open-access count, and citations. The panel does not classify support/opposition or infer study quality. Papers without abstracts are labeled metadata-only and excluded from synthesis. Every research finding must reference an available abstract's source ID. Citation metadata is assembled from retrieved records rather than accepted from the model. The prompt explicitly requires abstention for missing full-text methods, sample sizes, statistics or tables.
+The panel prioritizes used paper count, publication period, top topics, and the paper list. Citation counts, open-access status, and DOI/OpenAlex links appear within individual paper details. The panel does not classify support/opposition or infer study quality. Papers without abstracts are labeled metadata-only and excluded from synthesis. Every research finding must reference an available abstract's source ID. Citation metadata is assembled from retrieved records rather than accepted from the model. The prompt explicitly requires abstention for missing full-text methods, sample sizes, statistics or tables.
 
 Research failure can produce a partial answer from case materials, with a visible warning. If neither source provides usable evidence, the endpoint returns an evidence-gap response without calling the LLM. A synthesis failure returns the retrieved evidence with HTTP 502. There is no automatic PDF download or full-text RAG.
 
