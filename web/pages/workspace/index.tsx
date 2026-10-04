@@ -29,7 +29,7 @@ import SourceSelector from "../../components/analysis/SourceSelector";
 import EvidencePanel from "../../components/analysis/EvidencePanel";
 import AnalysisAnswerView from "../../components/analysis/AnalysisAnswer";
 import { researchLabels } from "../../lib/research/labels";
-import { DEFAULT_SOURCES, type AnalysisRecord, type EvidenceSource } from "../../lib/research/types";
+import { DEFAULT_SOURCES, usedAnswerEvidence, type AnalysisRecord, type EvidenceSource } from "../../lib/research/types";
 
 const getChatModelByProvider = (provider: string) => {
   if (provider.toLowerCase() === "gemini") {
@@ -266,6 +266,7 @@ export default function Workspace() {
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
   const effectiveSources = selectedSources.length ? selectedSources : DEFAULT_SOURCES;
   const [inspectedEvidence, setInspectedEvidence] = useState<AnalysisRecord["evidence"] | null>(null);
+  const [analysisView, setAnalysisView] = useState<"cases" | "answer">("cases");
   const [highlightedEvidence, setHighlightedEvidence] = useState<string | null>(null);
   const analysisAbortRef = useRef<AbortController | null>(null);
   useEffect(() => () => { analysisAbortRef.current?.abort(); }, [projectId]);
@@ -309,6 +310,7 @@ export default function Workspace() {
     setSelectedSources([]);
     setInspectedEvidence(null);
     setHighlightedEvidence(null);
+    setAnalysisView("cases");
   }, [projectId]);
 
   useEffect(() => {
@@ -376,7 +378,7 @@ export default function Workspace() {
     [chatLogsByStep]
   );
   const latestAnalysis = [...(chatLogsByStep.data ?? [])].reverse().find((log) => log.analysis)?.analysis;
-  const analysisEvidence = inspectedEvidence ?? latestAnalysis?.evidence ?? null;
+  const analysisEvidence = inspectedEvidence ?? (latestAnalysis ? usedAnswerEvidence(latestAnalysis) : null);
   const [hasLoadedChatLogs, setHasLoadedChatLogs] = useState(false);
   const hasAnyAlternativeImage = useMemo(() => {
     return chatLogs.some(
@@ -1097,8 +1099,6 @@ const handleSend = async () => {
     if (stepId === "data") {
       const controller = new AbortController();
       analysisAbortRef.current = controller;
-      setInspectedEvidence(null);
-      setHighlightedEvidence(null);
       const response = await fetch("/api/research/answer", {
         method: "POST",
         signal: controller.signal,
@@ -1114,7 +1114,6 @@ const handleSend = async () => {
       const payload = await response.json();
       if (controller.signal.aborted) return;
       if (!response.ok) {
-        if (payload.evidence) setInspectedEvidence(payload.evidence);
         throw new Error(payload.error ?? "Analysis request failed.");
       }
       const analysis = payload.analysis as AnalysisRecord;
@@ -1122,7 +1121,6 @@ const handleSend = async () => {
         stepId, provider: activeProvider, sender: "assistant", text: payload.reply,
         label: activeProvider, createdAt: new Date().toISOString(), analysis,
       }];
-      setInspectedEvidence(analysis.evidence);
       setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextLogs }));
       await persistChatLogs(stepId, sanitizeLogs(nextLogs));
       return;
@@ -1746,8 +1744,8 @@ const handleSend = async () => {
                 {message.label}
               </p>
               {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} onViewEvidence={(sourceId) => {
-                setInspectedEvidence(message.analysis!.evidence);
-                setSelectedSources(message.analysis!.selectedSources);
+                setInspectedEvidence(usedAnswerEvidence(message.analysis!));
+                setAnalysisView("answer");
                 setHighlightedEvidence(sourceId ?? null);
                 if (sourceId) window.setTimeout(() => document.getElementById(`evidence-${sourceId}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 0);
               }} />}
@@ -1883,6 +1881,7 @@ const handleSend = async () => {
                     setEditingStageId(null);
                   }
                   setActiveStep(step);
+                  if (step.id === "data") setAnalysisView("cases");
                 }}
               >
                 <span
@@ -1977,12 +1976,33 @@ const handleSend = async () => {
       {activeStep.id === "data" && (
         <section className={responsiveWorkspaceSection}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
-            <EvidencePanel evidence={analysisEvidence} enabled={effectiveSources} loading={isSending} highlighted={highlightedEvidence} />
-            {effectiveSources.includes("cases") && <details open={editingStageId === "data" || !analysisEvidence} className="border-t border-slate-200">
-            <summary className="cursor-pointer px-6 py-3 text-sm font-semibold text-slate-700">{analysisLabels.browse}</summary>
+            <div role="tablist" aria-label={`${analysisLabels.cases} / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
+              {(["cases", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
+                id={`analysis-${view}-tab`} aria-controls={`analysis-${view}-panel`} aria-selected={analysisView === view}
+                tabIndex={analysisView === view ? 0 : -1}
+                onClick={() => setAnalysisView(view)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                    event.preventDefault();
+                    const next = view === "cases" ? "answer" : "cases";
+                    setAnalysisView(next);
+                    document.getElementById(`analysis-${next}-tab`)?.focus();
+                  }
+                }}
+                className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold ${analysisView === view ? "bg-white text-[var(--primary)] shadow-sm" : "text-slate-500 hover:bg-white/60"}`}>
+                {view === "cases" ? analysisLabels.cases : analysisLabels.answerEvidence}
+              </button>)}
+            </div>
+            {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
+              <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>
+              <EvidencePanel evidence={analysisEvidence} enabled={analysisEvidence?.selectedSources ?? DEFAULT_SOURCES} loading={isSending} highlighted={highlightedEvidence}
+                availableCaseIds={(activeProject?.workspaceContent.data.cases ?? []).map((item) => item.id)}
+                onViewCase={(caseId) => { setActiveTab(caseId); setAnalysisView("cases"); }} />
+            </div>}
+            <div role="tabpanel" id="analysis-cases-panel" aria-labelledby="analysis-cases-tab" hidden={analysisView !== "cases"}>
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
-              <h3 className="text-lg font-semibold text-slate-900">{t("step.data")}</h3>
-              <p className="mt-1 text-sm text-slate-500">{t("workspace.dataIntro")}</p>
+              <h3 className="text-lg font-semibold text-slate-900">{analysisLabels.cases}</h3>
+              <p className="mt-1 text-sm text-slate-500">{analysisLabels.caseIntro}</p>
               <div className="flex items-start justify-end gap-3">
               {canEditContent && (
                 <div className="flex items-center gap-2">
@@ -1997,7 +2017,7 @@ const handleSend = async () => {
                       beginEditStage("data");
                     }}
                   >
-                    {editingStageId === "data" ? t("workspace.editing") : t("workspace.edit")}
+                    {editingStageId === "data" ? t("workspace.editing") : analysisLabels.editCases}
                   </button>
                   {editingStageId === "data" && (
                     <>
@@ -2048,7 +2068,7 @@ const handleSend = async () => {
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
                   {(() => {
                     const cases = editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases;
-                    const activeCase = cases?.find((item) => item.id === activeTab);
+                    const activeCase = cases?.find((item) => item.id === activeTab) ?? cases?.[0];
                     if (!activeCase) {
                       return <p className="text-sm text-slate-500">{t("workspace.noCaseStudyContent")}</p>;
                     }
@@ -2093,7 +2113,7 @@ const handleSend = async () => {
                 </div>
               </div>
             </div>
-            </details>}
+            </div>
           </div>
           {renderChatPanel()}
         </section>

@@ -7,7 +7,7 @@ const load = (file) => compiled(path.join(process.env.PSS_TEST_BUILD, file));
 const { reconstructAbstract, selectPapers, researchSearchMode } = load('lib/research/openalex.js');
 const { parseAnalysisRequest, selectCases, retrieveEvidence } = load('lib/research/evidence.js');
 const { parseAnswer, answerFromEvidence, answerText } = load('lib/research/answer.js');
-const { compactEvidence } = load('lib/research/types.js');
+const { compactEvidence, usedSourceIds, usedAnswerEvidence } = load('lib/research/types.js');
 const llm = load('lib/llm/index.js');
 const searchHandler = load('pages/api/research/search.js').default;
 const answerHandler = load('pages/api/research/answer.js').default;
@@ -145,4 +145,23 @@ test('synthesis failure returns retrieved evidence with a safe error', async (t)
   assert.equal(result.status, 502);
   assert.equal(result.body.evidence.cases.length, 1);
   assert(!JSON.stringify(result.body).includes('private provider'));
+});
+test('answer viewing shows only cited evidence without modifying saved records', () => {
+  const bundle = evidence();
+  bundle.papers.push(...selectPapers([work({ id: 'https://openalex.org/W2' })]));
+  bundle.cases.push({ ...bundle.cases[0], sourceId: 'C:2', id: 'other' });
+  const record = { selectedSources: bundle.selectedSources, answer: parseAnswer(JSON.stringify(response()), bundle), evidence: compactEvidence(bundle) };
+  const before = JSON.stringify(record);
+  assert.deepEqual([...usedSourceIds(record.answer)], ['C:1', 'R:W1']);
+  const visible = usedAnswerEvidence(record);
+  assert.deepEqual(visible.cases.map(c => c.sourceId), ['C:1']);
+  assert.deepEqual(visible.papers.map(p => p.openAlexId), ['https://openalex.org/W1']);
+  assert.equal(JSON.stringify(record), before);
+});
+test('a historical case-only answer keeps its own evidence sources', () => {
+  const bundle = evidence(); bundle.selectedSources = ['cases']; bundle.papers = [];
+  const content = response(); content.researchFindings = [];
+  const record = { selectedSources: ['cases'], answer: parseAnswer(JSON.stringify(content), bundle), evidence: compactEvidence(bundle) };
+  assert.deepEqual(usedAnswerEvidence(record).selectedSources, ['cases']);
+  assert.deepEqual(usedAnswerEvidence(record).papers, []);
 });

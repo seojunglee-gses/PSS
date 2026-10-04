@@ -1,6 +1,10 @@
 import type { Locale } from "../i18n";
 
 const en = {
+  answerEvidence: "Answer Evidence", caseIntro: "Explore selected urban regeneration cases and compare their strategies, outcomes, and lessons.",
+  answerIntro: "Evidence used for this response", noAnswer: "Select View evidence on an analysis answer to inspect its sources.",
+  backCases: "← Back to Case Studies", fullCase: "View full case", editCases: "Edit cases", paperDetails: "Paper details",
+  sourcesUsed: "Sources used", caseCount: "Cases", paperCount: "Papers",
   evidence: "Evidence", analysisChat: "Analysis Chat", cases: "Case Studies", research: "Research Papers",
   choose: "Choose evidence sources", remove: "Remove", defaults: "No selection: use Case Studies and Research Papers.",
   caseEvidence: "Case Evidence", researchEvidence: "Research Evidence", browse: "Browse / edit project case materials",
@@ -17,6 +21,10 @@ const en = {
 };
 type Labels = typeof en;
 const ko: Labels = {
+  answerEvidence: "답변 근거", caseIntro: "선정된 도시재생 사례를 읽고 전략, 성과와 교훈을 비교하세요.",
+  answerIntro: "이 답변에 사용된 근거", noAnswer: "분석 답변의 근거 보기를 선택하면 해당 출처를 확인할 수 있습니다.",
+  backCases: "← 사례 연구로 돌아가기", fullCase: "사례 전문 보기", editCases: "사례 편집", paperDetails: "논문 상세 정보",
+  sourcesUsed: "사용된 출처", caseCount: "개 사례", paperCount: "개 논문",
   evidence: "근거 자료", analysisChat: "분석 채팅", cases: "사례 연구", research: "연구 논문",
   choose: "근거 출처 선택", remove: "제거", defaults: "선택하지 않으면 사례 연구와 연구 논문을 모두 사용합니다.",
   caseEvidence: "사례 근거", researchEvidence: "연구 근거", browse: "프로젝트 사례 자료 보기 / 편집",
@@ -32,6 +40,10 @@ const ko: Labels = {
   sourceHelp: "하나 이상의 출처를 선택하세요. 모두 제거하면 두 출처를 함께 사용합니다.", evidenceError: "답변을 완료하지 못했습니다. 검색된 근거는 아래에 표시됩니다.",
 };
 const zh: Labels = {
+  answerEvidence: "回答证据", caseIntro: "阅读选定的城市更新案例，比较其策略、成果和经验。",
+  answerIntro: "此回答使用的证据", noAnswer: "选择分析回答中的查看证据，以检查其来源。",
+  backCases: "← 返回案例研究", fullCase: "查看完整案例", editCases: "编辑案例", paperDetails: "论文详情",
+  sourcesUsed: "使用的来源", caseCount: "个案例", paperCount: "篇论文",
   evidence: "证据", analysisChat: "分析对话", cases: "案例研究", research: "研究论文",
   choose: "选择证据来源", remove: "移除", defaults: "未选择时同时使用案例研究和研究论文。",
   caseEvidence: "案例证据", researchEvidence: "研究证据", browse: "查看 / 编辑项目案例资料",
