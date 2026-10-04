@@ -25,6 +25,11 @@ import { canManageProject, isSystemAdmin } from "../../lib/rbac";
 import { loadGeneratedImages } from "../../lib/firebase";
 import type { SiteImage } from "../../lib/firebase";
 import { normalizeRoleId, roleLabelKeys, useI18n } from "../../lib/i18n";
+import SourceSelector from "../../components/analysis/SourceSelector";
+import EvidencePanel from "../../components/analysis/EvidencePanel";
+import AnalysisAnswerView from "../../components/analysis/AnalysisAnswer";
+import { researchLabels } from "../../lib/research/labels";
+import { DEFAULT_SOURCES, type AnalysisRecord, type EvidenceSource } from "../../lib/research/types";
 
 const getChatModelByProvider = (provider: string) => {
   if (provider.toLowerCase() === "gemini") {
@@ -79,6 +84,8 @@ type ChatLog = {
   imageId?: string;
   imageLabel?: string;
   imageNote?: string;
+  selectedSources?: EvidenceSource[];
+  analysis?: AnalysisRecord;
 };
 
 function normalizeSender(
@@ -244,7 +251,8 @@ export default function Workspace() {
   const [currentSiteImage, setCurrentSiteImage] =
   useState<SiteImage | null>(null);
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const analysisLabels = researchLabels(locale);
   const { activeProjectId, setActiveProjectId, touchProject, activeProject, updateProject } = useProject();
   const { user, loading } = useAuth();
   const userKey = user?.uid;
@@ -255,6 +263,12 @@ export default function Workspace() {
   const [activeStep, setActiveStep] = useState(steps[0]);
   const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
+  const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
+  const effectiveSources = selectedSources.length ? selectedSources : DEFAULT_SOURCES;
+  const [inspectedEvidence, setInspectedEvidence] = useState<AnalysisRecord["evidence"] | null>(null);
+  const [highlightedEvidence, setHighlightedEvidence] = useState<string | null>(null);
+  const analysisAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => { analysisAbortRef.current?.abort(); }, [projectId]);
   const [role, setRole] = useState("Guest");
   const normalizedActiveRole = normalizeRoleId(role);
   const [activeProvider, setActiveProvider] = useState("Gemini");
@@ -292,6 +306,9 @@ export default function Workspace() {
     setSiteImageId(null);
     setSelectedImage(null);
     setSelectedAlternative(null);
+    setSelectedSources([]);
+    setInspectedEvidence(null);
+    setHighlightedEvidence(null);
   }, [projectId]);
 
   useEffect(() => {
@@ -358,6 +375,8 @@ export default function Workspace() {
     () => Object.values(chatLogsByStep).flat(),
     [chatLogsByStep]
   );
+  const latestAnalysis = [...(chatLogsByStep.data ?? [])].reverse().find((log) => log.analysis)?.analysis;
+  const analysisEvidence = inspectedEvidence ?? latestAnalysis?.evidence ?? null;
   const [hasLoadedChatLogs, setHasLoadedChatLogs] = useState(false);
   const hasAnyAlternativeImage = useMemo(() => {
     return chatLogs.some(
@@ -536,6 +555,8 @@ export default function Workspace() {
             imageId,
             imageLabel,
             imageNote,
+            ...(log.analysis ? { analysis: log.analysis } : {}),
+            ...(log.selectedSources ? { selectedSources: log.selectedSources } : {}),
           } as ChatLog;
         })
         .filter((log): log is ChatLog => Boolean(log))
@@ -586,6 +607,8 @@ export default function Workspace() {
             imageId: log.imageId,
             imageLabel: log.imageLabel,
             imageNote: log.imageNote,
+            ...(log.analysis ? { analysis: log.analysis } : {}),
+            ...(log.selectedSources ? { selectedSources: log.selectedSources } : {}),
           } as ChatLog;
         })
         .filter((l): l is ChatLog => Boolean(l))
@@ -1059,15 +1082,51 @@ const handleSend = async () => {
     text: userMessage,
     label: role,
     createdAt: new Date().toISOString(),
+    ...(stepId === "data" ? { selectedSources: [...effectiveSources] } : {}),
   },
 ];
 
   setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextUserLogs }));
-  persistChatLogs(stepId, nextUserLogs);
+  void persistChatLogs(stepId, stepId === "data" ? sanitizeLogs(nextUserLogs) : nextUserLogs).catch(() => {
+    setErrorMessage("Unable to save chat history. Your message is still available in this session.");
+  });
 
   setInputValue("");
 
   try {
+    if (stepId === "data") {
+      const controller = new AbortController();
+      analysisAbortRef.current = controller;
+      setInspectedEvidence(null);
+      setHighlightedEvidence(null);
+      const response = await fetch("/api/research/answer", {
+        method: "POST",
+        signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: userMessage,
+          selectedSources: effectiveSources,
+          provider: activeProvider,
+          cases: (activeProject?.workspaceContent.data.cases ?? []).map(({ id, label, title, text }) => ({ id, label, title, text })),
+          projectContext: [activeProject?.projectName, activeProject?.workspaceContent.problem.title, activeProject?.workspaceContent.problem.text, activeProject?.workspaceContent.data.text, savedSummaries.problem].filter(Boolean).join("\n\n"),
+        }),
+      });
+      const payload = await response.json();
+      if (controller.signal.aborted) return;
+      if (!response.ok) {
+        if (payload.evidence) setInspectedEvidence(payload.evidence);
+        throw new Error(payload.error ?? "Analysis request failed.");
+      }
+      const analysis = payload.analysis as AnalysisRecord;
+      const nextLogs: ChatLog[] = [...nextUserLogs, {
+        stepId, provider: activeProvider, sender: "assistant", text: payload.reply,
+        label: activeProvider, createdAt: new Date().toISOString(), analysis,
+      }];
+      setInspectedEvidence(analysis.evidence);
+      setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextLogs }));
+      await persistChatLogs(stepId, sanitizeLogs(nextLogs));
+      return;
+    }
     let finalMessage = userMessage;
       if (stepId === "alternatives") {
       if (!siteImageConfigured) {
@@ -1148,6 +1207,7 @@ const handleSend = async () => {
      setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextAssistantLogs }));
      persistChatLogs(stepId, nextAssistantLogs);
       } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return;
         setErrorMessage(
           error instanceof Error
             ? error.message
@@ -1561,7 +1621,9 @@ const handleSend = async () => {
 
   const renderChatPanel = () => {
     const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
-    const basePrompt = basePromptsByStep[activeStep.id];
+    const basePrompt = activeStep.id === "data"
+      ? `${analysisLabels.empty} ${analysisLabels.defaults}`
+      : basePromptsByStep[activeStep.id];
     const displayedMessages = [
       ...(basePrompt
         ? [
@@ -1570,6 +1632,7 @@ const handleSend = async () => {
               sender: "assistant" as const,
               label: activeProvider,
               imageUrl: undefined,
+              analysis: undefined,
             },
           ]
         : []),
@@ -1594,7 +1657,7 @@ const handleSend = async () => {
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
             {activeProvider}
           </p>
-          <h3 className="mt-2 text-lg font-semibold">{t("workspace.apiConversation")}</h3>
+          <h3 className="mt-2 text-lg font-semibold">{activeStep.id === "data" ? analysisLabels.analysisChat : t("workspace.apiConversation")}</h3>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canEditContent && (
@@ -1682,7 +1745,13 @@ const handleSend = async () => {
               <p className="text-xs font-semibold uppercase text-slate-400">
                 {message.label}
               </p>
-              {message.text && (
+              {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} onViewEvidence={(sourceId) => {
+                setInspectedEvidence(message.analysis!.evidence);
+                setSelectedSources(message.analysis!.selectedSources);
+                setHighlightedEvidence(sourceId ?? null);
+                if (sourceId) window.setTimeout(() => document.getElementById(`evidence-${sourceId}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 0);
+              }} />}
+              {message.text && !message.analysis && (
                 <p className="mt-2 whitespace-pre-line">
                   {formatMessage(message.text)}
                 </p>
@@ -1701,9 +1770,20 @@ const handleSend = async () => {
         })}
         <div ref={chatEndRef} />
       </div>
-      <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-2 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] lg:static lg:mt-4 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:shadow-none">
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] lg:static lg:mt-4 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:shadow-none">
+        {activeStep.id === "data" && <div className="mb-2 flex flex-wrap items-center gap-2">
+          {selectedSources.map((source) => <button key={source} type="button" disabled={isSending || isStageLocked}
+            onClick={() => setSelectedSources((prev) => prev.filter((item) => item !== source))}
+            aria-label={`${analysisLabels.remove}: ${source === "cases" ? analysisLabels.cases : analysisLabels.research}`}
+            className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-700 disabled:opacity-50">
+            {source === "cases" ? analysisLabels.cases : analysisLabels.research} ×
+          </button>)}
+          {!selectedSources.length && <p className="text-xs text-slate-500">{analysisLabels.defaults}</p>}
+        </div>}
+        <div className="flex items-center gap-2">
+        {activeStep.id === "data" && <SourceSelector selected={selectedSources} onChange={setSelectedSources} disabled={isSending || isStageLocked} />}
         <input
-          className="flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:border-[var(--primary)] focus:outline-none disabled:bg-slate-100"
+          className="min-w-0 flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:border-[var(--primary)] focus:outline-none disabled:bg-slate-100"
           placeholder={t("workspace.promptPlaceholder")}
           value={inputValue}
           onChange={(event) => setInputValue(event.target.value)}
@@ -1713,7 +1793,8 @@ const handleSend = async () => {
               handleSend();
             }
           }}
-          disabled={isStageLocked}
+          disabled={isStageLocked || (activeStep.id === "data" && isSending)}
+          maxLength={activeStep.id === "data" ? 2000 : undefined}
         />
         <button
           className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
@@ -1724,7 +1805,9 @@ const handleSend = async () => {
           {isLoadingAlternatives ? `${t("workspace.sending")}…`
           :isSending ? t("workspace.sending") : t("workspace.send")}
         </button>
+        </div>
       </div>
+      {activeStep.id === "data" && isSending && <p role="status" className="mt-3 text-xs text-blue-700">{analysisLabels.loading}</p>}
       {errorMessage && (
         <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-600">
           {errorMessage}
@@ -1894,6 +1977,9 @@ const handleSend = async () => {
       {activeStep.id === "data" && (
         <section className={responsiveWorkspaceSection}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
+            <EvidencePanel evidence={analysisEvidence} enabled={effectiveSources} loading={isSending} highlighted={highlightedEvidence} />
+            {effectiveSources.includes("cases") && <details open={editingStageId === "data" || !analysisEvidence} className="border-t border-slate-200">
+            <summary className="cursor-pointer px-6 py-3 text-sm font-semibold text-slate-700">{analysisLabels.browse}</summary>
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
               <h3 className="text-lg font-semibold text-slate-900">{t("step.data")}</h3>
               <p className="mt-1 text-sm text-slate-500">{t("workspace.dataIntro")}</p>
@@ -1944,7 +2030,9 @@ const handleSend = async () => {
                         contentEditable={canEditContent && editingStageId === "data"}
                         suppressContentEditableWarning
                         onBlur={(event) => saveDataCaseDraft(tab.id, { label: event.currentTarget.textContent ?? "" })}
-                        onClick={(event) => event.stopPropagation()}
+                        onClick={(event) => {
+                          if (canEditContent && editingStageId === "data") event.stopPropagation();
+                        }}
                         className={canEditContent && editingStageId === "data" ? "rounded px-1 hover:bg-white/70" : ""}
                       >
                         {tab.label}
@@ -2005,6 +2093,7 @@ const handleSend = async () => {
                 </div>
               </div>
             </div>
+            </details>}
           </div>
           {renderChatPanel()}
         </section>
