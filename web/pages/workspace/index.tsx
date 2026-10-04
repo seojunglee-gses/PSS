@@ -269,7 +269,8 @@ export default function Workspace() {
   const [analysisView, setAnalysisView] = useState<"cases" | "answer">("cases");
   const [highlightedEvidence, setHighlightedEvidence] = useState<string | null>(null);
   const analysisAbortRef = useRef<AbortController | null>(null);
-  useEffect(() => () => { analysisAbortRef.current?.abort(); }, [projectId]);
+  const chatGenerationRef = useRef(0);
+  useEffect(() => () => { analysisAbortRef.current?.abort(); }, [projectId, userKey]);
   const [role, setRole] = useState("Guest");
   const normalizedActiveRole = normalizeRoleId(role);
   const [activeProvider, setActiveProvider] = useState("ChatGPT");
@@ -291,6 +292,10 @@ export default function Workspace() {
   }, [queryProjectId, activeProjectId, setActiveProjectId]);
 
   useEffect(() => {
+    chatGenerationRef.current += 1;
+    sendingRef.current = false;
+    setIsSending(false);
+    setIsLoadingAlternatives(false);
     setChatLogsByStep({});
     setHasLoadedChatLogs(false);
     setSavedSummaries({});
@@ -311,7 +316,8 @@ export default function Workspace() {
     setInspectedEvidence(null);
     setHighlightedEvidence(null);
     setAnalysisView("cases");
-  }, [projectId]);
+    setErrorMessage(null);
+  }, [projectId, userKey]);
 
   useEffect(() => {
   if (typeof window === "undefined") return;
@@ -332,7 +338,11 @@ export default function Workspace() {
 
   const persistChatLogs = async (stepId: string, logs: ChatLog[]) => {
     if (!userKey) return;
-    await saveStepChatLogs(userKey, stepId, logs, projectId);
+    try {
+      await saveStepChatLogs(userKey, stepId, sanitizeLogs(logs), projectId);
+    } catch {
+      throw new Error(t("workspace.chatSaveError"));
+    }
   };
 
   const [isSending, setIsSending] = useState(false);
@@ -447,8 +457,10 @@ export default function Workspace() {
     if (!userKey) {
       return;
     }
+    let cancelled = false;
     const loadSavedSummaries = async () => {
       const summary = await loadWorkspaceSummary(userKey, projectId);
+      if (cancelled) return;
       if (summary?.stageSummaries) {
         setSavedSummaries(summary.stageSummaries);
       }
@@ -458,6 +470,7 @@ export default function Workspace() {
         );
     };
     loadSavedSummaries();
+    return () => { cancelled = true; };
   }, [userKey, projectId]);
 
   useEffect(() => {
@@ -566,65 +579,55 @@ export default function Workspace() {
     [role]
   );
 
- useEffect(() => {
+  useEffect(() => {
     if (!userKey) return;
-  
+    let cancelled = false;
+
     const loadStepLogs = async () => {
       setHasLoadedChatLogs(false);
-  
-      const stepLogs = await loadStepChatLogs<
-        Array<
-          Partial<ChatLog> & {
-            sender?: "Planner" | "ChatGPT" | "user" | "assistant";
-          }
-        >
-      >(userKey, activeStep.id, projectId);
-  
-      if (!stepLogs) {
-       setChatLogsByStep((prev) => ({
-        ...prev,
-        [activeStep.id]: [],
-      }));
-      setHasLoadedChatLogs(true);
-  return;
+      try {
+        const stepLogs = await loadStepChatLogs<
+          Array<
+            Partial<ChatLog> & {
+              sender?: "Planner" | "ChatGPT" | "user" | "assistant";
+            }
+          >
+        >(userKey, activeStep.id, projectId);
+        if (cancelled) return;
+
+        const normalized = (stepLogs ?? [])
+          .map((log, index) => {
+            const sender = normalizeSender(log.sender);
+            if (!sender || !log.provider) return null;
+
+            return {
+              stepId: activeStep.id,
+              provider: log.provider,
+              sender,
+              text: log.text ?? "",
+              label: log.label ?? (sender === "assistant" ? log.provider : role),
+              createdAt: log.createdAt ?? new Date(Date.now() + index).toISOString(),
+              imageUrl: log.imageUrl,
+              imageId: log.imageId,
+              imageLabel: log.imageLabel,
+              imageNote: log.imageNote,
+              ...(log.analysis ? { analysis: log.analysis } : {}),
+              ...(log.selectedSources ? { selectedSources: log.selectedSources } : {}),
+            } as ChatLog;
+          })
+          .filter((log): log is ChatLog => Boolean(log))
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+        setChatLogsByStep((prev) => ({ ...prev, [activeStep.id]: normalized }));
+        setHasLoadedChatLogs(true);
+      } catch {
+        if (!cancelled) setErrorMessage(t("workspace.chatLoadError"));
       }
-  
-      const normalized = stepLogs
-        .map((log, index) => {
-          const sender = normalizeSender(log.sender);
-          if (!sender || !log.provider) return null;
-  
-          return {
-            stepId: activeStep.id,
-            provider: log.provider,
-            sender,
-            text: log.text ?? "",
-            label:
-              log.label ??
-              (sender === "assistant" ? log.provider : role),
-            createdAt:
-              log.createdAt ??
-              new Date(Date.now() + index).toISOString(),
-            imageUrl: log.imageUrl,
-            imageId: log.imageId,
-            imageLabel: log.imageLabel,
-            imageNote: log.imageNote,
-            ...(log.analysis ? { analysis: log.analysis } : {}),
-            ...(log.selectedSources ? { selectedSources: log.selectedSources } : {}),
-          } as ChatLog;
-        })
-        .filter((l): l is ChatLog => Boolean(l))
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  
-      setChatLogsByStep((prev) => ({
-        ...prev,
-        [activeStep.id]: normalized,
-      }));
-      setHasLoadedChatLogs(true);
     };
-  
+
     loadStepLogs();
-  }, [userKey, activeStep.id, projectId, role]);
+    return () => { cancelled = true; };
+  }, [userKey, activeStep.id, projectId, role, t]);
 
 
   useEffect(() => {
@@ -882,6 +885,7 @@ export default function Workspace() {
 
   const requestGeneratedImage = useCallback(
   async (feedback?: string) => {
+    const generation = chatGenerationRef.current;
     if (!userKey) {
       throw new Error("Authentication required.");
     }
@@ -923,6 +927,7 @@ export default function Workspace() {
       downloadUrl?: string;
       prompt?: string;
     };
+    if (generation !== chatGenerationRef.current) throw new Error("Image generation was cancelled.");
 
     const label = `Alternative ${alternativeImages.length + 1}`;
     const note =
@@ -953,6 +958,7 @@ export default function Workspace() {
       note,
       userId: userKey,
     });
+    if (generation !== chatGenerationRef.current) throw new Error("Image generation was cancelled.");
 
     if (!saved) {
       throw new Error("Unable to save generated image.");
@@ -990,7 +996,9 @@ const sanitizeLogs = (logs: ChatLog[]) =>
 
  const requestAutoGeneratedImage = useCallback(
   async () => {
+    const generation = chatGenerationRef.current;
     const imageRecord = await requestGeneratedImage();
+    if (generation !== chatGenerationRef.current) return;
     if (!imageRecord?.imageUrl) {
       setErrorMessage("Unable to generate the image.");
       return;
@@ -1028,23 +1036,26 @@ const sanitizeLogs = (logs: ChatLog[]) =>
     if (alternativesInitialized !== false) return;
     if (alternativeImages.length > 0) return;
 
+    const generation = chatGenerationRef.current;
     setIsLoadingAlternatives(true);
     requestAutoGeneratedImage()
     .then(async () =>{
+      if (generation !== chatGenerationRef.current) return;
       if (userKey) {
         await saveWorkspaceSummary(userKey, {
           alternativesInitialized: true,
         }, projectId);
-        setAlternativesInitialized(true);
+        if (generation === chatGenerationRef.current) setAlternativesInitialized(true);
       }
     })
     .catch((err) => {
+      if (generation !== chatGenerationRef.current) return;
       setErrorMessage(
         err instanceof Error ? err.message : "Auto generation failed."
       );
     })
     .finally(() => {
-      setIsLoadingAlternatives(false);
+      if (generation === chatGenerationRef.current) setIsLoadingAlternatives(false);
     });
 }, [
   activeStep.id,
@@ -1060,6 +1071,7 @@ const sendingRef = useRef(false);
 
 const handleSend = async () => {
   if (!inputValue.trim()) return;
+  if (!userKey || !hasLoadedChatLogs) return;
   if (lockedStages[activeStep.id]) return;
 
   if (sendingRef.current) return;
@@ -1068,6 +1080,8 @@ const handleSend = async () => {
     return;
   }
   sendingRef.current = true;
+  const generation = chatGenerationRef.current;
+  const isCurrentConversation = () => generation === chatGenerationRef.current;
   setErrorMessage(null);
 
   const stepId = activeStep.id;
@@ -1089,13 +1103,12 @@ const handleSend = async () => {
 ];
 
   setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextUserLogs }));
-  void persistChatLogs(stepId, stepId === "data" ? sanitizeLogs(nextUserLogs) : nextUserLogs).catch(() => {
-    setErrorMessage("Unable to save chat history. Your message is still available in this session.");
-  });
 
   setInputValue("");
 
   try {
+    await persistChatLogs(stepId, nextUserLogs);
+    if (!isCurrentConversation()) return;
     if (stepId === "data") {
       const controller = new AbortController();
       analysisAbortRef.current = controller;
@@ -1112,7 +1125,7 @@ const handleSend = async () => {
         }),
       });
       const payload = await response.json();
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !isCurrentConversation()) return;
       if (!response.ok) {
         throw new Error(payload.error ?? "Analysis request failed.");
       }
@@ -1139,6 +1152,7 @@ const handleSend = async () => {
           alternativeImages[alternativeImages.length - 1]?.note;
 
         const imageRecord = await requestGeneratedImage(userMessage);
+        if (!isCurrentConversation()) return;
 
         if (!imageRecord?.imageUrl) {
           setErrorMessage("Unable to generate the image.");
@@ -1164,7 +1178,7 @@ const handleSend = async () => {
           await persistChatLogs(stepId, sanitizeLogs(nextEvaluationLogs));
 
       } finally {
-        setIsLoadingAlternatives(false);
+        if (isCurrentConversation()) setIsLoadingAlternatives(false);
       }
       return;
     }
@@ -1188,6 +1202,7 @@ const handleSend = async () => {
         throw new Error(payload?.error ?? "Chat request failed.");
       }
       const payload = (await response.json()) as { reply: string };
+      if (!isCurrentConversation()) return;
       const reply = payload.reply;
      const baseLogs = [...nextUserLogs];
       const nextAssistantLogs: ChatLog[] = [
@@ -1203,8 +1218,9 @@ const handleSend = async () => {
      ];
     
      setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextAssistantLogs }));
-     persistChatLogs(stepId, nextAssistantLogs);
+     await persistChatLogs(stepId, nextAssistantLogs);
       } catch (error) {
+        if (!isCurrentConversation()) return;
         if (error instanceof Error && error.name === "AbortError") return;
         setErrorMessage(
           error instanceof Error
@@ -1212,8 +1228,10 @@ const handleSend = async () => {
             : "Unable to connect to the LLM API."
         );
       } finally {
-        setIsSending(false);
-        sendingRef.current = false;
+        if (isCurrentConversation()) {
+          setIsSending(false);
+          sendingRef.current = false;
+        }
       }
     };
 
@@ -1791,20 +1809,21 @@ const handleSend = async () => {
               handleSend();
             }
           }}
-          disabled={isStageLocked || (activeStep.id === "data" && isSending)}
+          disabled={isStageLocked || !hasLoadedChatLogs || (activeStep.id === "data" && isSending)}
           maxLength={activeStep.id === "data" ? 2000 : undefined}
         />
         <button
           className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
           type="button"
           onClick={handleSend}
-          disabled={isSending || isStageLocked || isLoadingAlternatives}
+          disabled={isSending || isStageLocked || isLoadingAlternatives || !hasLoadedChatLogs}
         >
           {isLoadingAlternatives ? `${t("workspace.sending")}…`
           :isSending ? t("workspace.sending") : t("workspace.send")}
         </button>
         </div>
       </div>
+      {!hasLoadedChatLogs && !errorMessage && <p role="status" className="mt-3 text-xs text-slate-500">{t("workspace.chatLoading")}</p>}
       {activeStep.id === "data" && isSending && <p role="status" className="mt-3 text-xs text-blue-700">{analysisLabels.loading}</p>}
       {errorMessage && (
         <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-600">

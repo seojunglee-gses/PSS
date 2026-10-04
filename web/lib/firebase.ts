@@ -7,6 +7,7 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  runTransaction,
   query,
   where,
   serverTimestamp,
@@ -19,6 +20,7 @@ import {
   uploadBytes,
   uploadString,
 } from "firebase/storage";
+import { mergeStepChatLogs } from "./chat-history";
 
 const DEFAULT_PROJECT_ID = "project-1";
 const resolveProjectId = (projectId?: string) => projectId || DEFAULT_PROJECT_ID;
@@ -44,14 +46,14 @@ export async function saveStepChatLogs<T = unknown>(
   const db = getFirestore(app);
   
   const ref = doc(db, scopedCollection("users", projectId), userId, "steps", stepId);
-  await setDoc(
-    ref,
-    {
-      logs,
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const stored = snapshot.exists() ? snapshot.data().logs : [];
+    transaction.set(ref, {
+      logs: mergeStepChatLogs(Array.isArray(stored) ? stored as T[] : [], logs),
       updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+    }, { merge: true });
+  });
 }
 
 export async function loadStepChatLogs<T = unknown>(
