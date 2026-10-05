@@ -15,7 +15,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const evidence = await retrieveEvidence(request);
   try {
     const answer = await answerFromEvidence(request, evidence);
-    res.status(200).json({ reply: answerText(answer), analysis: { selectedSources: request.selectedSources, answer, evidence: compactEvidence(evidence) } });
+    res.status(200).json({ reply: answerText(answer), analysis: { selectedSources: request.selectedSources, ...(request.spatialContext ? { spatialContext: request.spatialContext } : {}), answer, evidence: compactEvidence(evidence) } });
   } catch {
     res.status(502).json({ error: "Unable to synthesize the retrieved evidence. Check the selected AI provider configuration or try again.", evidence: compactEvidence(evidence) });
   }

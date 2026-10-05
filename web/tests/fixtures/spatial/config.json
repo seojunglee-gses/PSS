@@ -1,0 +1,10 @@
+{
+  "projectId": "spatial-test",
+  "layers": [
+    {"id":"boundary","label":"검증용 경계","type":"polygon","source":"/data/projects/spatial-test/boundary.geojson","defaultVisible":true,"role":"boundary","color":"#64748b","displayFields":["name"]},
+    {"id":"green","label":"검증용 녹지","type":"polygon","source":"/data/projects/spatial-test/green.geojson","defaultVisible":true,"role":"green","color":"#22c55e","displayFields":["name"]},
+    {"id":"facilities","label":"검증용 시설","type":"point","source":"/data/projects/spatial-test/facilities.geojson","defaultVisible":true,"role":"facilities","color":"#a855f7","displayFields":["name"]},
+    {"id":"missing","label":"없는 데이터","type":"polygon","source":"/data/projects/spatial-test/missing.geojson"}
+  ],
+  "priority":{"layerId":"boundary","criteria":[{"field":"heat","direction":"higher","weight":1}]}
+}

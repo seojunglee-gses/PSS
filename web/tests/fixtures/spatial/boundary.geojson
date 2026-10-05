@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","features":[{"type":"Feature","id":"test-zone","properties":{"name":"검증용 영역 (실제 사업 자료 아님)","heat":3},"geometry":{"type":"Polygon","coordinates":[[[127,37.5],[127.01,37.5],[127.01,37.51],[127,37.51],[127,37.5]]]}}]}

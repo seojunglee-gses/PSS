@@ -20,3 +20,14 @@ body {
 * {
   box-sizing: border-box;
 }
+
+.spatial-button {
+  border: 1px solid #cbd5e1;
+  border-radius: .5rem;
+  padding: .4rem .75rem;
+  font-size: .875rem;
+  color: #334155;
+  background: white;
+}
+.spatial-button:hover { background: #f8fafc; }
+.spatial-button:disabled { opacity: .45; cursor: not-allowed; }

@@ -1,9 +1,12 @@
+import { parseSpatialResult } from "../spatial/context";
+import type { SpatialResult } from "../spatial/types";
 import { searchOpenAlex } from "./openalex";
 import { DEFAULT_SOURCES } from "./types";
 import type { CaseEvidence, CaseMaterial, EvidenceBundle, EvidenceSource } from "./types";
 
 export type AnalysisRequest = {
   question: string;
+  spatialContext?: SpatialResult;
   selectedSources: EvidenceSource[];
   cases: CaseMaterial[];
   projectContext: string;
@@ -25,6 +28,7 @@ export function parseAnalysisRequest(body: unknown): AnalysisRequest {
   const selected = (input.selectedSources ?? []) as EvidenceSource[];
   return {
     question: input.question.trim(),
+    spatialContext: parseSpatialResult(input.spatialContext),
     selectedSources: selected.length ? [...new Set(selected)] : [...DEFAULT_SOURCES],
     cases,
     projectContext: typeof input.projectContext === "string" ? input.projectContext.slice(0, 4000) : "",

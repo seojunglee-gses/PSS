@@ -1,3 +1,4 @@
+import type { SpatialResult } from "../spatial/types";
 export type EvidenceSource = "cases" | "research";
 export const DEFAULT_SOURCES: EvidenceSource[] = ["cases", "research"];
 
@@ -51,6 +52,7 @@ export type AnalysisAnswer = {
 };
 // Small metadata fits the existing step-chat records; abstracts stay transient.
 export type AnalysisRecord = {
+  spatialContext?: SpatialResult;
   selectedSources: EvidenceSource[];
   answer: AnalysisAnswer;
   evidence: Omit<EvidenceBundle, "papers"> & {
