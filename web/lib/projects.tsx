@@ -1,6 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { collection, deleteDoc, doc, getDocs, orderBy, query, setDoc } from "firebase/firestore";
-import { getFirebaseDb } from "./firebase";
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
+import { projectRequest } from "./membership/client";
 import { useAuth } from "./auth";
 
 export type CaseStudyContent = {
@@ -37,17 +36,21 @@ type ProjectContextValue = {
   createProject: (
     projectName: string,
     options?: { projectAdmin?: string; accessCode?: string; createdByEmail?: string }
-  ) => ProjectMeta;
+  ) => Promise<ProjectMeta>;
 
   touchProject: (projectId: string) => void;
-  updateProject: (projectId: string, patch: Partial<ProjectMeta>) => void;
-  deleteProject: (projectId: string) => void;
+  updateProject: (projectId: string, patch: Partial<ProjectMeta>) => Promise<void>;
+  deleteProject: (projectId: string) => Promise<void>;
+  loadingProjects: boolean;
+  projectError: string;
+  joinedProjectIds: string[];
+  lastProjectId: string | null;
+  refreshProjects: () => Promise<void>;
 };
 
 const PROJECTS_KEY = "ppss-projects";
 const ACTIVE_PROJECT_KEY = "ppss-active-project-id";
 const LEGACY_PROJECT_ID = "project-1";
-const CLOUD_PROJECTS_COLLECTION = "ppssProjects";
 
 const defaultDataCases = (): CaseStudyContent[] => [
   {
@@ -150,7 +153,7 @@ const normalizeProject = (
   createdAt: project.createdAt ?? nowIso(),
   lastModifiedAt: project.lastModifiedAt ?? nowIso(),
   projectAdmin: project.projectAdmin ?? "test@snu.ac.kr",
-  accessCode: /^\d{4}$/.test(project.accessCode ?? "") ? (project.accessCode as string) : "1234",
+  accessCode: project.accessCode ?? "",
   workspaceContent: (() => {
     const defaults = options?.forNewProject
       ? defaultWorkspaceContent()
@@ -227,17 +230,6 @@ const normalizeProject = (
   })(),
 });
 
-const buildDefaultProject = (): ProjectMeta =>
-  normalizeProject(
-    {
-      projectId: LEGACY_PROJECT_ID,
-      projectName: "Project #1",
-      projectAdmin: "test@snu.ac.kr",
-      accessCode: "1234",
-    },
-    { forNewProject: false }
-  );
-
 const createProjectId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `project-${crypto.randomUUID()}`;
@@ -248,199 +240,195 @@ const createProjectId = () => {
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
-  const [activeProjectId, setActiveProjectIdState] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let parsed: ProjectMeta[] = [];
+  const [activeProjectId, setActiveProjectIdState] = useState<string | null>(
+    null,
+  );
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [projectError, setProjectError] = useState("");
+  const [joinedProjectIds, setJoinedProjectIds] = useState<string[]>([]);
+  const [lastProjectId, setLastProjectId] = useState<string | null>(null);
+  const uidRef = useRef(user?.uid);
+  const projectLoadRef = useRef(0);
+  const [ownerUid, setOwnerUid] = useState<string | undefined>();
+  const refreshProjects = useCallback(async () => {
+    if (!user) return;
+    const owner = user.uid;
+    const requestId = ++projectLoadRef.current;
+    let data;
     try {
-      const raw = JSON.parse(window.localStorage.getItem(PROJECTS_KEY) ?? "[]") as Partial<ProjectMeta>[];
-      parsed = raw.map((item) => normalizeProject(item, { forNewProject: false }));
-    } catch {
-      parsed = [];
-    }
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      parsed = [buildDefaultProject()];
-      window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(parsed));
-    }
-    setProjects(parsed);
-
-    const storedActive = window.localStorage.getItem(ACTIVE_PROJECT_KEY);
-    const resolvedActive = parsed.some((project) => project.projectId === storedActive)
-      ? storedActive
-      : parsed[0]?.projectId;
-    if (resolvedActive) {
-      setActiveProjectIdState(resolvedActive);
-      window.localStorage.setItem(ACTIVE_PROJECT_KEY, resolvedActive);
-    }
-  }, []);
-
-  useEffect(() => {
-    const syncProjects = async () => {
-      if (!user) {
-        return;
-      }
-      const db = getFirebaseDb();
-      if (!db) {
-        return;
-      }
-
-      const cloudCollection = collection(db, CLOUD_PROJECTS_COLLECTION);
-      const snapshot = await getDocs(query(cloudCollection, orderBy("lastModifiedAt", "desc")));
-      const remoteProjects = snapshot.docs
-        .map((docSnap) => normalizeProject(docSnap.data() as Partial<ProjectMeta>, { forNewProject: false }))
-        .sort((a, b) => new Date(b.lastModifiedAt).getTime() - new Date(a.lastModifiedAt).getTime());
-
-      if (remoteProjects.length > 0) {
-        setProjects(remoteProjects);
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(remoteProjects));
-        }
-        if (!activeProjectId || !remoteProjects.some((project) => project.projectId === activeProjectId)) {
-          const nextActive = remoteProjects[0]?.projectId ?? null;
-          setActiveProjectIdState(nextActive);
-          if (nextActive && typeof window !== "undefined") {
-            window.localStorage.setItem(ACTIVE_PROJECT_KEY, nextActive);
-          }
-        }
-        return;
-      }
-
-      if (projects.length > 0) {
-        await Promise.allSettled(
-          projects.map((project) =>
-            setDoc(doc(db, CLOUD_PROJECTS_COLLECTION, project.projectId), {
-              ...project,
-              lastModifiedAt: project.lastModifiedAt ?? nowIso(),
-            })
-          )
+      data = await projectRequest(user, "/api/projects");
+    } catch (error) {
+      if (uidRef.current === owner && requestId === projectLoadRef.current)
+        setProjectError(
+          error instanceof Error
+            ? error.message
+            : "사업 정보를 불러오지 못했어요.",
         );
-      }
-    };
-
-    syncProjects().catch(() => {
-      // keep local data as fallback when cloud sync fails
-    });
-  }, [user, projects.length]);
-
-  const persistProjects = (next: ProjectMeta[]) => {
-    setProjects(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(next));
+      throw error;
     }
-    const db = getFirebaseDb();
-    if (!db || !user) {
+    if (uidRef.current !== owner || requestId !== projectLoadRef.current)
+      return;
+    const next = (data.projects as Partial<ProjectMeta>[]).map((p) =>
+      normalizeProject(p),
+    );
+    setProjects(next);
+    setJoinedProjectIds(data.joinedIds);
+    setLastProjectId(data.lastProjectId);
+    setActiveProjectIdState((previous) =>
+      previous && data.joinedIds.includes(previous) && next.some((p) => p.projectId === previous)
+        ? previous
+        : (data.lastProjectId ??
+          (data.joinedIds.length === 1 ? data.joinedIds[0] : null)),
+    );
+    setProjectError("");
+  }, [user]);
+  useEffect(() => {
+    let current = true;
+    uidRef.current = user?.uid;
+    projectLoadRef.current += 1;
+    setOwnerUid(user?.uid);
+    setProjects([]);
+    setJoinedProjectIds([]);
+    setLastProjectId(null);
+    setProjectError("");
+    setActiveProjectIdState(null);
+    // Remove legacy plaintext project caches; none of these grant authorization.
+    try { localStorage.removeItem(PROJECTS_KEY); } catch { /* Optional cache. */ }
+    if (!user) {
+      setLoadingProjects(false);
       return;
     }
-    void Promise.allSettled(
-      next.map((project) =>
-        setDoc(doc(db, CLOUD_PROJECTS_COLLECTION, project.projectId), {
-          ...project,
-          lastModifiedAt: project.lastModifiedAt ?? nowIso(),
-        })
-      )
-    );
-  };
-
-  const setActiveProjectId = (projectId: string) => {
-    setActiveProjectIdState(projectId);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(ACTIVE_PROJECT_KEY, projectId);
+    setLoadingProjects(true);
+    let cached: string | null = null;
+    try { cached = localStorage.getItem(`${ACTIVE_PROJECT_KEY}-${user.uid}`); } catch { /* Firebase remains authoritative. */ }
+    if (cached) setActiveProjectIdState(cached);
+    refreshProjects()
+      .catch((e) => {
+        if (current)
+          setProjectError(
+            e instanceof Error ? e.message : "사업 정보를 불러오지 못했어요.",
+          );
+      })
+      .finally(() => {
+        if (current) setLoadingProjects(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [user, refreshProjects]);
+  const setActiveProjectId = useCallback(
+    (projectId: string) => {
+      setActiveProjectIdState(projectId);
+      if (user)
+        try { localStorage.setItem(`${ACTIVE_PROJECT_KEY}-${user.uid}`, projectId); } catch { /* Optional navigation cache. */ }
+    },
+    [user],
+  );
+  const mutate = async (
+    action: string,
+    projectId: string,
+    project?: Partial<ProjectMeta>,
+  ) => {
+    if (!user) throw new Error("로그인 상태를 확인해주세요.");
+    try {
+      await projectRequest(user, "/api/projects", {
+        action,
+        projectId,
+        ...(project ? { project } : {}),
+      });
+      if (uidRef.current === user.uid) projectLoadRef.current += 1;
+    } catch (e) {
+      if (uidRef.current === user.uid)
+        setProjectError(
+          e instanceof Error ? e.message : "사업 정보를 저장하지 못했어요.",
+        );
+      throw e;
     }
   };
-
-  const createProject = (
+  const createProject = async (
     projectName: string,
-    options?: { projectAdmin?: string; accessCode?: string; createdByEmail?: string }
+    options?: {
+      projectAdmin?: string;
+      accessCode?: string;
+      createdByEmail?: string;
+    },
   ) => {
-
-    const now = nowIso();
-    const item: ProjectMeta = normalizeProject(
+    const item = normalizeProject(
       {
         projectId: createProjectId(),
         projectName,
-        createdAt: now,
-        lastModifiedAt: now,
         projectAdmin:
           options?.projectAdmin || options?.createdByEmail || "test@snu.ac.kr",
-        accessCode: /^\d{4}$/.test(options?.accessCode ?? "")
-          ? (options?.accessCode as string)
-          : "1234",
-
+        accessCode: options?.accessCode,
         workspaceContent: defaultWorkspaceContent(),
       },
-      { forNewProject: true }
+      { forNewProject: true },
     );
-    const next = [item, ...projects];
-    persistProjects(next);
-    setActiveProjectId(item.projectId);
+    await mutate("create", item.projectId, item);
+    if (uidRef.current === user?.uid) {
+      setProjects((prev) => [item, ...prev]);
+      setActiveProjectId(item.projectId);
+    }
     return item;
   };
-
-  const touchProject = (projectId: string) => {
-    const next = projects.map((project) =>
-      project.projectId === projectId
-        ? { ...project, lastModifiedAt: nowIso() }
-        : project
-    );
-    persistProjects(next);
-  };
-
-  const updateProject = (projectId: string, patch: Partial<ProjectMeta>) => {
-    const next = projects.map((project) =>
-      project.projectId === projectId
-        ? normalizeProject(
-            {
-              ...project,
+  const updateProject = async (
+    projectId: string,
+    patch: Partial<ProjectMeta>,
+  ) => {
+    await mutate("update", projectId, patch);
+    if (uidRef.current !== user?.uid) return;
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.projectId === projectId
+          ? normalizeProject({
+              ...p,
               ...patch,
               workspaceContent: {
-                ...project.workspaceContent,
-                ...(patch.workspaceContent ?? {}),
+                ...p.workspaceContent,
+                ...patch.workspaceContent,
               },
               lastModifiedAt: nowIso(),
-            },
-            { forNewProject: false }
-          )
-        : project
+            })
+          : p,
+      ),
     );
-    persistProjects(next);
   };
-
-  const deleteProject = (projectId: string) => {
-    const next = projects.filter((project) => project.projectId !== projectId);
-    persistProjects(next);
-    if (activeProjectId === projectId && next[0]) {
-      setActiveProjectId(next[0].projectId);
-    }
-
-    const db = getFirebaseDb();
-    if (!db || !user) {
-      return;
-    }
-    void deleteDoc(doc(db, CLOUD_PROJECTS_COLLECTION, projectId));
+  const touchProject = (projectId: string) => {
+    void mutate("touch", projectId).catch(() => {});
   };
-
-  const value = useMemo(
-    () => ({
-      projects,
-      activeProjectId,
-      activeProject: projects.find((project) => project.projectId === activeProjectId) ?? null,
-      setActiveProjectId,
-      createProject,
-      touchProject,
-      updateProject,
-      deleteProject,
-    }),
-    [projects, activeProjectId]
+  const deleteProject = async (projectId: string) => {
+    await mutate("delete", projectId);
+    if (uidRef.current !== user?.uid) return;
+    setProjects((prev) => prev.filter((p) => p.projectId !== projectId));
+    setJoinedProjectIds((prev) => prev.filter((id) => id !== projectId));
+    if (activeProjectId === projectId) setActiveProjectIdState(null);
+  };
+  const owned = ownerUid === user?.uid;
+  const activeProject = owned
+    ? (projects.find((p) => p.projectId === activeProjectId) ?? null)
+    : null;
+  const value = {
+    projects: owned ? projects : [],
+    activeProjectId: owned ? activeProjectId : null,
+    activeProject,
+    setActiveProjectId,
+    createProject,
+    touchProject,
+    updateProject,
+    deleteProject,
+    loadingProjects: !owned || loadingProjects,
+    projectError: owned ? projectError : "",
+    joinedProjectIds: owned ? joinedProjectIds : [],
+    lastProjectId: owned ? lastProjectId : null,
+    refreshProjects,
+  };
+  return (
+    <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>
   );
-
-  return <ProjectContext.Provider value={value}>{children}</ProjectContext.Provider>;
 }
-
 export function useProject() {
   const context = useContext(ProjectContext);
-  if (!context) {
+  if (!context)
     throw new Error("useProject must be used within ProjectProvider");
-  }
   return context;
 }

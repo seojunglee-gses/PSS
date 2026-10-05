@@ -5,6 +5,7 @@ import { parseSpatialResult } from "../../lib/spatial/context";
 import type { SpatialResult } from "../../lib/spatial/types";
 const SpatialAnalysis = dynamic(() => import("../../components/spatial/SpatialAnalysis"), { ssr: false, loading: () => <p className="p-6 text-sm text-slate-500">공간 분석을 불러오는 중입니다.</p> });
 
+import ProjectAccessGate from "../../components/projects/ProjectAccessGate";
 import AppShell from "../../components/AppShell";
 import {
   loadChatLogsFromFirestore,
@@ -254,12 +255,16 @@ const basePromptsByStep: Record<string, string> = {
 };
 
 export default function Workspace() {
+  return <ProjectAccessGate><AuthorizedWorkspace /></ProjectAccessGate>;
+}
+
+function AuthorizedWorkspace() {
   const [currentSiteImage, setCurrentSiteImage] =
   useState<SiteImage | null>(null);
   const router = useRouter();
   const { t, locale } = useI18n();
   const analysisLabels = researchLabels(locale);
-  const { activeProjectId, setActiveProjectId, touchProject, activeProject, updateProject } = useProject();
+  const { activeProjectId, setActiveProjectId, touchProject, activeProject, updateProject, projectError } = useProject();
   const { user, loading } = useAuth();
   const userKey = user?.uid;
   const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
@@ -303,8 +308,6 @@ export default function Workspace() {
   const [role, setRole] = useState("Guest");
   const normalizedActiveRole = normalizeRoleId(role);
   const [activeProvider, setActiveProvider] = useState("ChatGPT");
-  const [accessCodeInput, setAccessCodeInput] = useState("");
-  const [accessCodeError, setAccessCodeError] = useState("");
 
 
 
@@ -1524,9 +1527,6 @@ const handleSend = async () => {
 
   const isSystem = isSystemAdmin(user?.email);
   const canEditContent = canManageProject(user?.email, activeProject);
-  const isProjectCodeRequired = Boolean(user && !isSystem && activeProject);
-  const accessCodeKey = `ppss-project-access-${projectId}`;
-  const hasAccess = typeof window !== "undefined" && sessionStorage.getItem(accessCodeKey) === "ok";
 
   type EditableStageId = "problem" | "data";
   const [editingStageId, setEditingStageId] = useState<EditableStageId | null>(null);
@@ -1573,10 +1573,11 @@ const handleSend = async () => {
     setEditingStageId(null);
   }, [activeProject, confirmDiscardUnsaved]);
 
-  const saveEditStage = useCallback(() => {
+  const saveEditStage = useCallback(async () => {
+    try {
     if (!activeProject || !editingStageId) return;
     if (editingStageId === "problem") {
-      updateProject(projectId, {
+      await updateProject(projectId, {
         workspaceContent: {
           ...activeProject.workspaceContent,
           problem: problemDraft,
@@ -1584,7 +1585,7 @@ const handleSend = async () => {
       });
     }
     if (editingStageId === "data") {
-      updateProject(projectId, {
+      await updateProject(projectId, {
         workspaceContent: {
           ...activeProject.workspaceContent,
           data: dataDraft,
@@ -1592,6 +1593,7 @@ const handleSend = async () => {
       });
     }
     setEditingStageId(null);
+    } catch { /* Keep the draft open; show the provider error. */ }
   }, [activeProject, editingStageId, problemDraft, dataDraft, projectId, updateProject]);
 
   const saveDataCaseDraft = useCallback((caseId: string, patch: Record<string, unknown>) => {
@@ -1635,38 +1637,6 @@ const handleSend = async () => {
     );
   }
 
-
-  if (isProjectCodeRequired && !hasAccess) {
-    return (
-      <AppShell>
-        <div className="mx-auto w-full max-w-md rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900">{t("workspace.projectAccessCode")}</h3>
-          <p className="mt-2 text-sm text-slate-500">{t("workspace.projectAccessDesc")}</p>
-          <input
-            className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
-            value={accessCodeInput}
-            onChange={(event) => setAccessCodeInput(event.target.value.replace(/\D/g, "").slice(0, 4))}
-            placeholder="0000"
-          />
-          {accessCodeError && <p className="mt-2 text-xs text-rose-600">{accessCodeError}</p>}
-          <button
-            type="button"
-            className="mt-4 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white"
-            onClick={() => {
-              if (accessCodeInput === activeProject?.accessCode) {
-                sessionStorage.setItem(accessCodeKey, "ok");
-                router.replace({ pathname: "/workspace", query: { projectId } });
-                return;
-              }
-              setAccessCodeError(t("workspace.invalidAccessCode"));
-            }}
-          >
-            {t("workspace.projectEnter")}
-          </button>
-        </div>
-      </AppShell>
-    );
-  }
 
   const renderChatPanel = () => {
     const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
@@ -1898,6 +1868,7 @@ const handleSend = async () => {
 
   return (
     <AppShell>
+      {projectError && <p role="alert" className="mb-4 text-sm text-rose-600">{projectError}</p>}
       <div className="space-y-6 pb-24 lg:space-y-0 lg:pb-0">
       <section className="flex flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
