@@ -162,7 +162,7 @@ export default function AppShell({ children }: AppShellProps) {
           return (
             <Link
               key={item.href}
-              href={item.href === "/" ? item.href : { pathname: item.href, query: activeProjectId ? { projectId: activeProjectId } : {} }}
+              href={item.href === "/" ? (user ? "/?projects=1" : item.href) : { pathname: item.href, query: activeProjectId ? { projectId: activeProjectId } : {} }}
               className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
                 isActive
                   ? "bg-white/20 text-white"

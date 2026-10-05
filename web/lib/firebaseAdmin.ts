@@ -59,3 +59,8 @@ export const buildDownloadUrl = (storagePath: string, token: string) => {
     storagePath
   )}?alt=media&token=${token}`;
 };
+
+export const verifyUserRequest = async (token?: string) => {
+  if (!token) throw new Error("Missing ID token");
+  return getAuth(getAdminApp()).verifyIdToken(token, true);
+};

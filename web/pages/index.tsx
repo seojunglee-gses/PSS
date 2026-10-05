@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, Fragment, type FormEvent, type ReactNode } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../lib/auth";
 import { normalizeRoleId, roleLabelKeys, useI18n, type RoleId } from "../lib/i18n";
@@ -112,9 +112,9 @@ const roles: RoleItem[] = [
 
 export default function Home() {
   const router = useRouter();
-  const { signIn, signInWithGoogle, isConfigured, user } = useAuth();
+  const { signIn, signInWithGoogle, isConfigured, user, loading: authLoading } = useAuth();
   const { t } = useI18n();
-  const { projects, createProject, setActiveProjectId, updateProject, deleteProject } = useProject();
+  const { projects, createProject, setActiveProjectId, updateProject, deleteProject, loadingProjects, projectError, joinedProjectIds, lastProjectId, refreshProjects } = useProject();
   const [projectName, setProjectName] = useState("");
   const [projectAdminInput, setProjectAdminInput] = useState("test@snu.ac.kr");
   const [projectAccessCodeInput, setProjectAccessCodeInput] = useState("1234");
@@ -126,7 +126,19 @@ export default function Home() {
   const visibleProjects = projects.filter((project) => {
     const role = getRoleForProject(userEmail, project);
     return role === "system_admin" || role === "project_admin" || role === "participant";
-  });
+  }).sort((a,b) => Number(joinedProjectIds.includes(b.projectId))-Number(joinedProjectIds.includes(a.projectId)));
+  const [freshMembershipUid,setFreshMembershipUid] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (user) void refreshProjects().then(() => { if (alive) setFreshMembershipUid(user.uid); }).catch(() => {});
+    return () => { alive = false; };
+  }, [user, refreshProjects]);
+  useEffect(() => {
+    if (freshMembershipUid !== user?.uid || !user || loadingProjects || projectError || router.query.projects === "1") return;
+    if (joinedProjectIds.length === 1 && projects.some(p => p.projectId === joinedProjectIds[0])) {
+      void router.replace({pathname:"/workspace",query:{projectId:joinedProjectIds[0]}});
+    }
+  }, [user, loadingProjects, projectError, joinedProjectIds, projects, router, freshMembershipUid]);
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -165,11 +177,11 @@ export default function Home() {
     setShowProjectModal(true);
   };
 
-  const handleDeleteProject = (projectId: string) => {
+  const handleDeleteProject = async (projectId: string) => {
     if (!userIsSystemAdmin) return;
-    const ok = window.confirm("Delete this project?");
+    const ok = window.confirm("이 프로젝트를 삭제할까요?");
     if (!ok) return;
-    deleteProject(projectId);
+    try { await deleteProject(projectId); } catch { /* The provider displays the save error. */ }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -215,11 +227,12 @@ export default function Home() {
 
 
 
-  const handleCreateProject = () => {
+  const handleCreateProject = async () => {
     const trimmed = projectName.trim();
     if (!trimmed) return;
     if (!/^\d{4}$/.test(projectAccessCodeInput)) return;
-    const next = createProject(trimmed, {
+    try {
+    const next = await createProject(trimmed, {
       projectAdmin: projectAdminInput || userEmail || "test@snu.ac.kr",
       accessCode: projectAccessCodeInput,
       createdByEmail: userEmail || undefined,
@@ -228,17 +241,19 @@ export default function Home() {
     setActiveProjectId(next.projectId);
     setShowProjectModal(false);
     router.push({ pathname: "/workspace", query: { projectId: next.projectId } });
+    } catch { /* The provider displays the save error. */ }
   };
 
-  const handleSaveProject = () => {
+  const handleSaveProject = async () => {
     if (!editingProjectId) return;
     if (!/^\d{4}$/.test(projectAccessCodeInput)) return;
-    updateProject(editingProjectId, {
+    try { await updateProject(editingProjectId, {
       projectName: projectName.trim() || "Untitled Project",
       projectAdmin: projectAdminInput,
       accessCode: projectAccessCodeInput,
     });
     setShowProjectModal(false);
+    } catch { /* The provider displays the save error. */ }
   };
 
   const handleOpenProject = (projectId: string) => {
@@ -247,16 +262,21 @@ export default function Home() {
   };
   return (
     <AppShell>
-      {user ? (
+      {authLoading ? <p role="status" className="text-sm text-slate-500">로그인 상태를 확인하고 있습니다.</p> : user ? (
         <>
           <section className="flex flex-col gap-3">
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">Projects</p>
-            <h2 className="text-3xl font-semibold text-slate-900">Select a project</h2>
-            <p className="max-w-3xl text-sm text-slate-500">Open an existing workspace or create a new one from the gallery.</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">내 프로젝트</p>
+            <h2 className="text-3xl font-semibold text-slate-900">참여할 프로젝트를 선택하세요</h2>
+            <p className="max-w-3xl text-sm text-slate-500">참여한 프로젝트는 코드 없이 바로 들어갈 수 있어요.</p>
           </section>
 
+          {loadingProjects && <p role="status" className="text-sm text-slate-500">프로젝트를 불러오는 중입니다.</p>}
+          {projectError && <p role="alert" className="text-sm text-rose-600">{projectError}</p>}
+          {lastProjectId && joinedProjectIds.includes(lastProjectId) && <button type="button" className="text-left text-sm font-semibold text-blue-700" onClick={() => handleOpenProject(lastProjectId)}>최근 프로젝트 이어가기</button>}
           <section className="grid grid-cols-1 gap-5 md:grid-cols-3 xl:grid-cols-4">
-            {visibleProjects.map((project) => (
+            {visibleProjects.map((project,index) => (
+              <Fragment key={project.projectId}>
+              {(index === 0 || joinedProjectIds.includes(project.projectId) !== joinedProjectIds.includes(visibleProjects[index-1].projectId)) && <h3 className="col-span-full text-lg font-semibold">{joinedProjectIds.includes(project.projectId) ? "내 프로젝트" : "새 프로젝트 참여"}</h3>}
               <button
                 key={project.projectId}
                 type="button"
@@ -267,12 +287,12 @@ export default function Home() {
                   {projectThumbnails[project.projectId] ? (
                     <img
                       src={projectThumbnails[project.projectId]}
-                      alt={`${project.projectName} thumbnail`}
+                      alt={`${project.projectName} 미리보기`}
                       className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400">
-                      <span className="text-sm font-semibold">No preview</span>
+                      <span className="text-sm font-semibold">미리보기 없음</span>
                     </div>
                   )}
                 </div>
@@ -280,20 +300,21 @@ export default function Home() {
                   <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="text-base font-semibold text-slate-900">{project.projectName}</h3>
-                    <p className="mt-1 text-xs text-slate-500">Last modified: {new Date(project.lastModifiedAt).toLocaleString()}</p>
-                    <p className="text-xs text-slate-400">Admin: {project.projectAdmin}</p>
+                    <p className="mt-1 text-xs text-slate-500">최근 수정: {new Date(project.lastModifiedAt).toLocaleString()}</p>
+                    <p className="text-xs text-slate-400">담당자: {project.projectAdmin}</p>
                   </div>
                   {canManageProject(userEmail, project) && (
                     <div className="flex gap-1">
-                      <button type="button" className="rounded-md border border-slate-200 px-2 py-1 text-[10px]" onClick={(e) => { e.stopPropagation(); handleManageProject(project.projectId); }}>Manage</button>
+                      <button type="button" className="rounded-md border border-slate-200 px-2 py-1 text-[10px]" onClick={(e) => { e.stopPropagation(); handleManageProject(project.projectId); }}>관리</button>
                       {userIsSystemAdmin && project.projectId !== "project-1" && (
-                        <button type="button" className="rounded-md border border-rose-200 px-2 py-1 text-[10px] text-rose-600" onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.projectId); }}>Delete</button>
+                        <button type="button" className="rounded-md border border-rose-200 px-2 py-1 text-[10px] text-rose-600" onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.projectId); }}>삭제</button>
                       )}
                     </div>
                   )}
                   </div>
                 </div>
               </button>
+              </Fragment>
             ))}
 
             {userIsSystemAdmin && (
@@ -303,7 +324,7 @@ export default function Home() {
               className="flex aspect-[4/3] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white text-slate-500 shadow-sm transition hover:-translate-y-1 hover:border-[var(--primary)] hover:text-[var(--primary)] hover:shadow-lg"
             >
               <span className="text-5xl leading-none">+</span>
-              <span className="mt-2 text-sm font-semibold">Create Project</span>
+              <span className="mt-2 text-sm font-semibold">프로젝트 만들기</span>
             </button>
           )}
           </section>
@@ -312,21 +333,21 @@ export default function Home() {
             <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
               <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-semibold text-slate-900">Manage Project</h3>
-                  <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs" onClick={() => setShowProjectModal(false)}>Close</button>
+                  <h3 className="text-xl font-semibold text-slate-900">프로젝트 관리</h3>
+                  <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs" onClick={() => setShowProjectModal(false)}>닫기</button>
                 </div>
                 <div className="mt-4 space-y-3">
-                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} />
-                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="Project admin email" value={projectAdminInput} onChange={(event) => setProjectAdminInput(event.target.value)} />
-                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="4-digit access code" value={projectAccessCodeInput} onChange={(event) => setProjectAccessCodeInput(event.target.value.replace(/\D/g, "").slice(0, 4))} />
+                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="프로젝트 이름" value={projectName} onChange={(event) => setProjectName(event.target.value)} />
+                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="담당자 이메일" value={projectAdminInput} onChange={(event) => setProjectAdminInput(event.target.value)} />
+                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="참여 코드 (숫자 4자리)" value={projectAccessCodeInput} onChange={(event) => setProjectAccessCodeInput(event.target.value.replace(/\D/g, "").slice(0, 4))} />
 
                 </div>
                 <button className="mt-4 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white" type="button" onClick={editingProjectId ? handleSaveProject : handleCreateProject}>
-                  {editingProjectId ? "Save project" : "Create project"}
+                  {editingProjectId ? "저장" : "프로젝트 만들기"}
                 </button>
                 {editingProjectId && editingProjectId !== "project-1" && (
                   <button className="mt-2 w-full rounded-xl border border-rose-200 px-4 py-3 text-sm font-semibold text-rose-600" type="button" onClick={() => { handleDeleteProject(editingProjectId); setShowProjectModal(false); }}>
-                    Delete project
+                    프로젝트 삭제
                   </button>
                 )}
               </div>
