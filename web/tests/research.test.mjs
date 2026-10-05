@@ -165,3 +165,19 @@ test('a historical case-only answer keeps its own evidence sources', () => {
   assert.deepEqual(usedAnswerEvidence(record).selectedSources, ['cases']);
   assert.deepEqual(usedAnswerEvidence(record).papers, []);
 });
+
+test('spatial-only context is interpreted without invented evidence citations and saved with the answer', async (t) => {
+  const spatialContext = { projectId:'project-1', type:'buffer',timestamp:'2026-10-05T01:00:00.000Z',layerIds:['green'],parameters:{distanceMeters:300},metrics:{areaSqm:280000,greenRatio:.2},notes:['Point buffer; no population layer.'] };
+  mockLLM(t, async (request) => {
+    const payload = JSON.parse(request.userText);
+    assert.deepEqual(payload.spatialContext,spatialContext);
+    assert.match(request.systemText,/Do not calculate geometry/);
+    assert.match(request.systemText,/Do not put spatial metrics in caseFindings/);
+    return JSON.stringify({...response(),caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'공간 분석 결과: 녹지 비율은 20%입니다.'});
+  });
+  const result = await runRoute(answerHandler,{question:'녹지 접근성',selectedSources:['cases'],cases:[],spatialContext});
+  assert.equal(result.status,200);
+  assert.deepEqual(result.body.analysis.spatialContext,spatialContext);
+  assert.deepEqual(result.body.analysis.answer.sources,[]);
+  assert.deepEqual(result.body.analysis.answer.caseFindings,[]);
+});

@@ -1,4 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import SpatialSummary from "../../components/spatial/SpatialSummary";
+import { parseSpatialResult } from "../../lib/spatial/context";
+import type { SpatialResult } from "../../lib/spatial/types";
+const SpatialAnalysis = dynamic(() => import("../../components/spatial/SpatialAnalysis"), { ssr: false, loading: () => <p className="p-6 text-sm text-slate-500">공간 분석을 불러오는 중입니다.</p> });
+
 import AppShell from "../../components/AppShell";
 import {
   loadChatLogsFromFirestore,
@@ -265,8 +271,31 @@ export default function Workspace() {
   const [inputValue, setInputValue] = useState("");
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
   const effectiveSources = selectedSources.length ? selectedSources : DEFAULT_SOURCES;
+  const [inspectedSpatial, setInspectedSpatial] = useState<SpatialResult | null>(null);
   const [inspectedEvidence, setInspectedEvidence] = useState<AnalysisRecord["evidence"] | null>(null);
-  const [analysisView, setAnalysisView] = useState<"cases" | "answer">("cases");
+  const [analysisView, setAnalysisView] = useState<"cases" | "spatial" | "answer">("cases");
+  const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null);
+  const [includeSpatial, setIncludeSpatial] = useState(false);
+  const spatialStorageKey = userKey ? `ppss-spatial-${projectId}-${userKey}` : null;
+  useEffect(() => {
+    setSpatialResult(null); setIncludeSpatial(false);
+    if (!spatialStorageKey) return;
+    try {
+      const saved = localStorage.getItem(spatialStorageKey);
+      const restored = saved ? parseSpatialResult(JSON.parse(saved)) : undefined;
+      if (restored?.projectId === projectId) setSpatialResult(restored);
+    } catch { /* Invalid or unavailable local storage does not affect the workspace. */ }
+  }, [spatialStorageKey, projectId]);
+  const updateSpatialResult = (result: SpatialResult | null) => {
+    if (result && result.projectId !== projectId) return;
+    setSpatialResult(result);
+    try {
+      if (spatialStorageKey) {
+        if (result) localStorage.setItem(spatialStorageKey, JSON.stringify(result));
+        else localStorage.removeItem(spatialStorageKey);
+      }
+    } catch { /* The in-memory result remains usable when storage is unavailable. */ }
+  };
   const [highlightedEvidence, setHighlightedEvidence] = useState<string | null>(null);
   const analysisAbortRef = useRef<AbortController | null>(null);
   const chatGenerationRef = useRef(0);
@@ -314,6 +343,7 @@ export default function Workspace() {
     setSelectedAlternative(null);
     setSelectedSources([]);
     setInspectedEvidence(null);
+    setInspectedSpatial(null);
     setHighlightedEvidence(null);
     setAnalysisView("cases");
     setErrorMessage(null);
@@ -388,6 +418,7 @@ export default function Workspace() {
     [chatLogsByStep]
   );
   const latestAnalysis = [...(chatLogsByStep.data ?? [])].reverse().find((log) => log.analysis)?.analysis;
+  const answerSpatial = inspectedEvidence ? inspectedSpatial : latestAnalysis?.spatialContext;
   const analysisEvidence = inspectedEvidence ?? (latestAnalysis ? usedAnswerEvidence(latestAnalysis) : null);
   const [hasLoadedChatLogs, setHasLoadedChatLogs] = useState(false);
   const hasAnyAlternativeImage = useMemo(() => {
@@ -1119,6 +1150,7 @@ const handleSend = async () => {
         body: JSON.stringify({
           question: userMessage,
           selectedSources: effectiveSources,
+          ...(includeSpatial && spatialResult?.projectId === projectId ? { spatialContext: spatialResult } : {}),
           provider: activeProvider,
           cases: (activeProject?.workspaceContent.data.cases ?? []).map(({ id, label, title, text }) => ({ id, label, title, text })),
           projectContext: [activeProject?.projectName, activeProject?.workspaceContent.problem.title, activeProject?.workspaceContent.problem.text, activeProject?.workspaceContent.data.text, savedSummaries.problem].filter(Boolean).join("\n\n"),
@@ -1136,6 +1168,7 @@ const handleSend = async () => {
       }];
       setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextLogs }));
       await persistChatLogs(stepId, sanitizeLogs(nextLogs));
+      if (isCurrentConversation()) setIncludeSpatial(false);
       return;
     }
     let finalMessage = userMessage;
@@ -1763,6 +1796,7 @@ const handleSend = async () => {
               </p>
               {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} onViewEvidence={(sourceId) => {
                 setInspectedEvidence(usedAnswerEvidence(message.analysis!));
+                setInspectedSpatial(message.analysis!.spatialContext ?? null);
                 setAnalysisView("answer");
                 setHighlightedEvidence(sourceId ?? null);
                 if (sourceId) window.setTimeout(() => document.getElementById(`evidence-${sourceId}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 0);
@@ -1796,6 +1830,7 @@ const handleSend = async () => {
           </button>)}
           {!selectedSources.length && <p className="text-xs text-slate-500">{analysisLabels.defaults}</p>}
         </div>}
+        {activeStep.id === "data" && includeSpatial && spatialResult?.projectId === projectId && <div className="mb-2 flex items-center gap-2 text-xs text-blue-700">공간 분석 결과 첨부 <button type="button" disabled={isSending} onClick={() => setIncludeSpatial(false)} aria-label="공간 분석 결과 첨부 취소">×</button></div>}
         <div className="flex items-center gap-2">
         {activeStep.id === "data" && <SourceSelector selected={selectedSources} onChange={setSelectedSources} disabled={isSending || isStageLocked} />}
         <input
@@ -1995,25 +2030,33 @@ const handleSend = async () => {
       {activeStep.id === "data" && (
         <section className={responsiveWorkspaceSection}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
-            <div role="tablist" aria-label={`${analysisLabels.cases} / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
-              {(["cases", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
+            <div role="tablist" aria-label={`${analysisLabels.cases} / 공간 분석 / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
+              {(["cases", "spatial", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
                 id={`analysis-${view}-tab`} aria-controls={`analysis-${view}-panel`} aria-selected={analysisView === view}
                 tabIndex={analysisView === view ? 0 : -1}
                 onClick={() => setAnalysisView(view)}
                 onKeyDown={(event) => {
                   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
                     event.preventDefault();
-                    const next = view === "cases" ? "answer" : "cases";
+                    const views = ["cases", "spatial", "answer"] as const;
+                    const next = views[(views.indexOf(view) + (event.key === "ArrowRight" ? 1 : 2)) % views.length];
                     setAnalysisView(next);
                     document.getElementById(`analysis-${next}-tab`)?.focus();
                   }
                 }}
                 className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold ${analysisView === view ? "bg-white text-[var(--primary)] shadow-sm" : "text-slate-500 hover:bg-white/60"}`}>
-                {view === "cases" ? analysisLabels.cases : analysisLabels.answerEvidence}
+                {view === "cases" ? analysisLabels.cases : view === "spatial" ? "공간 분석" : analysisLabels.answerEvidence}
               </button>)}
             </div>
+            {analysisView === "spatial" && <div role="tabpanel" id="analysis-spatial-panel" aria-labelledby="analysis-spatial-tab">
+              <SpatialAnalysis key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={updateSpatialResult} included={includeSpatial} onInclude={setIncludeSpatial} />
+            </div>}
             {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
               <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>
+              {answerSpatial && <section className="m-6 space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-4 text-sm">
+                <h4 className="font-semibold">이 답변에 사용한 공간 분석 결과</h4>
+                <SpatialSummary result={answerSpatial} />
+              </section>}
               <EvidencePanel evidence={analysisEvidence} enabled={analysisEvidence?.selectedSources ?? DEFAULT_SOURCES} loading={isSending} highlighted={highlightedEvidence}
                 availableCaseIds={(activeProject?.workspaceContent.data.cases ?? []).map((item) => item.id)}
                 onViewCase={(caseId) => { setActiveTab(caseId); setAnalysisView("cases"); }} />

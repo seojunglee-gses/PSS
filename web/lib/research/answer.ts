@@ -36,7 +36,7 @@ export function parseAnswer(text: string, evidence: EvidenceBundle): AnalysisAns
 }
 
 export async function answerFromEvidence(request: AnalysisRequest, evidence: EvidenceBundle): Promise<AnalysisAnswer> {
-  if (!evidenceCitations(evidence).length) {
+  if (!evidenceCitations(evidence).length && !request.spatialContext) {
     return { summary: "There is not enough available evidence to answer this question. Refine the question or try another evidence source.", caseFindings: [], researchFindings: [], agreement: "", differences: "", integratedInterpretation: "", projectImplications: [], limitations: evidence.warnings.map((w) => w.message).join(" "), sources: [] };
   }
   const systemText = `You support the Data Analysis stage of a participatory urban regeneration project.
@@ -46,13 +46,14 @@ Use ONLY the supplied case excerpts and research abstracts for factual findings.
 Research evidence scope is ABSTRACT-BASED. Never imply full papers were read. If exact methods, sample sizes, statistics, tables, figures, methodology or detailed limitations are absent from the abstracts, explicitly say the available abstracts do not provide enough information. Titles and citation counts do not support substantive findings.
 Do not invent consensus, quantify support/opposition, equate citations with quality, or treat missing evidence as disagreement. Explain agreement and differences only where the supplied abstracts support them. If no research abstracts were provided, return researchFindings=[], agreement="", differences="". If no cases were provided, return caseFindings=[].
 Project implications are conditional planning recommendations, distinct from evidence-supported facts. Describe partial retrieval failures in limitations. Explain evidence gaps and contextual transfer limits. Cite every finding using ONLY the supplied sourceId of the correct evidence kind. Case findings may use only C: IDs; research findings only R: IDs.
+If spatialContext is supplied, it is a client-computed deterministic GIS summary, separate from case/research evidence. Interpret only its supplied metrics in integratedInterpretation and projectImplications; explicitly identify them as 공간 분석 결과 (or the user's language equivalent). Do not put spatial metrics in caseFindings or researchFindings or invent citation IDs. Do not calculate geometry, invent absent metrics, infer statistical significance, or claim these client results were independently verified. Explain provided spatial notes, available layer scope, selected parameters, and limitations. If no case or research evidence is available, you may still interpret the spatial summary and must keep both findings arrays empty.
 Return JSON only, with exactly this structure:
 {"summary":"...","caseFindings":[{"text":"...","sourceIds":["C:1"]}],"researchFindings":[{"text":"...","sourceIds":["R:W123"]}],"agreement":"...","differences":"...","integratedInterpretation":"...","projectImplications":["..."],"limitations":"..."}`;
   const response = await callLLM({
     provider: request.provider,
     model: request.provider === "gemini" ? "gemini-2.5-flash" : request.provider === "deepseek" ? "deepseek-chat" : "gpt-5-mini",
     systemText,
-    userText: JSON.stringify({ question: request.question, projectContext: request.projectContext, cases: evidence.cases, papers: evidence.papers.filter((p) => p.usedInAnswer), retrievalWarnings: evidence.warnings }),
+    userText: JSON.stringify({ question: request.question, spatialContext: request.spatialContext, projectContext: request.projectContext, cases: evidence.cases, papers: evidence.papers.filter((p) => p.usedInAnswer), retrievalWarnings: evidence.warnings }),
   });
   return parseAnswer(response, evidence);
 }

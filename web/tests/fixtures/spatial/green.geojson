@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","features":[{"type":"Feature","id":"test-green","properties":{"name":"검증용 녹지"},"geometry":{"type":"Polygon","coordinates":[[[127,37.5],[127.005,37.5],[127.005,37.51],[127,37.51],[127,37.5]]]}}]}
