@@ -1,3 +1,4 @@
+import { academicSearchQuery } from "./query";
 import type { ResearchPaper } from "./types";
 
 type OpenAlexWork = {
@@ -73,12 +74,13 @@ export function researchSearchMode(question: string): "search" | "search.semanti
   return question.trim().split(/\s+/).length >= 10 || question.length >= 100 ? "search.semantic" : "search";
 }
 
-export async function searchOpenAlex(question: string): Promise<ResearchPaper[]> {
-  const cached = cache.get(question);
+export async function searchOpenAlex(question: string, provider?: "openai" | "gemini" | "deepseek"): Promise<ResearchPaper[]> {
+  const query = await academicSearchQuery(question, provider);
+  const cached = cache.get(query);
   if (cached && cached.expires > Date.now()) return cached.papers;
   const url = new URL("https://api.openalex.org/works");
   // Natural-language questions use semantic retrieval; concise queries use works search.
-  url.searchParams.set(researchSearchMode(question), question);
+  url.searchParams.set(researchSearchMode(query), query);
   url.searchParams.set("per-page", "25");
   url.searchParams.set("filter", "is_retracted:false");
   if (process.env.OPENALEX_API_KEY) url.searchParams.set("api_key", process.env.OPENALEX_API_KEY);
@@ -102,6 +104,6 @@ export async function searchOpenAlex(question: string): Promise<ResearchPaper[]>
   if (!Array.isArray(payload.results)) throw new Error("Research search returned an invalid response.");
   const papers = selectPapers(payload.results);
   if (cache.size >= 50) cache.delete(cache.keys().next().value!);
-  cache.set(question, { expires: Date.now() + 5 * 60 * 1000, papers });
+  cache.set(query, { expires: Date.now() + 5 * 60 * 1000, papers });
   return papers;
 }

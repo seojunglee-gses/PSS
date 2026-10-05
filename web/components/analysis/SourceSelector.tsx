@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../../lib/i18n";
 import { researchLabels } from "../../lib/research/labels";
-import { DEFAULT_SOURCES, type EvidenceSource } from "../../lib/research/types";
+import { SOURCE_OPTIONS, type EvidenceSource } from "../../lib/research/types";
 
 export default function SourceSelector({ selected, onChange, disabled }: {
   selected: EvidenceSource[]; onChange: (sources: EvidenceSource[]) => void; disabled: boolean;
@@ -27,10 +27,14 @@ export default function SourceSelector({ selected, onChange, disabled }: {
     {open && <fieldset id="analysis-source-options" className="absolute bottom-12 left-0 z-40 w-64 rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
       <legend className="sr-only">{labels.choose}</legend>
       <p className="mb-2 text-sm font-semibold text-slate-800">{labels.choose}</p>
-      {DEFAULT_SOURCES.map((source) => <label key={source} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-blue-50">
+      <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-blue-50">
+        <input type="checkbox" checked={!selected.length} disabled={disabled} onChange={() => onChange([])} />
+        {labels.auto}
+      </label>
+      {SOURCE_OPTIONS.map((source) => <label key={source} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-blue-50">
         <input type="checkbox" checked={selected.includes(source)} disabled={disabled}
           onChange={() => onChange(selected.includes(source) ? selected.filter((s) => s !== source) : [...selected, source])} />
-        {source === "cases" ? labels.cases : labels.research}
+        {labels[source]}
       </label>)}
       <p className="mt-2 text-xs text-slate-500">{labels.sourceHelp}</p>
     </fieldset>}

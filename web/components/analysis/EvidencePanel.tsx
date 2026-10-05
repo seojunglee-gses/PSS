@@ -22,7 +22,11 @@ export default function EvidencePanel({ evidence, enabled, loading, highlighted,
     {evidence && <p className="mt-2 break-words text-xs text-slate-500">{labels.question}: {evidence.question}</p>}
     {!evidence && !loading && <p className="mt-3 text-sm text-slate-500">{labels.noAnswer}</p>}
     {evidence?.warnings.filter((w) => enabled.includes(w.source)).map((warning, index) => <p key={index} role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{warning.message}</p>)}
-    {evidence && enabled.includes("cases") && <section className="mt-5" aria-label={labels.caseEvidence}>
+    {evidence?.projectContext && enabled.includes("project") && <section className="mt-5" aria-label={labels.project}>
+      <h4 className="font-semibold text-slate-800">{labels.project}</h4>
+      <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{evidence.projectContext}</p>
+    </section>}
+    {evidence && enabled.includes("cases") && evidence.cases.length > 0 && <section className="mt-5" aria-label={labels.caseEvidence}>
       <h4 className="font-semibold text-slate-800">{labels.caseEvidence}</h4>
       <p className="mt-1 text-xs text-slate-500">{evidence?.cases.length ?? 0} {labels.caseCount}</p>
       <div className="mt-3 space-y-3">{evidence?.cases.map((c) => <article key={c.sourceId} id={`evidence-${c.sourceId}`} className={cardClass(c.sourceId)}>
@@ -33,7 +37,7 @@ export default function EvidencePanel({ evidence, enabled, loading, highlighted,
         {onViewCase && availableCaseIds.includes(c.id) && <button type="button" onClick={() => onViewCase(c.id)} className="mt-3 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">{labels.fullCase}</button>}
       </article>)}</div>
     </section>}
-    {evidence && enabled.includes("research") && <section className="mt-5 border-t border-slate-200 pt-5" aria-label={labels.researchEvidence}>
+    {evidence && enabled.includes("research") && papers.length > 0 && <section className="mt-5 border-t border-slate-200 pt-5" aria-label={labels.researchEvidence}>
       <h4 className="font-semibold text-slate-800">{labels.researchEvidence}</h4>
       <p className="mt-2 text-xs font-semibold text-blue-700">{labels.scope}</p>
       <p className="mt-1 text-xs text-slate-500">{labels.scopeDetail}</p>

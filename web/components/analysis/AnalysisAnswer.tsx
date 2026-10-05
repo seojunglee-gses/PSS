@@ -3,11 +3,16 @@ import { researchLabels } from "../../lib/research/labels";
 import type { AnalysisAnswer as Answer, Finding } from "../../lib/research/types";
 import { usedSourceIds } from "../../lib/research/types";
 
-export default function AnalysisAnswer({ answer, onViewEvidence }: { answer: Answer; onViewEvidence: (sourceId?: string) => void }) {
+export default function AnalysisAnswer({ answer, onViewEvidence, additionalSources = [] }: { answer: Answer; additionalSources?: ("project" | "spatial")[]; onViewEvidence: (sourceId?: string) => void }) {
   const { locale } = useI18n();
   const labels = researchLabels(locale);
   const cited = usedSourceIds(answer);
   const sources = answer.sources.filter((source) => cited.has(source.sourceId));
+  const sourceSummary = [
+    ...additionalSources.map((source) => labels[source]),
+    ...(sources.some((s) => s.kind === "cases") ? [`${sources.filter((s) => s.kind === "cases").length} ${labels.caseCount}`] : []),
+    ...(sources.some((s) => s.kind === "research") ? [`${sources.filter((s) => s.kind === "research").length} ${labels.paperCount}`] : []),
+  ].join(" · ");
   const textSection = (title: string, text: string) => text && <section className="mt-3"><h4 className="font-semibold">{title}</h4><p className="mt-1 whitespace-pre-line">{text}</p></section>;
   const findings = (title: string, items: Finding[]) => items.length > 0 && <section className="mt-3"><h4 className="font-semibold">{title}</h4>
     <ul className="mt-1 space-y-2">{items.map((finding, index) => <li key={index}>
@@ -17,7 +22,7 @@ export default function AnalysisAnswer({ answer, onViewEvidence }: { answer: Ans
   </section>;
   return <div className="mt-2 text-sm">
     <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-      <span>{labels.sourcesUsed}: {sources.filter((s) => s.kind === "cases").length} {labels.caseCount} · {sources.filter((s) => s.kind === "research").length} {labels.paperCount}</span>
+      {sourceSummary && <span>{labels.sourcesUsed}: {sourceSummary}</span>}
       <button type="button" onClick={() => onViewEvidence()} className="rounded-full border border-blue-200 bg-white px-3 py-1 font-semibold text-blue-700">{labels.view}</button>
     </div>
     {sources.some((source) => source.kind === "research") && <p className="rounded-lg bg-white px-2 py-1 text-xs text-blue-700">{labels.scope}</p>}

@@ -5,8 +5,8 @@ const en = {
   answerIntro: "Evidence used for this response", noAnswer: "Select View evidence on an analysis answer to inspect its sources.",
   backCases: "← Back to Case Studies", fullCase: "View full case", editCases: "Edit cases", paperDetails: "Paper details",
   sourcesUsed: "Sources used", caseCount: "Cases", paperCount: "Papers",
-  evidence: "Evidence", analysisChat: "Analysis Chat", cases: "Case Studies", research: "Research Papers",
-  choose: "Choose evidence sources", remove: "Remove", defaults: "No selection: use Case Studies and Research Papers.",
+  evidence: "Evidence", analysisChat: "Analysis Chat", auto: "Automatic", project: "Project materials", spatial: "Spatial analysis", cases: "Case Studies", research: "Research Papers",
+  choose: "Choose evidence sources", remove: "Remove", defaults: "Automatic: use sources relevant to your question.",
   caseEvidence: "Case Evidence", researchEvidence: "Research Evidence", browse: "Browse / edit project case materials",
   empty: "Ask a question to retrieve evidence. Results will appear here.", loading: "Retrieving evidence and preparing an answer…",
   scope: "Evidence scope: Abstract-based", scopeDetail: "Research findings use available abstracts, not full papers. Missing methods, sample sizes and statistics cannot be inferred.",
@@ -17,7 +17,7 @@ const en = {
   integrated: "Integrated interpretation", implications: "Implications for this project", limitations: "Limitations of the available evidence",
   sources: "Sources supplied to the analysis", view: "View evidence", projectMaterial: "Project case material", researchFindings: "Key research findings",
   caseFindings: "Case-based findings and lessons", notable: "Most cited among retrieved papers", authorUnknown: "Authors not available",
-  sourceHelp: "Choose one or more sources. Clear all selections to use both sources.", evidenceError: "The answer could not be completed. Retrieved evidence is shown below.",
+  sourceHelp: "Select sources to override automatic selection. Clear all to return to automatic.", evidenceError: "The answer could not be completed. Retrieved evidence is shown below.",
 };
 type Labels = typeof en;
 const ko: Labels = {
@@ -25,8 +25,8 @@ const ko: Labels = {
   answerIntro: "이 답변에 사용한 자료", noAnswer: "답변에서 ‘근거 보기’를 누르면 참고한 자료를 확인할 수 있습니다.",
   backCases: "← 사례로 돌아가기", fullCase: "사례 전체 보기", editCases: "사례 수정", paperDetails: "논문 상세 정보",
   sourcesUsed: "참고 자료", caseCount: "건의 사례", paperCount: "편의 논문",
-  evidence: "근거 자료", analysisChat: "AI 대화", cases: "사례 살펴보기", research: "논문 검색",
-  choose: "답변에 참고할 자료 선택", remove: "선택 해제", defaults: "선택하지 않으면 사례와 논문을 모두 참고합니다.",
+  evidence: "근거 자료", analysisChat: "AI 대화", auto: "자동 선택", project: "프로젝트 자료", spatial: "공간 분석", cases: "사례", research: "학술 논문",
+  choose: "답변에 참고할 자료 선택", remove: "선택 해제", defaults: "자동 선택 · 질문에 필요한 자료를 참고합니다.",
   caseEvidence: "참고한 사례", researchEvidence: "참고한 논문", browse: "사례 자료 보기",
   empty: "질문을 보내면 참고 자료가 여기에 표시됩니다.", loading: "자료를 찾고 답변을 준비하고 있습니다…",
   scope: "근거 범위: 초록 기준", scopeDetail: "논문 전문이 아닌 공개된 초록을 참고합니다. 초록에 없는 연구 방법, 표본 수, 통계 수치는 추정할 수 없습니다.",
@@ -37,15 +37,15 @@ const ko: Labels = {
   integrated: "자료를 종합하면", implications: "이 사업에 적용하면", limitations: "확인할 때 주의할 점",
   sources: "분석에 제공한 자료", view: "근거 보기", projectMaterial: "저장된 사례 자료", researchFindings: "논문의 주요 내용",
   caseFindings: "사례에서 배울 점", notable: "검색 결과에서 많이 인용된 논문", authorUnknown: "저자 정보 없음",
-  sourceHelp: "참고할 자료를 선택하세요. 선택을 모두 해제하면 사례와 논문을 함께 참고합니다.", evidenceError: "답변을 만들지 못했습니다. 찾은 자료는 아래에서 확인할 수 있습니다.",
+  sourceHelp: "자료를 직접 선택하면 선택한 자료만 참고합니다. 모두 해제하면 자동 선택으로 돌아갑니다.", evidenceError: "답변을 만들지 못했습니다. 찾은 자료는 아래에서 확인할 수 있습니다.",
 };
 const zh: Labels = {
   answerEvidence: "回答证据", caseIntro: "阅读选定的城市更新案例，比较其策略、成果和经验。",
   answerIntro: "此回答使用的证据", noAnswer: "选择分析回答中的查看证据，以检查其来源。",
   backCases: "← 返回案例研究", fullCase: "查看完整案例", editCases: "编辑案例", paperDetails: "论文详情",
   sourcesUsed: "使用的来源", caseCount: "个案例", paperCount: "篇论文",
-  evidence: "证据", analysisChat: "分析对话", cases: "案例研究", research: "研究论文",
-  choose: "选择证据来源", remove: "移除", defaults: "未选择时同时使用案例研究和研究论文。",
+  evidence: "证据", analysisChat: "分析对话", auto: "自动选择", project: "项目资料", spatial: "空间分析", cases: "案例研究", research: "研究论文",
+  choose: "选择证据来源", remove: "移除", defaults: "自动选择：使用与问题相关的资料。",
   caseEvidence: "案例证据", researchEvidence: "研究证据", browse: "查看 / 编辑项目案例资料",
   empty: "提出问题后，检索到的证据将显示在这里。", loading: "正在检索证据并准备回答…",
   scope: "证据范围：基于摘要", scopeDetail: "研究结论基于可用摘要，而非论文全文。无法推断缺失的方法、样本量或统计数据。",
@@ -56,6 +56,6 @@ const zh: Labels = {
   integrated: "综合解读", implications: "对当前项目的启示", limitations: "可用证据的局限",
   sources: "提供给分析的来源", view: "查看证据", projectMaterial: "项目案例资料", researchFindings: "主要研究发现",
   caseFindings: "案例发现与经验", notable: "检索论文中被引用最多的论文", authorUnknown: "作者信息不可用",
-  sourceHelp: "选择一个或多个来源。清除选择将同时使用两个来源。", evidenceError: "无法完成回答。检索到的证据显示如下。",
+  sourceHelp: "手动选择时仅使用所选资料。清除选择后恢复自动选择。", evidenceError: "无法完成回答。检索到的证据显示如下。",
 };
 export const researchLabels = (locale: Locale): Labels => ({ en, ko, zh })[locale];

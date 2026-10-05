@@ -8,6 +8,7 @@ const SpatialAnalysis = dynamic(() => import("../../components/spatial/SpatialAn
 import ProjectAccessGate from "../../components/projects/ProjectAccessGate";
 import AppShell from "../../components/AppShell";
 import StageChatEmptyState from "../../components/chat/StageChatEmptyState";
+import { resolveSources } from "../../lib/research/routing";
 import { stageChatGuide } from "../../lib/stage-chat-guides";
 import {
   loadChatLogsFromFirestore,
@@ -267,15 +268,13 @@ function AuthorizedWorkspace() {
   const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
-  const effectiveSources = selectedSources.length ? selectedSources : DEFAULT_SOURCES;
   const [inspectedSpatial, setInspectedSpatial] = useState<SpatialResult | null>(null);
   const [inspectedEvidence, setInspectedEvidence] = useState<AnalysisRecord["evidence"] | null>(null);
   const [analysisView, setAnalysisView] = useState<"cases" | "spatial" | "answer">("cases");
   const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null);
-  const [includeSpatial, setIncludeSpatial] = useState(false);
   const spatialStorageKey = userKey ? `ppss-spatial-${projectId}-${userKey}` : null;
   useEffect(() => {
-    setSpatialResult(null); setIncludeSpatial(false);
+    setSpatialResult(null);
     if (!spatialStorageKey) return;
     try {
       const saved = localStorage.getItem(spatialStorageKey);
@@ -1031,6 +1030,7 @@ const handleSend = async (suggestedQuestion?: string) => {
   setErrorMessage(null);
 
   const stepId = activeStep.id;
+  const effectiveSources = resolveSources(userMessage, selectedSources);
   setIsSending(true);
   setErrorMessage(null);
 
@@ -1063,8 +1063,8 @@ const handleSend = async (suggestedQuestion?: string) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: userMessage,
-          selectedSources: effectiveSources,
-          ...(includeSpatial && spatialResult?.projectId === projectId ? { spatialContext: spatialResult } : {}),
+          selectedSources,
+          ...(effectiveSources.includes("spatial") && spatialResult?.projectId === projectId ? { spatialContext: spatialResult } : {}),
           provider: activeProvider,
           cases: (activeProject?.workspaceContent.data.cases ?? []).map(({ id, label, title, text }) => ({ id, label, title, text })),
           projectContext: [activeProject?.projectName, activeProject?.workspaceContent.problem.title, activeProject?.workspaceContent.problem.text, activeProject?.workspaceContent.data.text, savedSummaries.problem].filter(Boolean).join("\n\n"),
@@ -1082,7 +1082,6 @@ const handleSend = async (suggestedQuestion?: string) => {
       }];
       setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextLogs }));
       await persistChatLogs(stepId, sanitizeLogs(nextLogs));
-      if (isCurrentConversation()) setIncludeSpatial(false);
       return;
     }
     let finalMessage = userMessage;
@@ -1660,7 +1659,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               <p className="text-xs font-semibold uppercase text-slate-400">
                 {message.label}
               </p>
-              {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} onViewEvidence={(sourceId) => {
+              {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} additionalSources={[...(message.analysis.evidence.projectContext ? ["project" as const] : []), ...(message.analysis.spatialContext ? ["spatial" as const] : [])]} onViewEvidence={(sourceId) => {
                 setInspectedEvidence(usedAnswerEvidence(message.analysis!));
                 setInspectedSpatial(message.analysis!.spatialContext ?? null);
                 setAnalysisView("answer");
@@ -1690,13 +1689,13 @@ const handleSend = async (suggestedQuestion?: string) => {
         {activeStep.id === "data" && <div className="mb-2 flex flex-wrap items-center gap-2">
           {selectedSources.map((source) => <button key={source} type="button" disabled={isSending || isStageLocked}
             onClick={() => setSelectedSources((prev) => prev.filter((item) => item !== source))}
-            aria-label={`${analysisLabels.remove}: ${source === "cases" ? analysisLabels.cases : analysisLabels.research}`}
+            aria-label={`${analysisLabels.remove}: ${analysisLabels[source]}`}
             className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-700 disabled:opacity-50">
-            {source === "cases" ? analysisLabels.cases : analysisLabels.research} ×
+            {analysisLabels[source]} ×
           </button>)}
           {!selectedSources.length && <p className="text-xs text-slate-500">{analysisLabels.defaults}</p>}
         </div>}
-        {activeStep.id === "data" && includeSpatial && spatialResult?.projectId === projectId && <div className="mb-2 flex items-center gap-2 text-xs text-blue-700">공간 분석 결과 첨부 <button type="button" disabled={isSending} onClick={() => setIncludeSpatial(false)} aria-label="공간 분석 결과 첨부 취소">×</button></div>}
+
         <div className="flex items-center gap-2">
         {activeStep.id === "data" && <SourceSelector selected={selectedSources} onChange={setSelectedSources} disabled={isSending || isStageLocked} />}
         <input
@@ -1916,7 +1915,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               </button>)}
             </div>
             {analysisView === "spatial" && <div role="tabpanel" id="analysis-spatial-panel" aria-labelledby="analysis-spatial-tab">
-              <SpatialAnalysis key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={updateSpatialResult} included={includeSpatial} onInclude={setIncludeSpatial} />
+              <SpatialAnalysis key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={updateSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
             </div>}
             {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
               <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>
