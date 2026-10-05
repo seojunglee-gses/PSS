@@ -1,6 +1,8 @@
 import type { SpatialResult } from "../spatial/types";
-export type EvidenceSource = "cases" | "research";
-export const DEFAULT_SOURCES: EvidenceSource[] = ["cases", "research"];
+export type EvidenceSource = "project" | "spatial" | "cases" | "research";
+export const SOURCE_OPTIONS: EvidenceSource[] = ["project", "spatial", "cases", "research"];
+// Empty selection means automatic routing, not searching every source.
+export const DEFAULT_SOURCES: EvidenceSource[] = [];
 
 export type CaseMaterial = { id: string; label: string; title: string; text: string };
 export type CaseEvidence = CaseMaterial & {
@@ -22,6 +24,7 @@ export type ResearchPaper = {
   usedInAnswer: boolean;
 };
 export type EvidenceBundle = {
+  projectContext?: string;
   question: string;
   selectedSources: EvidenceSource[];
   cases: CaseEvidence[];

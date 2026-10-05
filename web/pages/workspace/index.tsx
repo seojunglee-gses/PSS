@@ -7,6 +7,9 @@ const SpatialAnalysis = dynamic(() => import("../../components/spatial/SpatialAn
 
 import ProjectAccessGate from "../../components/projects/ProjectAccessGate";
 import AppShell from "../../components/AppShell";
+import StageChatEmptyState from "../../components/chat/StageChatEmptyState";
+import { resolveSources } from "../../lib/research/routing";
+import { stageChatGuide } from "../../lib/stage-chat-guides";
 import {
   loadChatLogsFromFirestore,
   loadCurrentSiteImage,
@@ -244,16 +247,6 @@ const formatParticipantLabel = (index: number, userId?: string) => {
   return `Participant ${index + 1}`;
 };
 
-const basePromptsByStep: Record<string, string> = {
-  data: "Respond using the three case studies: 789 Art Zone, Gyeungui Line Forest Park, and Highline Park.",
-  alternatives:
-    "",
-  evaluation:
-    "Help reviewers understand the intent behind each submitted design and summarize key differences.",
-  report:
-    "From your perspective, what is the most important issue in this project?",
-};
-
 export default function Workspace() {
   return <ProjectAccessGate><AuthorizedWorkspace /></ProjectAccessGate>;
 }
@@ -275,15 +268,13 @@ function AuthorizedWorkspace() {
   const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
-  const effectiveSources = selectedSources.length ? selectedSources : DEFAULT_SOURCES;
   const [inspectedSpatial, setInspectedSpatial] = useState<SpatialResult | null>(null);
   const [inspectedEvidence, setInspectedEvidence] = useState<AnalysisRecord["evidence"] | null>(null);
   const [analysisView, setAnalysisView] = useState<"cases" | "spatial" | "answer">("cases");
   const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null);
-  const [includeSpatial, setIncludeSpatial] = useState(false);
   const spatialStorageKey = userKey ? `ppss-spatial-${projectId}-${userKey}` : null;
   useEffect(() => {
-    setSpatialResult(null); setIncludeSpatial(false);
+    setSpatialResult(null);
     if (!spatialStorageKey) return;
     try {
       const saved = localStorage.getItem(spatialStorageKey);
@@ -329,11 +320,9 @@ function AuthorizedWorkspace() {
     setIsSending(false);
     setIsLoadingAlternatives(false);
     setChatLogsByStep({});
-    setHasLoadedChatLogs(false);
+    setLoadedChatScope(null);
     setSavedSummaries({});
     setCompletedStages([]);
-    setAlternativesInitialized(null);
-    setHasInitializedAlternatives(false);
     setGeneratedImages([]);
     setEvaluationImages([]);
     setEvaluationResults([]);
@@ -388,8 +377,6 @@ function AuthorizedWorkspace() {
   const [finishNotice, setFinishNotice] = useState<FinishNotice | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
-  const [hasInitializedAlternatives, setHasInitializedAlternatives] = useState(false);
-  const [alternativesInitialized, setAlternativesInitialized] = useState<boolean | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const [generatedImages, setGeneratedImages] = useState<DesignImage[]>([]);
@@ -423,7 +410,9 @@ function AuthorizedWorkspace() {
   const latestAnalysis = [...(chatLogsByStep.data ?? [])].reverse().find((log) => log.analysis)?.analysis;
   const answerSpatial = inspectedEvidence ? inspectedSpatial : latestAnalysis?.spatialContext;
   const analysisEvidence = inspectedEvidence ?? (latestAnalysis ? usedAnswerEvidence(latestAnalysis) : null);
-  const [hasLoadedChatLogs, setHasLoadedChatLogs] = useState(false);
+  const chatScope = `${userKey}/${projectId}/${activeStep.id}`;
+  const [loadedChatScope, setLoadedChatScope] = useState<string | null>(null);
+  const hasLoadedChatLogs = loadedChatScope === chatScope;
   const hasAnyAlternativeImage = useMemo(() => {
     return chatLogs.some(
       (log) => log.stepId === "alternatives" && Boolean(log.imageUrl)
@@ -499,19 +488,10 @@ function AuthorizedWorkspace() {
         setSavedSummaries(summary.stageSummaries);
       }
       setCompletedStages(summary?.completedStages ?? []);
-      setAlternativesInitialized(
-        Boolean((summary as any)?.alternativesInitialized)
-        );
     };
     loadSavedSummaries();
     return () => { cancelled = true; };
   }, [userKey, projectId]);
-
-  useEffect(() => {
-  if (completedStages.includes("alternatives")) {
-      setHasInitializedAlternatives(true);
-    }
-  }, [completedStages]);
 
   useEffect(() => {
     if (!userKey) {
@@ -618,7 +598,7 @@ function AuthorizedWorkspace() {
     let cancelled = false;
 
     const loadStepLogs = async () => {
-      setHasLoadedChatLogs(false);
+      setLoadedChatScope(null);
       try {
         const stepLogs = await loadStepChatLogs<
           Array<
@@ -653,7 +633,7 @@ function AuthorizedWorkspace() {
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
         setChatLogsByStep((prev) => ({ ...prev, [activeStep.id]: normalized }));
-        setHasLoadedChatLogs(true);
+        setLoadedChatScope(chatScope);
       } catch {
         if (!cancelled) setErrorMessage(t("workspace.chatLoadError"));
       }
@@ -661,7 +641,7 @@ function AuthorizedWorkspace() {
 
     loadStepLogs();
     return () => { cancelled = true; };
-  }, [userKey, activeStep.id, projectId, role, t]);
+  }, [userKey, activeStep.id, projectId, role, t, chatScope]);
 
 
   useEffect(() => {
@@ -936,7 +916,10 @@ function AuthorizedWorkspace() {
     
         // ✅ initial일 때만 보낸다
         workspaceSummary: isInitial ? savedSummaries : undefined,
-        workspaceInput: isInitial ? buildImageGenerationInput() : undefined,
+        workspaceInput: isInitial ? {
+          ...buildImageGenerationInput(),
+          recentDiscussion: [buildImageGenerationInput().recentDiscussion, feedback].filter(Boolean).join("\n"),
+        } : undefined,
     
         // ✅ iteration일 때는 이것만
         feedback: isInitial ? undefined : feedback,
@@ -1028,83 +1011,11 @@ const sanitizeLogs = (logs: ChatLog[]) =>
     imageNote: log.imageNote ?? "",
   }));
 
- const requestAutoGeneratedImage = useCallback(
-  async () => {
-    const generation = chatGenerationRef.current;
-    const imageRecord = await requestGeneratedImage();
-    if (generation !== chatGenerationRef.current) return;
-    if (!imageRecord?.imageUrl) {
-      setErrorMessage("Unable to generate the image.");
-      return;
-    }
-    const nextLogs: ChatLog[] = [
-      ...(chatLogsByStep.alternatives ?? []),
-      {
-        stepId:"alternatives",
-        provider: activeProvider,
-        sender: "assistant" as const,
-        text: "Generated a new concept image based on your feedback.",
-        label: activeProvider,
-        createdAt: new Date().toISOString(),
-        imageUrl: imageRecord.imageUrl,
-        imageId: imageRecord.id,
-        imageLabel: imageRecord.label,
-        imageNote: imageRecord.note,
-      },
-    ];
-    
-    setChatLogsByStep((prev) => ({ ...prev, alternatives: nextLogs }));
-    await persistChatLogs("alternatives", sanitizeLogs(nextLogs));
-    },
-  [requestGeneratedImage, chatLogsByStep, activeProvider, persistChatLogs]
-);
-
-
-  useEffect(() => {
-    if (activeStep.id !== "alternatives") return;
-    if (lockedStages["alternatives"]) return;
-    if (!siteImageConfigured) return;      
-    if (!hasLoadedChatLogs) return; 
-    if (isLoadingAlternatives) return; 
-    if (isSending) return;             
-    if (alternativesInitialized !== false) return;
-    if (alternativeImages.length > 0) return;
-
-    const generation = chatGenerationRef.current;
-    setIsLoadingAlternatives(true);
-    requestAutoGeneratedImage()
-    .then(async () =>{
-      if (generation !== chatGenerationRef.current) return;
-      if (userKey) {
-        await saveWorkspaceSummary(userKey, {
-          alternativesInitialized: true,
-        }, projectId);
-        if (generation === chatGenerationRef.current) setAlternativesInitialized(true);
-      }
-    })
-    .catch((err) => {
-      if (generation !== chatGenerationRef.current) return;
-      setErrorMessage(
-        err instanceof Error ? err.message : "Auto generation failed."
-      );
-    })
-    .finally(() => {
-      if (generation === chatGenerationRef.current) setIsLoadingAlternatives(false);
-    });
-}, [
-  activeStep.id,
-  lockedStages,
-  siteImageConfigured,
-  isLoadingAlternatives,
-  isSending,
-  alternativesInitialized,
-  requestAutoGeneratedImage,
-]);
-  
 const sendingRef = useRef(false);
 
-const handleSend = async () => {
-  if (!inputValue.trim()) return;
+const handleSend = async (suggestedQuestion?: string) => {
+  const userMessage = (suggestedQuestion ?? inputValue).trim();
+  if (!userMessage) return;
   if (!userKey || !hasLoadedChatLogs) return;
   if (lockedStages[activeStep.id]) return;
 
@@ -1119,7 +1030,7 @@ const handleSend = async () => {
   setErrorMessage(null);
 
   const stepId = activeStep.id;
-  const userMessage = inputValue.trim();
+  const effectiveSources = resolveSources(userMessage, selectedSources);
   setIsSending(true);
   setErrorMessage(null);
 
@@ -1152,8 +1063,8 @@ const handleSend = async () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: userMessage,
-          selectedSources: effectiveSources,
-          ...(includeSpatial && spatialResult?.projectId === projectId ? { spatialContext: spatialResult } : {}),
+          selectedSources,
+          ...(effectiveSources.includes("spatial") && spatialResult?.projectId === projectId ? { spatialContext: spatialResult } : {}),
           provider: activeProvider,
           cases: (activeProject?.workspaceContent.data.cases ?? []).map(({ id, label, title, text }) => ({ id, label, title, text })),
           projectContext: [activeProject?.projectName, activeProject?.workspaceContent.problem.title, activeProject?.workspaceContent.problem.text, activeProject?.workspaceContent.data.text, savedSummaries.problem].filter(Boolean).join("\n\n"),
@@ -1171,7 +1082,6 @@ const handleSend = async () => {
       }];
       setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextLogs }));
       await persistChatLogs(stepId, sanitizeLogs(nextLogs));
-      if (isCurrentConversation()) setIncludeSpatial(false);
       return;
     }
     let finalMessage = userMessage;
@@ -1212,6 +1122,7 @@ const handleSend = async () => {
           ];
           setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextEvaluationLogs }));
           await persistChatLogs(stepId, sanitizeLogs(nextEvaluationLogs));
+          await saveWorkspaceSummary(userKey, { alternativesInitialized: true }, projectId);
 
       } finally {
         if (isCurrentConversation()) setIsLoadingAlternatives(false);
@@ -1388,7 +1299,6 @@ const handleSend = async () => {
     }));
     await saveUserDesignSubmission(userKey, selected.id, projectId);
     await refreshEvaluationImages();
-    setHasInitializedAlternatives(true);
     setSelectedAlternative(null);
     await handleCompleteStep();
   };
@@ -1640,23 +1550,8 @@ const handleSend = async () => {
 
   const renderChatPanel = () => {
     const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
-    const basePrompt = activeStep.id === "data"
-      ? `${analysisLabels.empty} ${analysisLabels.defaults}`
-      : basePromptsByStep[activeStep.id];
-    const displayedMessages = [
-      ...(basePrompt
-        ? [
-            {
-              text: basePrompt,
-              sender: "assistant" as const,
-              label: activeProvider,
-              imageUrl: undefined,
-              analysis: undefined,
-            },
-          ]
-        : []),
-      ...stepLogs,
-    ];
+    const guide = stageChatGuide(activeStep.id, locale);
+    const displayedMessages = stepLogs;
     const formatMessage = (text: string) =>
       text.split(/(\*\*[^*]+\*\*)/g).map((segment, segmentIndex) => {
         if (segment.startsWith("**") && segment.endsWith("**")) {
@@ -1745,10 +1640,10 @@ const handleSend = async () => {
         </div>
       )}
       <div className="mt-4 max-h-[46vh] flex-1 space-y-4 overflow-auto pb-24 text-sm text-slate-600 lg:max-h-[420px] lg:pb-0">
-        {displayedMessages.length === 0 && (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
-            {t("workspace.startConversation")}
-          </div>
+        {hasLoadedChatLogs && displayedMessages.length === 0 && guide && (
+          <StageChatEmptyState guide={guide}
+            disabled={isSending || isLoadingAlternatives || isStageLocked}
+            onSubmit={(question) => { void handleSend(question); }} />
         )}
         {displayedMessages.map((message, index) => {
           const isAssistant = message.sender === "assistant";
@@ -1764,7 +1659,7 @@ const handleSend = async () => {
               <p className="text-xs font-semibold uppercase text-slate-400">
                 {message.label}
               </p>
-              {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} onViewEvidence={(sourceId) => {
+              {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} additionalSources={[...(message.analysis.evidence.projectContext ? ["project" as const] : []), ...(message.analysis.spatialContext ? ["spatial" as const] : [])]} onViewEvidence={(sourceId) => {
                 setInspectedEvidence(usedAnswerEvidence(message.analysis!));
                 setInspectedSpatial(message.analysis!.spatialContext ?? null);
                 setAnalysisView("answer");
@@ -1794,13 +1689,13 @@ const handleSend = async () => {
         {activeStep.id === "data" && <div className="mb-2 flex flex-wrap items-center gap-2">
           {selectedSources.map((source) => <button key={source} type="button" disabled={isSending || isStageLocked}
             onClick={() => setSelectedSources((prev) => prev.filter((item) => item !== source))}
-            aria-label={`${analysisLabels.remove}: ${source === "cases" ? analysisLabels.cases : analysisLabels.research}`}
+            aria-label={`${analysisLabels.remove}: ${analysisLabels[source]}`}
             className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-700 disabled:opacity-50">
-            {source === "cases" ? analysisLabels.cases : analysisLabels.research} ×
+            {analysisLabels[source]} ×
           </button>)}
           {!selectedSources.length && <p className="text-xs text-slate-500">{analysisLabels.defaults}</p>}
         </div>}
-        {activeStep.id === "data" && includeSpatial && spatialResult?.projectId === projectId && <div className="mb-2 flex items-center gap-2 text-xs text-blue-700">공간 분석 결과 첨부 <button type="button" disabled={isSending} onClick={() => setIncludeSpatial(false)} aria-label="공간 분석 결과 첨부 취소">×</button></div>}
+
         <div className="flex items-center gap-2">
         {activeStep.id === "data" && <SourceSelector selected={selectedSources} onChange={setSelectedSources} disabled={isSending || isStageLocked} />}
         <input
@@ -1820,7 +1715,7 @@ const handleSend = async () => {
         <button
           className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
           type="button"
-          onClick={handleSend}
+          onClick={() => { void handleSend(); }}
           disabled={isSending || isStageLocked || isLoadingAlternatives || !hasLoadedChatLogs}
         >
           {isLoadingAlternatives ? `${t("workspace.sending")}…`
@@ -2020,7 +1915,7 @@ const handleSend = async () => {
               </button>)}
             </div>
             {analysisView === "spatial" && <div role="tabpanel" id="analysis-spatial-panel" aria-labelledby="analysis-spatial-tab">
-              <SpatialAnalysis key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={updateSpatialResult} included={includeSpatial} onInclude={setIncludeSpatial} />
+              <SpatialAnalysis key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={updateSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
             </div>}
             {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
               <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>
@@ -2590,6 +2485,7 @@ const handleSend = async () => {
               </div>
             </div>
           </div>
+          <div className="min-w-0 lg:col-span-2">{renderChatPanel()}</div>
         </section>
       )}
       </div>

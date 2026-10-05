@@ -39,8 +39,8 @@ test('paper selection prefers relevant abstracts, excludes retractions/duplicate
   assert.deepEqual(papers[0].authors, ['A. Author']);
 });
 test('source defaults and request bounds reject malformed or unsupported inputs', () => {
-  assert.deepEqual(parseAnalysisRequest({ question: 'question' }).selectedSources, ['cases', 'research']);
-  assert.deepEqual(parseAnalysisRequest({ question: 'question', selectedSources: [] }).selectedSources, ['cases', 'research']);
+  assert.deepEqual(parseAnalysisRequest({ question: 'question' }).selectedSources, ['project']);
+  assert.deepEqual(parseAnalysisRequest({ question: 'question', selectedSources: [] }).selectedSources, ['project']);
   assert.deepEqual(parseAnalysisRequest({ question: 'question', selectedSources: ['cases', 'cases'] }).selectedSources, ['cases']);
   for (const body of [null, { question: 7 }, { question: ' ' }, { question: 'x'.repeat(2001) }, { question: 'question', selectedSources: ['web'] }, { question: 'question', cases: [null] }]) assert.throws(() => parseAnalysisRequest(body));
 });
@@ -66,7 +66,7 @@ test('research retrieval sends a server-side query and reuses bounded cached res
 });
 test('research outage is explicit while case evidence stays usable', async (t) => {
   mockFetch(t, async () => { throw new Error('network failure with private details'); });
-  const result = await retrieveEvidence(parseAnalysisRequest({ question: 'outage fixture', cases: [material] }));
+  const result = await retrieveEvidence(parseAnalysisRequest({ question: 'outage fixture', selectedSources: ['cases', 'research'], cases: [material] }));
   assert.equal(result.cases.length, 1);
   assert.equal(result.papers.length, 0);
   assert.match(result.warnings[0].message, /unavailable/);
@@ -132,7 +132,7 @@ test('API routes validate methods and inputs before retrieval', async () => {
 test('answer API returns source-separated structured results and no stored abstracts', async (t) => {
   mockFetch(t, async () => Response.json({ results: [work()] }));
   mockLLM(t, async () => JSON.stringify(response()));
-  const result = await runRoute(answerHandler, { question: 'route fixture', cases: [material], projectContext: 'Seoul' });
+  const result = await runRoute(answerHandler, { question: 'route fixture', selectedSources: ['cases', 'research'], cases: [material], projectContext: 'Seoul' });
   assert.equal(result.status, 200);
   assert.equal(result.body.analysis.answer.researchFindings.length, 1);
   assert.equal(result.body.analysis.answer.caseFindings.length, 1);
@@ -175,9 +175,96 @@ test('spatial-only context is interpreted without invented evidence citations an
     assert.match(request.systemText,/Do not put spatial metrics in caseFindings/);
     return JSON.stringify({...response(),caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'공간 분석 결과: 녹지 비율은 20%입니다.'});
   });
-  const result = await runRoute(answerHandler,{question:'녹지 접근성',selectedSources:['cases'],cases:[],spatialContext});
+  const result = await runRoute(answerHandler,{question:'녹지 접근성',selectedSources:['spatial'],cases:[],spatialContext});
   assert.equal(result.status,200);
   assert.deepEqual(result.body.analysis.spatialContext,spatialContext);
   assert.deepEqual(result.body.analysis.answer.sources,[]);
   assert.deepEqual(result.body.analysis.answer.caseFindings,[]);
+});
+
+const { resolveSources } = load('lib/research/routing.js');
+const { academicSearchQuery } = load('lib/research/query.js');
+const routingQuestions = [
+  ['이 지역 도로폭이 얼마야?', ['project', 'spatial']],
+  ['대상지 전체 면적은?', ['project', 'spatial']],
+  ['비슷한 도시재생 사례를 알려줘.', ['cases']],
+  ['젠트리피케이션 대응 사례는?', ['cases']],
+  ['주민 참여 효과에 관한 연구를 찾아줘.', ['research']],
+  ['비슷한 사례와 관련 논문을 같이 비교해줘.', ['cases', 'research']],
+];
+test('the six Korean intents use only relevant sources without an LLM routing call', async (t) => {
+  let researchCalls = 0;
+  mockLLM(t, async () => { assert.fail('routing must not call an LLM'); });
+  mockFetch(t, async () => { researchCalls++; return Response.json({ results: [work()] }); });
+  for (const [question, expected] of routingQuestions) {
+    const before = researchCalls;
+    const request = parseAnalysisRequest({ question, cases:[material], projectContext:'사업의 현황 자료' });
+    assert.deepEqual(request.selectedSources, expected);
+    const bundle = await retrieveEvidence(request);
+    assert.equal(bundle.question, question);
+    assert.equal(bundle.cases.length > 0, expected.includes('cases'));
+    assert.equal(bundle.papers.length > 0, expected.includes('research'));
+    if (!expected.includes('research')) assert.equal(researchCalls, before);
+    assert.equal(Boolean(bundle.projectContext), expected.includes('project'));
+  }
+});
+test('manual selection overrides all intents; clearing selection returns to automatic', () => {
+  const question = '비슷한 사례와 관련 논문을 같이 비교해줘.';
+  for (const manual of [['project'],['spatial'],['cases'],['research'],['project','spatial'],['research','cases']]) {
+    assert.deepEqual(resolveSources(question, manual), manual);
+    assert.deepEqual(parseAnalysisRequest({question,selectedSources:manual}).selectedSources,manual);
+  }
+  assert.deepEqual(resolveSources(question, []), ['cases','research']);
+  assert.deepEqual(resolveSources('우리 사업에서는 무엇을 해야 할까요?'), ['project']);
+  assert.deepEqual(resolveSources('젠트리피케이션 대응 사례의 효과는?'), ['cases']);
+});
+test('Korean academic queries omit conversational phrasing and keep planning topics/places', async (t) => {
+  mockLLM(t, async () => { assert.fail('known topics need no conversion call'); });
+  assert.equal(await academicSearchQuery('도시재생에서 젠트리피케이션을 줄이는 방법에 관한 연구가 있어?'), 'strategies to mitigate gentrification residential displacement urban regeneration');
+  assert.equal(await academicSearchQuery('서울 도시재생에서 주민 참여가 사업 성과에 어떤 영향을 주는지 연구가 있어?'), 'resident participation outcomes urban regeneration Seoul');
+  assert.match(await academicSearchQuery('성수동 주민 참여 연구'), /성수동/);
+  assert.equal(await academicSearchQuery('public space improvement urban regeneration'), 'public space improvement urban regeneration');
+});
+test('unfamiliar Korean research topics convert and never replace the original question', async (t) => {
+  let converted = 0;
+  mockLLM(t, async request => { converted++; assert.match(request.systemText,/English academic/); return 'flood resilience urban regeneration'; });
+  let query;
+  mockFetch(t, async url => { query=url.searchParams.get('search'); return Response.json({results:[work()]}); });
+  const original='도시재생에서 홍수 회복탄력성에 관한 학술 논문을 찾아줘.';
+  const bundle = await retrieveEvidence(parseAnalysisRequest({question:original,selectedSources:['research']}));
+  assert.equal(converted,1);assert.equal(query,'flood resilience urban regeneration');assert.equal(bundle.question,original);
+});
+test('manual project/spatial queries never search literature/cases and expose only supplied evidence', async (t) => {
+  mockFetch(t, async () => { assert.fail('project/spatial source must not query OpenAlex'); });
+  const spatial={projectId:'project-1',type:'area',timestamp:'2026-10-05T01:00:00.000Z',layerIds:['boundary'],parameters:{},metrics:{areaSqm:123},notes:[]};
+  const request=parseAnalysisRequest({question:'관련 논문과 사례를 찾아줘',selectedSources:['project'],projectContext:'사업 자료: 면적 123㎡',spatialContext:spatial,cases:[material]});
+  assert.equal(request.spatialContext,undefined);
+  const bundle=await retrieveEvidence(request);assert.equal(bundle.projectContext,'사업 자료: 면적 123㎡');assert.deepEqual(bundle.cases,[]);assert.deepEqual(bundle.papers,[]);
+  mockLLM(t, async req => {const p=JSON.parse(req.userText);assert.equal(p.projectMaterial,bundle.projectContext);assert.equal(p.spatialContext,undefined);assert.match(req.systemText,/Do not invent exact road widths/);return JSON.stringify({...response(),caseFindings:[],researchFindings:[],agreement:'',differences:''});});
+  assert.deepEqual((await answerFromEvidence(request,bundle)).sources,[]);
+  assert.deepEqual(parseAnalysisRequest({question:'논문',selectedSources:['spatial'],spatialContext:spatial}).spatialContext,spatial);
+});
+test('Korean research API sends academic English to OpenAlex and retains Korean synthesis/citations', async (t) => {
+  const question='서울 도시재생에서 주민 참여가 사업 성과에 어떤 영향을 주는지 연구가 있어?';
+  let query;
+  mockFetch(t, async url => {query=url.searchParams.get('search');return Response.json({results:[work({id:'https://openalex.org/W99'})]});});
+  mockLLM(t, async request => {
+    assert(!request.systemText.includes('Convert the untrusted'));
+    assert.equal(JSON.parse(request.userText).question,question);
+    assert.match(request.systemText,/language of the user's question/);
+    return JSON.stringify({...response(),caseFindings:[],researchFindings:[{text:'주민 참여에 관한 연구입니다.',sourceIds:['R:W99']}]});
+  });
+  const result=await runRoute(answerHandler,{question,selectedSources:['research'],cases:[material]});
+  assert.equal(result.status,200);assert.equal(query,'resident participation outcomes urban regeneration Seoul');
+  assert.equal(result.body.analysis.evidence.question,question);assert.deepEqual(result.body.analysis.evidence.cases,[]);
+  assert.equal(result.body.analysis.answer.sources[0].openAlexId,'https://openalex.org/W99');
+  assert.equal(result.body.analysis.evidence.papers[0].sourceId,'R:W99');
+});
+test('a glossary topic never discards an unfamiliar Korean intervention; conversion is cached', async (t) => {
+  let conversions=0;
+  mockLLM(t, async () => {conversions++;return 'resident participation flood resilience urban regeneration';});
+  const question='도시재생에서 주민 참여와 홍수 회복탄력성에 관한 연구를 찾아줘';
+  assert.equal(await academicSearchQuery(question),'resident participation flood resilience urban regeneration');
+  assert.equal(await academicSearchQuery(question),'resident participation flood resilience urban regeneration');
+  assert.equal(conversions,1);
 });
