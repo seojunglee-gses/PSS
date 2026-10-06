@@ -19,7 +19,7 @@ service cloud.firestore {
       );
     }
     function scoped(collectionId) {
-      return collectionId.matches('^(users|ppssChatLogs|ppssWorkspaceSummaries|ppssEvaluations|ppssStageLocks|ppssBackgroundKnowledge|ppssBackgroundKnowledgeArchives|ppssSiteImages|ppssGeneratedImages|ppssUserDesignSubmissions|ppssEvaluationImages|ppssExecutiveSummaries)_.*');
+      return collectionId.matches('^(users|ppssChatLogs|ppssWorkspaceSummaries|ppssEvaluations|ppssStageLocks|ppssBackgroundKnowledge|ppssBackgroundKnowledgeArchives|ppssSiteImages|ppssGeneratedImages|ppssUserDesignSubmissions|ppssEvaluationImages|ppssExecutiveSummaries|ppssSpatialDatasets|ppssSpatialPermissions)_.*');
     }
     // Project codes/administrator metadata are accessed only through the trusted API.
     match /ppssProjects/{projectId} { allow read, write: if false; }
@@ -33,9 +33,9 @@ service cloud.firestore {
       }
     }
     match /{collectionId}/{documentId}/{nested=**} {
-      allow read: if scoped(collectionId) && projectMember(collectionId.replace('^[^_]+_', '')) &&
+      allow read: if scoped(collectionId) && !collectionId.matches('^ppssSpatialPermissions_.*') && projectMember(collectionId.replace('^[^_]+_', '')) &&
         (!collectionId.matches('^(users|ppssChatLogs)_.*') || request.auth.uid == documentId);
-      allow write: if scoped(collectionId) && projectMember(collectionId.replace('^[^_]+_', '')) &&
+      allow write: if scoped(collectionId) && !collectionId.matches('^(ppssSpatialDatasets|ppssSpatialPermissions)_.*') && projectMember(collectionId.replace('^[^_]+_', '')) &&
         (!collectionId.matches('^(users|ppssChatLogs|ppssWorkspaceSummaries)_.*') || request.auth.uid == documentId) &&
         (!collectionId.matches('^(ppssStageLocks|ppssBackgroundKnowledge|ppssBackgroundKnowledgeArchives|ppssSiteImages|ppssExecutiveSummaries)_.*') || projectManager(collectionId.replace('^[^_]+_', '')));
     }

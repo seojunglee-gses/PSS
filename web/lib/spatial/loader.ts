@@ -158,15 +158,38 @@ export function validateGeoJSON(
 export async function loadSpatialConfig(
   projectId: string,
   signal?: AbortSignal,
+  token?: string,
 ): Promise<SpatialConfig> {
   const response = await fetch(`${projectDirectory(projectId)}config.json`, {
     signal,
   });
-  if (response.status === 404) return { projectId, layers: [] };
-  if (!response.ok) throw new Error("공간 데이터 설정을 불러오지 못했어요.");
-  return validateConfig(await response.json(), projectId);
+  if (!response.ok && response.status !== 404) throw new Error("공간 데이터 설정을 불러오지 못했어요.");
+  const config = response.status === 404 ? { projectId, layers: [] } : validateConfig(await response.json(), projectId);
+  if (!token) return config;
+  const r = await fetch(`/api/projects/spatial-datasets?${new URLSearchParams({ projectId })}`, { signal, headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+  if (!r.ok) throw new Error("업로드한 공간정보를 불러오지 못했어요. 참여 권한과 로그인 상태를 확인해주세요.");
+  const { datasets } = await r.json() as { datasets: import("./datasets").SpatialDataset[] };
+  if (!Array.isArray(datasets) || datasets.length > 20) throw new Error("공간정보 목록을 확인해주세요.");
+  const { datasetLayer } = await import("./datasets");
+  const warnings: string[] = [];
+  for (const dataset of datasets) {
+    if (dataset.projectId !== projectId || !/^[a-zA-Z0-9_-]{1,128}$/.test(dataset.datasetId) || !/^[a-zA-Z0-9_-]{1,128}$/.test(dataset.revisionId)) throw new Error("공간정보의 사업과 식별자를 확인해주세요.");
+    const layer = datasetLayer(dataset);
+    if (layer) config.layers.push(layer);
+    else warnings.push(`${dataset.name}: 좌표가 없는 CSV입니다. 파일은 보관되지만 지도와 공간 계산에는 사용할 수 없습니다.`);
+  }
+  if (new Set(config.layers.map((l) => l.id)).size !== config.layers.length) throw new Error("공간정보 레이어 ID가 중복됩니다.");
+  return { ...config, ...(warnings.length ? { datasetWarnings: warnings } : {}) };
 }
-export async function loadLayer(config: LayerConfig): Promise<LoadedLayer> {
+export async function loadLayer(config: LayerConfig, token?: string): Promise<LoadedLayer> {
+  if (config.source.startsWith("/api/projects/spatial-datasets?")) {
+    // Private data is not cached across users or authorization changes.
+    if (!token) throw new Error("공간정보를 보려면 로그인해주세요.");
+    const r = await fetch(config.source, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error(`${config.label} 자료가 변경되었거나 참여 권한이 없습니다. 공간 분석을 다시 열어주세요.`);
+    const payload = await r.json();
+    return { config, data: validateGeoJSON(payload.data, config) };
+  }
   if (!cache.has(config.source)) {
     if (cache.size >= 40) cache.delete(cache.keys().next().value!);
     cache.set(

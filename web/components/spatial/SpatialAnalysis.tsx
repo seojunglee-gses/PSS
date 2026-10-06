@@ -18,6 +18,7 @@ import type {
   SpatialResult,
 } from "../../lib/spatial/types";
 import SpatialSummary from "./SpatialSummary";
+import { useAuth } from "../../lib/auth";
 export default function SpatialAnalysis({
   projectId,
   result,
@@ -31,6 +32,7 @@ export default function SpatialAnalysis({
   included: boolean;
   onInclude: (v: boolean) => void;
 }) {
+  const { user } = useAuth();
   const [config, setConfig] = useState<SpatialConfig>({
     projectId,
     layers: [],
@@ -56,11 +58,12 @@ export default function SpatialAnalysis({
     let current = true;
     (async () => {
       try {
-        const c = await loadSpatialConfig(projectId, controller.signal);
-        const results = await Promise.allSettled(c.layers.map(loadLayer));
+        const token = await user?.getIdToken();
+        const c = await loadSpatialConfig(projectId, controller.signal, token);
+        const results = await Promise.allSettled(c.layers.map((layer) => loadLayer(layer, token)));
         if (!current) return;
         const available: LoadedLayer[] = [];
-        const failed: string[] = [];
+        const failed: string[] = [...(c.datasetWarnings ?? [])];
         results.forEach((r, i) =>
           r.status === "fulfilled"
             ? available.push(r.value)
@@ -91,7 +94,7 @@ export default function SpatialAnalysis({
       current = false;
       controller.abort();
     };
-  }, [projectId]);
+  }, [projectId, user]);
   const polygons = useMemo(
     () => layers.filter((l) => l.config.type === "polygon"),
     [layers],

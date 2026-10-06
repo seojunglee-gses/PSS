@@ -26,6 +26,7 @@ export type Criterion = {
   weight: number;
 };
 export type SpatialConfig = {
+  datasetWarnings?: string[];
   projectId: string;
   layers: LayerConfig[];
   priority?: { layerId: string; criteria: Criterion[] };
