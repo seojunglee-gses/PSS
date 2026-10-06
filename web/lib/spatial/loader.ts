@@ -1,6 +1,9 @@
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { SpatialConfig, LayerConfig, LoadedLayer } from "./types";
+import { buildingDisplayConfig, buildingUseCode, normalizeBuildings, type BuildingUse } from "./building-use";
 const cache = new Map<string, Promise<LoadedLayer>>();
+// Only public static layers use this cache. Private uploads persist derived data on the server.
+const buildingCache = new Map<string, Promise<FeatureCollection<Geometry>>>();
 export function projectDirectory(projectId: string) {
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(projectId))
     throw new Error("공간 데이터의 사업 ID를 확인해주세요.");
@@ -188,7 +191,7 @@ export async function loadLayer(config: LayerConfig, token?: string): Promise<Lo
     const r = await fetch(config.source, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!r.ok) throw new Error(`${config.label} 자료가 변경되었거나 참여 권한이 없습니다. 공간 분석을 다시 열어주세요.`);
     const payload = await r.json();
-    return { config, data: validateGeoJSON(payload.data, config) };
+    return { config: buildingDisplayConfig(config), data: validateGeoJSON(payload.data, config) };
   }
   if (!cache.has(config.source)) {
     if (cache.size >= 40) cache.delete(cache.keys().next().value!);
@@ -211,5 +214,17 @@ export async function loadLayer(config: LayerConfig, token?: string): Promise<Lo
     );
   }
   const loaded = await cache.get(config.source)!;
-  return { config, data: validateGeoJSON(loaded.data, config) };
+  const data = validateGeoJSON(loaded.data, config);
+  if (config.role !== "buildings") return { config, data };
+  if (!buildingCache.has(config.source)) {
+    if (buildingCache.size >= 40) buildingCache.delete(buildingCache.keys().next().value!);
+    buildingCache.set(config.source, (async () => {
+      const codes = [...new Set(data.features.map((f) => buildingUseCode(f.properties)).filter((code) => /^[0-9]{5}$/.test(code)))];
+      const response = codes.length ? await fetch("/api/spatial/building-use-codes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ codes }), signal: AbortSignal.timeout(15000) }) : undefined;
+      if (response && !response.ok) throw new Error("건물 용도 정보를 불러오지 못했어요.");
+      const uses: Record<string, BuildingUse> = response ? (await response.json()).uses : {};
+      return normalizeBuildings(data, (code) => Object.prototype.hasOwnProperty.call(uses, code) ? uses[code] : undefined);
+    })().catch((error) => { buildingCache.delete(config.source); throw error; }));
+  }
+  return { config: buildingDisplayConfig(config), data: await buildingCache.get(config.source)! };
 }

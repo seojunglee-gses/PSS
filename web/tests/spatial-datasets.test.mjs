@@ -18,13 +18,13 @@ const owner={uid:'owner',email:'owner@example.com'}, admin={uid:'admin',email:'a
 const collection='ppssSpatialDatasets_p1';
 const polygon={type:'FeatureCollection',features:[{type:'Feature',properties:{name:'한글 경계'},geometry:{type:'Polygon',coordinates:[[[126,37],[126.01,37],[126.01,37.01],[126,37.01],[126,37]]]}}]};
 const upload=(overrides={})=>({action:'upload',projectId:'p1',name:'대상지',type:'project_boundary',fileName:'경계.geojson',data:Buffer.from(JSON.stringify(polygon)).toString('base64'),...overrides});
-let env,objects,saves,deletes,bucket,afterSave;
+let env,objects,saves,deletes,downloads,bucket,afterSave;
 before(async()=>{env=await initializeTestEnvironment({projectId:'demo-pss-membership',firestore:{host:'127.0.0.1',port:8080,rules:readFileSync(new URL('../firestore.rules',import.meta.url),'utf8')}})});
 after(async()=>{await env.cleanup();await db.terminate()});
 beforeEach(async()=>{
  await env.clearFirestore();await db.doc('ppssProjects/p1').set({projectId:'p1',projectAdmin:owner.email});await db.doc('ppssProjects/p2').set({projectId:'p2',projectAdmin:stranger.email});await db.doc('users/reader/projectMemberships/p1').set({role:'participant',projectId:'p1'});
- objects=new Map();saves=[];deletes=[];afterSave=undefined;
- bucket={file:path=>({save:async(bytes,options)=>{objects.set(path,Buffer.from(bytes));saves.push({path,options});if(afterSave)await afterSave()},download:async()=>{if(!objects.has(path))throw Error('missing fixture file');return [objects.get(path)]},delete:async()=>{deletes.push(path);objects.delete(path)}})};
+ objects=new Map();saves=[];deletes=[];downloads=[];afterSave=undefined;
+ bucket={file:path=>({save:async(bytes,options)=>{objects.set(path,Buffer.from(bytes));saves.push({path,options});if(afterSave)await afterSave()},download:async()=>{downloads.push(path);if(!objects.has(path))throw Object.assign(Error('missing fixture file'),{code:404});return [objects.get(path)]},delete:async()=>{deletes.push(path);objects.delete(path)}})};
 });
 async function saved(user=owner,overrides={}){const {datasetId}=await server.mutateDataset(db,bucket,user,upload(overrides));return (await db.doc(collection+'/'+datasetId).get()).data()}
 async function route(method,body={},query={},token='owner'){
@@ -35,6 +35,31 @@ async function route(method,body={},query={},token='owner'){
 test('original bytes stay in Storage; only project metadata and server timestamp go to Firestore',async()=>{
  const d=await saved();assert.equal(objects.get(d.storagePath).toString(),JSON.stringify(polygon));assert.equal(d.projectId,'p1');assert.equal(d.name,'대상지');assert.equal(d.fileName,'경계.geojson');assert.equal(d.geometryType,'polygon');assert(d.uploadedAt instanceof Timestamp);assert.equal(d.uploadedBy,owner.uid);assert.equal(d.data,undefined);assert.equal(d.downloadUrl,undefined);assert.match(d.storagePath,new RegExp('^ppss-spatial-datasets/p1/'+d.datasetId+'/'+d.revisionId+'/original.geojson$'));assert.equal(saves[0].options.metadata.cacheControl,'private, no-store');assert.equal(saves[0].options.metadata.metadata,undefined);
  assert.equal((await server.listDatasets(db,participant,'p1')).canManage,false);assert.equal((await server.listDatasets(db,owner,'p1')).canManage,true);assert.deepEqual((await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId)).data,polygon);
+});
+test('uploaded building GeoJSON stores its normalized result once and reuses it without changing the original',async()=>{
+ const source={...polygon,features:polygon.features.map(f=>({...f,properties:{use_code:'03000',use_name:'사용자가 넣은 이름'}}))};const original=JSON.stringify(source);
+ const d=await saved(owner,{type:'buildings',data:Buffer.from(original).toString('base64')});assert.equal(objects.get(d.storagePath).toString(),original);
+ const result=await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);assert.equal(result.data.features[0].properties.use_code,'03000');assert.equal(result.data.features[0].properties.use_name,'제1종근린생활시설');assert.equal(objects.get(d.storagePath).toString(),original);
+ await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);assert.equal(saves.length,2);assert.deepEqual(downloads,[d.normalizedStoragePath,d.normalizedStoragePath]);assert.match(d.buildingUseVersion,/^[a-f0-9]{64}$/);
+ await server.mutateDataset(db,bucket,owner,{action:'delete',projectId:'p1',datasetId:d.datasetId,expectedRevisionId:d.revisionId});assert.equal(objects.size,0);
+});
+test('legacy building uploads get one persisted normalization and subsequent reads reuse it',async()=>{
+ const d=await saved(owner,{type:'buildings'});objects.delete(d.normalizedStoragePath);const {normalizedStoragePath,normalizedId,buildingUseVersion,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);const before=saves.length;
+ await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);const cached=(await db.doc(collection+'/'+d.datasetId).get()).data();assert.ok(cached.normalizedStoragePath);assert.equal(saves.length,before+1);
+ await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);assert.equal(saves.length,before+1);assert.deepEqual(downloads,[d.storagePath,cached.normalizedStoragePath]);
+});
+test('changed code-table versions and missing derived files rebuild once and clean the old result',async()=>{
+ const d=await saved(owner,{type:'buildings'});const oldVersion='0'.repeat(64),oldPath=d.normalizedStoragePath.replace(d.buildingUseVersion,oldVersion);objects.set(oldPath,objects.get(d.normalizedStoragePath));objects.delete(d.normalizedStoragePath);await db.doc(collection+'/'+d.datasetId).update({buildingUseVersion:oldVersion,normalizedStoragePath:oldPath});
+ await server.readDataset(db,bucket,owner,'p1',d.datasetId,d.revisionId);let current=(await db.doc(collection+'/'+d.datasetId).get()).data();assert.equal(current.buildingUseVersion,d.buildingUseVersion);assert.equal(objects.has(oldPath),false);assert.equal(objects.size,2);
+ objects.delete(current.normalizedStoragePath);await server.readDataset(db,bucket,owner,'p1',d.datasetId,d.revisionId);const repaired=(await db.doc(collection+'/'+d.datasetId).get()).data();assert.notEqual(repaired.normalizedId,current.normalizedId);assert.equal(objects.size,2);
+});
+test('first-read caching rechecks membership and cleans a derived result when access is revoked mid-write',async()=>{
+ const d=await saved(owner,{type:'buildings'});objects.delete(d.normalizedStoragePath);const {normalizedStoragePath,normalizedId,buildingUseVersion,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);
+ afterSave=async()=>await db.doc('users/reader/projectMemberships/p1').update({revoked:true});await assert.rejects(server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId),e=>e.status===403);assert.equal(objects.size,1);assert.equal((await db.doc(collection+'/'+d.datasetId).get()).data().normalizedStoragePath,undefined);
+});
+test('concurrent first reads commit one derived result and clean the losing temporary file',async()=>{
+ const d=await saved(owner,{type:'buildings'});objects.delete(d.normalizedStoragePath);const {normalizedStoragePath,normalizedId,buildingUseVersion,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);
+ await Promise.all([server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId),server.readDataset(db,bucket,owner,'p1',d.datasetId,d.revisionId)]);const current=(await db.doc(collection+'/'+d.datasetId).get()).data();assert.ok(objects.has(current.normalizedStoragePath));assert.equal(objects.size,2);
 });
 test('only project/platform admins can mutate; local planner flags grant nothing',async()=>{
  for(const user of [participant,stranger])await assert.rejects(server.mutateDataset(db,bucket,user,upload({role:'planners',isAdmin:true})),e=>e.status===403);

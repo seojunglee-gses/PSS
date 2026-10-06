@@ -14,6 +14,9 @@ export type SpatialDataset = {
   storagePath: string; revisionId: string; size: number;
   format: "geojson" | "json" | "csv";
   geometryType: LayerConfig["type"] | null;
+  normalizedStoragePath?: string;
+  normalizedId?: string;
+  buildingUseVersion?: string;
 };
 
 export function datasetLayer(dataset: SpatialDataset): LayerConfig | null {

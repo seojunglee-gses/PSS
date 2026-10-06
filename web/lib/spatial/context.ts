@@ -62,6 +62,7 @@ export function parseSpatialResult(input: unknown): SpatialResult | undefined {
       ))
   )
     throw new Error("Invalid spatial scores.");
+  if (r.buildingUses !== undefined && (!Array.isArray(r.buildingUses) || r.buildingUses.length > 20 || r.buildingUses.some((group) => !group || typeof group.use_code !== "string" || group.use_code.length > 128 || typeof group.use_name !== "string" || group.use_name.length > 200 || !Number.isSafeInteger(group.count) || group.count < 0) || new Set(r.buildingUses.map((g) => g.use_code)).size !== r.buildingUses.length || r.buildingUses.reduce((n, g) => n + g.count, 0) > (r.metrics.buildingCount ?? 0))) throw new Error("Invalid building use summary.");
   return {
     projectId: r.projectId,
     type: r.type,
@@ -70,6 +71,7 @@ export function parseSpatialResult(input: unknown): SpatialResult | undefined {
     parameters: { ...r.parameters },
     metrics: { ...r.metrics },
     notes: [...r.notes],
+    ...(r.buildingUses ? { buildingUses: r.buildingUses.map((group) => ({ use_code: group.use_code, use_name: group.use_name, count: group.count })) } : {}),
     ...(r.priorities
       ? {
           priorities: r.priorities.map((p) => ({

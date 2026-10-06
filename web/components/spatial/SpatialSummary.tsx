@@ -38,7 +38,7 @@ export default function SpatialSummary({ result }: { result: SpatialResult }) {
           ))}
         </ol>
       )}
-      {result.notes.map((note, i) => (
+      {[...result.notes, ...(result.buildingUses ?? []).map((group) => `${group.use_name} · 코드 ${group.use_code || "없음"}: ${group.count.toLocaleString("ko-KR")}동`)].map((note, i) => (
         <p key={i} className="text-xs text-slate-500">
           {note}
         </p>
