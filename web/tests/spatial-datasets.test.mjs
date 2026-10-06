@@ -9,6 +9,7 @@ const require=createRequire(import.meta.url),build=process.env.PSS_DATASET_BUILD
 assert.ok(process.env.FIRESTORE_EMULATOR_HOST,'Use only a local Firestore emulator.');
 const db=new Firestore({projectId:'demo-pss-membership'});
 const server=require(build+'/lib/spatial/dataset-server.js');
+const membership=require(build+'/lib/membership/server.js');
 const {parseDataset,parseCsv,datasetLayer}=require(build+'/lib/spatial/datasets.js');
 const loader=require(build+'/lib/spatial/loader.js');
 const adminModule=require(build+'/lib/firebaseAdmin.js');
@@ -35,36 +36,26 @@ test('original bytes stay in Storage; only project metadata and server timestamp
  const d=await saved();assert.equal(objects.get(d.storagePath).toString(),JSON.stringify(polygon));assert.equal(d.projectId,'p1');assert.equal(d.name,'대상지');assert.equal(d.fileName,'경계.geojson');assert.equal(d.geometryType,'polygon');assert(d.uploadedAt instanceof Timestamp);assert.equal(d.uploadedBy,owner.uid);assert.equal(d.data,undefined);assert.equal(d.downloadUrl,undefined);assert.match(d.storagePath,new RegExp('^ppss-spatial-datasets/p1/'+d.datasetId+'/'+d.revisionId+'/original.geojson$'));assert.equal(saves[0].options.metadata.cacheControl,'private, no-store');assert.equal(saves[0].options.metadata.metadata,undefined);
  assert.equal((await server.listDatasets(db,participant,'p1')).canManage,false);assert.equal((await server.listDatasets(db,owner,'p1')).canManage,true);assert.deepEqual((await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId)).data,polygon);
 });
-test('without a server permission only project/platform admins can mutate; local planner flags grant nothing',async()=>{
+test('only project/platform admins can mutate; local planner flags grant nothing',async()=>{
  for(const user of [participant,stranger])await assert.rejects(server.mutateDataset(db,bucket,user,upload({role:'planners',isAdmin:true})),e=>e.status===403);
  assert.equal(saves.length,0);await saved(admin);assert.equal(saves.length,1);
  const d=await saved();for(const user of [participant,stranger])for(const action of ['replace','delete'])await assert.rejects(server.mutateDataset(db,bucket,user,upload({action,datasetId:d.datasetId,expectedRevisionId:d.revisionId})),e=>e.status===403);
 });
-test('admins selectively grant joined users management; delegated users cannot grant or access another project',async()=>{
- let lookups=0;const lookup=async email=>{lookups++;assert.equal(email,participant.email);return participant};
- for(const user of [participant,stranger])await assert.rejects(server.setSpatialPermission(db,user,{action:'grant',projectId:'p1',email:participant.email},lookup),e=>e.status===403);assert.equal(lookups,0);
- await server.setSpatialPermission(db,owner,{action:'grant',projectId:'p1',email:participant.email},lookup);
- const grant=(await db.doc('ppssSpatialPermissions_p1/reader').get()).data();assert.equal(grant.grantedBy,owner.uid);assert(grant.grantedAt instanceof Timestamp);assert.equal(grant.projectId,'p1');
- const list=await server.listDatasets(db,participant,'p1');assert.equal(list.canManage,true);assert.equal(list.canGrant,false);assert.deepEqual(list.permissions,[]);assert.equal((await server.listDatasets(db,owner,'p1')).permissions[0].email,participant.email);
- const d=await saved(participant);await server.mutateDataset(db,bucket,participant,{...upload(),action:'replace',datasetId:d.datasetId,expectedRevisionId:d.revisionId});const next=(await db.doc(collection+'/'+d.datasetId).get()).data();await server.mutateDataset(db,bucket,participant,{action:'delete',projectId:'p1',datasetId:d.datasetId,expectedRevisionId:next.revisionId});
- await assert.rejects(server.setSpatialPermission(db,participant,{action:'grant',projectId:'p1',email:participant.email},lookup),e=>e.status===403);await assert.rejects(saved(participant,{projectId:'p2'}),e=>e.status===403);
- await server.setSpatialPermission(db,admin,{action:'revoke',projectId:'p1',uid:participant.uid},lookup);assert.equal((await server.listDatasets(db,participant,'p1')).canManage,false);await assert.rejects(saved(participant),e=>e.status===403);
+test('the existing create/enter/update project flow immediately controls spatial uploads without extra permissions',async()=>{
+ await membership.mutateProject(db,admin,{action:'create',projectId:'new-project',project:{projectName:'새 사업',projectAdmin:' OWNER@example.COM ',accessCode:'1234',workspaceContent:{}}});
+ const entered=await membership.enterProject(db,owner,'new-project');assert.equal(entered.project.projectId,'new-project');assert.equal((await db.doc('users/owner/projectMemberships/new-project').get()).exists,false);
+ assert.equal((await server.listDatasets(db,owner,'new-project')).canManage,true);await saved(owner,{projectId:'new-project'});assert.equal((await db.collection('ppssSpatialPermissions_new-project').get()).size,0);
+ await membership.mutateProject(db,owner,{action:'update',projectId:'new-project',project:{projectAdmin:participant.email}});
+ await assert.rejects(saved(owner,{projectId:'new-project'}),e=>e.status===403);assert.equal((await server.listDatasets(db,participant,'new-project')).canManage,true);await saved(participant,{projectId:'new-project'});
 });
-test('permission grants require active membership and cannot be forged by any Firestore client',async()=>{
- const lookup=async()=>participant;
- await db.doc('users/reader/projectMemberships/p1').update({revoked:true});await assert.rejects(server.setSpatialPermission(db,owner,{action:'grant',projectId:'p1',email:participant.email},lookup),e=>e.status===400);
- await db.doc('users/reader/projectMemberships/p1').delete();await assert.rejects(server.setSpatialPermission(db,owner,{action:'grant',projectId:'p1',email:participant.email},lookup),e=>e.status===400);
+test('retired spatial permissions are ignored and grant/revoke API actions are no longer supported',async()=>{
+ await db.doc('ppssSpatialPermissions_p1/reader').set({projectId:'p1',uid:'reader',email:participant.email,grantedBy:owner.uid});
+ const list=await server.listDatasets(db,participant,'p1');assert.equal(list.canManage,false);assert.equal(list.canGrant,undefined);assert.equal(list.permissions,undefined);await assert.rejects(saved(participant),e=>e.status===403);
+ for(const action of ['grant','revoke'])assert.equal((await route('POST',{action,projectId:'p1',email:participant.email,uid:participant.uid})).status,400);assert.equal(saves.length,0);
+});
+test('retired permission documents remain private and cannot be forged by Firestore clients',async()=>{
+ await db.doc('ppssSpatialPermissions_p1/reader').set({projectId:'p1',uid:'reader'});
  for(const user of [participant,owner,admin]){const client=env.authenticatedContext(user.uid,{email:user.email}).firestore();await assertFails(setDoc(doc(client,'ppssSpatialPermissions_p1','reader'),{projectId:'p1',uid:'reader'}));await assertFails(getDoc(doc(client,'ppssSpatialPermissions_p1','reader')))}
-});
-test('revoking delegated permission during upload rejects the commit and cleans the private file',async()=>{
- await server.setSpatialPermission(db,owner,{action:'grant',projectId:'p1',email:participant.email},async()=>participant);
- afterSave=async()=>await server.setSpatialPermission(db,owner,{action:'revoke',projectId:'p1',uid:participant.uid},async()=>participant);
- await assert.rejects(saved(participant),e=>e.status===403);assert.equal(objects.size,0);assert.equal((await db.collection(collection).get()).size,0);
-});
-test('revoked membership disables an existing delegated permission and administrators can still remove it',async()=>{
- await server.setSpatialPermission(db,owner,{action:'grant',projectId:'p1',email:participant.email},async()=>participant);
- await db.doc('users/reader/projectMemberships/p1').update({revoked:true});await assert.rejects(saved(participant),e=>e.status===403);await assert.rejects(server.listDatasets(db,participant,'p1'),e=>e.status===403);
- await server.setSpatialPermission(db,owner,{action:'revoke',projectId:'p1',uid:participant.uid},async()=>participant);assert.equal((await db.doc('ppssSpatialPermissions_p1/reader').get()).exists,false);
 });
 test('ownership changes during upload reject commit and clean the unreferenced file',async()=>{
  afterSave=async()=>await db.doc('ppssProjects/p1').update({projectAdmin:'new-owner@example.com'});
