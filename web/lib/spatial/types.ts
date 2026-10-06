@@ -36,6 +36,7 @@ export type LoadedLayer = {
   data: FeatureCollection<Geometry>;
 };
 export type SpatialResult = {
+  buildingUses?: { use_code: string; use_name: string; count: number }[];
   projectId: string;
   type: "area" | "buffer" | "intersection" | "priority";
   timestamp: string;

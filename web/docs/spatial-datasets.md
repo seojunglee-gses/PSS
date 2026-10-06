@@ -24,6 +24,8 @@
 
 ## 형식과 분석 연결
 
+건물 용도는 [서버 기준 코드표](building-use-reference.md)로 해석합니다. 건물 자료를 처음 처리할 때 원본과 별도의 정규화 GeoJSON을 저장하고 선택 메타데이터 필드 `normalizedStoragePath`, `normalizedId`, `buildingUseVersion`으로 재사용합니다. 원본·처리 결과 모두 3MiB 이하이며 코드표 버전이나 업로드 파일이 바뀔 때만 다시 처리합니다.
+
 GeoJSON/JSON은 GeoJSON Feature 또는 FeatureCollection으로 준비합니다. 기존 검증기로 EPSG:4326 좌표 범위, 도형 종류, 닫힌 면, 최대 20,000개 도형을 검사합니다. 임의 JSON을 좌표로 추측하지 않습니다.
 
 CSV는 헤더 포함 20,000행/100열 이하입니다. 따옴표·쉼표·줄바꿈·BOM을 처리하며 longitude/latitude, lon/lat, lng/lat, 경도/위도 열은 점 레이어로 읽습니다. 잘못되거나 누락된 좌표는 거부합니다. 좌표 없는 CSV는 보관만 하고 설정/공간 분석 화면에 계산 불가 이유를 표시합니다. 도형·좌표·면적을 추정하지 않습니다.

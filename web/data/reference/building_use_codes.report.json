@@ -1,0 +1,1933 @@
+{
+  "source": "buinding code.xlsx",
+  "sourceSha256": "1ab10ef0f71374d459bb236403b0fa5c92ca3039aa26b24917dface095388866",
+  "sheet": "건축물용도코드 조회자료",
+  "excelRowsRead": 969,
+  "dataRowsRead": 968,
+  "validCodeRows": 694,
+  "uniqueCodes": 694,
+  "duplicateCodes": {},
+  "conflictingCodes": {},
+  "malformedRows": [],
+  "excludedRows": [
+    {
+      "row": 2,
+      "code": "0000",
+      "name": "기타",
+      "note": "",
+      "reason": "not_five_characters"
+    },
+    {
+      "row": 296,
+      "code": "1000",
+      "name": "단독주택",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 303,
+      "code": "1001",
+      "name": "단독주택",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 304,
+      "code": "1002",
+      "name": "다중주택",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 305,
+      "code": "1003",
+      "name": "다가구주택",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 306,
+      "code": "1004",
+      "name": "공관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 544,
+      "code": "2000",
+      "name": "공동주택",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 555,
+      "code": "2001",
+      "name": "아파트",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 558,
+      "code": "2002",
+      "name": "연립주택",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 559,
+      "code": "2003",
+      "name": "다세대주택",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 560,
+      "code": "2004",
+      "name": "생활편익시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 561,
+      "code": "2005",
+      "name": "부대시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 562,
+      "code": "2006",
+      "name": "복리시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 563,
+      "code": "2007",
+      "name": "기숙사",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 682,
+      "code": "3000",
+      "name": "근린생활시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 689,
+      "code": "3001",
+      "name": "소매점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 690,
+      "code": "3002",
+      "name": "휴게음식점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 691,
+      "code": "3003",
+      "name": "이(미)용원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 692,
+      "code": "3004",
+      "name": "일반목욕장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 693,
+      "code": "3005",
+      "name": "의원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 694,
+      "code": "3006",
+      "name": "체육장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 695,
+      "code": "3007",
+      "name": "마을공동시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 696,
+      "code": "3008",
+      "name": "변전소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 697,
+      "code": "3009",
+      "name": "양수장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 698,
+      "code": "3010",
+      "name": "정수장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 699,
+      "code": "3011",
+      "name": "대피소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 700,
+      "code": "3012",
+      "name": "공중화장실",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 701,
+      "code": "3013",
+      "name": "세탁소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 702,
+      "code": "3014",
+      "name": "치과의원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 703,
+      "code": "3015",
+      "name": "한의원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 704,
+      "code": "3016",
+      "name": "침술원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 705,
+      "code": "3017",
+      "name": "접골원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 706,
+      "code": "3018",
+      "name": "조산소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 707,
+      "code": "3019",
+      "name": "탁구장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 708,
+      "code": "3020",
+      "name": "체육도장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 709,
+      "code": "3021",
+      "name": "마을공회당",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 710,
+      "code": "3022",
+      "name": "마을공동작업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 711,
+      "code": "3023",
+      "name": "마을공동구판장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 713,
+      "code": "3100",
+      "name": "공공시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 720,
+      "code": "3101",
+      "name": "동사무소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 721,
+      "code": "3102",
+      "name": "경찰서",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 722,
+      "code": "3103",
+      "name": "파출소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 723,
+      "code": "3104",
+      "name": "소방서",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 724,
+      "code": "3105",
+      "name": "우체국",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 725,
+      "code": "3106",
+      "name": "전신전화국",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 726,
+      "code": "3107",
+      "name": "방송국",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 727,
+      "code": "3108",
+      "name": "보건소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 728,
+      "code": "3109",
+      "name": "공공도서관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 729,
+      "code": "3110",
+      "name": "지역의료보험조합",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 730,
+      "code": "3199",
+      "name": "기타공공시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 738,
+      "code": "3201",
+      "name": "일반음식점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 739,
+      "code": "3202",
+      "name": "휴게음식점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 740,
+      "code": "3203",
+      "name": "기원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 741,
+      "code": "3204",
+      "name": "서점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 742,
+      "code": "3205",
+      "name": "제조업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 743,
+      "code": "3206",
+      "name": "수리점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 744,
+      "code": "3207",
+      "name": "게임제공업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 745,
+      "code": "3208",
+      "name": "사진관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 746,
+      "code": "3209",
+      "name": "표구점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 747,
+      "code": "3210",
+      "name": "학원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 752,
+      "code": "3211",
+      "name": "장의사",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 753,
+      "code": "3212",
+      "name": "동물병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 754,
+      "code": "3214",
+      "name": "독서실",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 755,
+      "code": "3215",
+      "name": "총포판매소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 756,
+      "code": "3216",
+      "name": "단란주점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 757,
+      "code": "3217",
+      "name": "의약품도매점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 758,
+      "code": "3218",
+      "name": "자동차영업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 759,
+      "code": "3219",
+      "name": "안마시술소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 760,
+      "code": "3220",
+      "name": "노래연습장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 761,
+      "code": "3221",
+      "name": "세탁소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 763,
+      "code": "3300",
+      "name": "운동시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 766,
+      "code": "3301",
+      "name": "테니스장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 767,
+      "code": "3302",
+      "name": "체력단련장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 768,
+      "code": "3303",
+      "name": "에어로빅장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 769,
+      "code": "3304",
+      "name": "볼링장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 770,
+      "code": "3305",
+      "name": "당구장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 771,
+      "code": "3306",
+      "name": "실내낚시터",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 772,
+      "code": "3307",
+      "name": "골프연습장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 773,
+      "code": "3399",
+      "name": "기타운동시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 775,
+      "code": "3400",
+      "name": "종교집회장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 776,
+      "code": "3401",
+      "name": "교회",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 777,
+      "code": "3402",
+      "name": "성당",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 778,
+      "code": "3499",
+      "name": "기타종교집회장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 779,
+      "code": "3500",
+      "name": "공연장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 780,
+      "code": "3501",
+      "name": "극장(영화관)",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 781,
+      "code": "3502",
+      "name": "음악당",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 782,
+      "code": "3503",
+      "name": "연예장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 783,
+      "code": "3599",
+      "name": "기타공연장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 784,
+      "code": "3600",
+      "name": "사무소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 785,
+      "code": "3601",
+      "name": "금융업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 786,
+      "code": "3602",
+      "name": "사무소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 787,
+      "code": "3603",
+      "name": "부동산중개업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 788,
+      "code": "3604",
+      "name": "결혼상담소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 789,
+      "code": "3699",
+      "name": "기타사무소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 790,
+      "code": "3999",
+      "name": "기타근린생활시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 791,
+      "code": "4000",
+      "name": "제2종근린생활시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 792,
+      "code": "4001",
+      "name": "일반음식점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 793,
+      "code": "4002",
+      "name": "휴게음식점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 794,
+      "code": "4003",
+      "name": "기원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 795,
+      "code": "4004",
+      "name": "서점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 796,
+      "code": "4005",
+      "name": "제조업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 797,
+      "code": "4006",
+      "name": "수리점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 798,
+      "code": "4007",
+      "name": "게임제공업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 799,
+      "code": "4008",
+      "name": "사진관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 800,
+      "code": "4009",
+      "name": "표구점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 801,
+      "code": "4010",
+      "name": "학원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 802,
+      "code": "4011",
+      "name": "장의사",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 803,
+      "code": "4012",
+      "name": "동물병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 804,
+      "code": "4014",
+      "name": "독서실",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 805,
+      "code": "4015",
+      "name": "총포판매소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 806,
+      "code": "4016",
+      "name": "단란주점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 807,
+      "code": "4017",
+      "name": "의약품도매점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 808,
+      "code": "4018",
+      "name": "자동차영업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 809,
+      "code": "4019",
+      "name": "안마시술소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 810,
+      "code": "4020",
+      "name": "노래연습장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 811,
+      "code": "4021",
+      "name": "세탁소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 812,
+      "code": "4022",
+      "name": "멀티미디어문화콘텐츠설비제공업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 813,
+      "code": "4023",
+      "name": "복합유통.제공업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 814,
+      "code": "4100",
+      "name": "운동시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 815,
+      "code": "4101",
+      "name": "테니스장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 816,
+      "code": "4102",
+      "name": "체력단련장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 817,
+      "code": "4103",
+      "name": "에어로빅장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 818,
+      "code": "4104",
+      "name": "볼링장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 819,
+      "code": "4105",
+      "name": "당구장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 820,
+      "code": "4106",
+      "name": "실내낚시터",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 821,
+      "code": "4107",
+      "name": "골프연습장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 822,
+      "code": "4199",
+      "name": "기타운동시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 823,
+      "code": "4200",
+      "name": "종교집회장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 824,
+      "code": "4201",
+      "name": "교회",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 825,
+      "code": "4202",
+      "name": "성당",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 826,
+      "code": "4203",
+      "name": "사찰",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 827,
+      "code": "4299",
+      "name": "기타종교집회장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 828,
+      "code": "4300",
+      "name": "공연장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 829,
+      "code": "4301",
+      "name": "극장(영화관)",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 830,
+      "code": "4302",
+      "name": "음악당",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 831,
+      "code": "4303",
+      "name": "연예장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 832,
+      "code": "4304",
+      "name": "비디오물감상실",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 833,
+      "code": "4305",
+      "name": "비디오물소극장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 834,
+      "code": "4399",
+      "name": "기타공연장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 835,
+      "code": "4400",
+      "name": "사무소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 836,
+      "code": "4401",
+      "name": "금융업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 837,
+      "code": "4402",
+      "name": "사무소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 838,
+      "code": "4403",
+      "name": "부동산중개업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 839,
+      "code": "4404",
+      "name": "결혼상담소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 840,
+      "code": "4405",
+      "name": "출판사",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 841,
+      "code": "4499",
+      "name": "기타사무소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 842,
+      "code": "4999",
+      "name": "기타제2종근생",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 843,
+      "code": "5000",
+      "name": "문화및집회시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 844,
+      "code": "5100",
+      "name": "종교집회장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 845,
+      "code": "5101",
+      "name": "교회",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 846,
+      "code": "5102",
+      "name": "성당",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 847,
+      "code": "5103",
+      "name": "사찰",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 848,
+      "code": "5104",
+      "name": "기도원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 849,
+      "code": "5105",
+      "name": "수도원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 850,
+      "code": "5106",
+      "name": "수녀원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 851,
+      "code": "5107",
+      "name": "제실",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 852,
+      "code": "5108",
+      "name": "사당",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 853,
+      "code": "5109",
+      "name": "납골당",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 854,
+      "code": "5199",
+      "name": "기타종교집회장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 855,
+      "code": "5200",
+      "name": "공연장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 856,
+      "code": "5201",
+      "name": "극장(영화관)",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 857,
+      "code": "5202",
+      "name": "음악당",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 858,
+      "code": "5203",
+      "name": "연예장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 859,
+      "code": "5204",
+      "name": "서어커스장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 860,
+      "code": "5205",
+      "name": "비디오물감상실",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 861,
+      "code": "5206",
+      "name": "비디오물소극장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 862,
+      "code": "5299",
+      "name": "기타공연장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 863,
+      "code": "5300",
+      "name": "집회장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 864,
+      "code": "5301",
+      "name": "예식장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 865,
+      "code": "5302",
+      "name": "회의장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 866,
+      "code": "5303",
+      "name": "공회당",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 867,
+      "code": "5304",
+      "name": "마권장외발매소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 868,
+      "code": "5305",
+      "name": "마권전화투표소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 869,
+      "code": "5399",
+      "name": "기타집회장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 870,
+      "code": "5400",
+      "name": "관람장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 871,
+      "code": "5401",
+      "name": "경마장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 872,
+      "code": "5402",
+      "name": "자동차경기장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 873,
+      "code": "5403",
+      "name": "체육관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 874,
+      "code": "5404",
+      "name": "운동장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 875,
+      "code": "5499",
+      "name": "기타관람장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 876,
+      "code": "5500",
+      "name": "전시장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 877,
+      "code": "5501",
+      "name": "박물관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 878,
+      "code": "5502",
+      "name": "미술관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 879,
+      "code": "5503",
+      "name": "과학관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 880,
+      "code": "5504",
+      "name": "기념관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 881,
+      "code": "5505",
+      "name": "산업전시장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 882,
+      "code": "5506",
+      "name": "박람회장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 883,
+      "code": "5599",
+      "name": "기타전시장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 884,
+      "code": "5600",
+      "name": "동식물원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 885,
+      "code": "5601",
+      "name": "동물원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 886,
+      "code": "5602",
+      "name": "식물원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 887,
+      "code": "5603",
+      "name": "수족관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 888,
+      "code": "5699",
+      "name": "기타동.식물원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 889,
+      "code": "5999",
+      "name": "기타문화및집회시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 890,
+      "code": "6000",
+      "name": "판매및영업시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 891,
+      "code": "6100",
+      "name": "도매시장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 892,
+      "code": "6200",
+      "name": "소매시장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 893,
+      "code": "6203",
+      "name": "대형판매점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 894,
+      "code": "6204",
+      "name": "대형점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 895,
+      "code": "6205",
+      "name": "대규모소매점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 896,
+      "code": "6299",
+      "name": "기타소매시장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 897,
+      "code": "6301",
+      "name": "상점",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 898,
+      "code": "6302",
+      "name": "게임제공업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 899,
+      "code": "6303",
+      "name": "여객자동차터미널",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 900,
+      "code": "6304",
+      "name": "화물터미널",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 901,
+      "code": "6305",
+      "name": "철도역사",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 902,
+      "code": "6306",
+      "name": "공항시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 903,
+      "code": "6307",
+      "name": "항만시설(터미널)",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 904,
+      "code": "6308",
+      "name": "종합여객시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 905,
+      "code": "6309",
+      "name": "멀티미디어문화콘텐츠설비제공업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 906,
+      "code": "6310",
+      "name": "복합유통.제공업소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 907,
+      "code": "6999",
+      "name": "기타판매및영업시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 908,
+      "code": "7000",
+      "name": "의료시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 909,
+      "code": "7001",
+      "name": "축사",
+      "note": "",
+      "reason": "not_five_characters"
+    },
+    {
+      "row": 910,
+      "code": "7002",
+      "name": "가축시설",
+      "note": "",
+      "reason": "not_five_characters"
+    },
+    {
+      "row": 911,
+      "code": "7100",
+      "name": "병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 912,
+      "code": "7101",
+      "name": "종합병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 913,
+      "code": "7102",
+      "name": "산부인과병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 914,
+      "code": "7103",
+      "name": "치과병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 915,
+      "code": "7104",
+      "name": "한방병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 916,
+      "code": "7105",
+      "name": "정신병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 917,
+      "code": "7106",
+      "name": "격리병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 918,
+      "code": "7107",
+      "name": "병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 919,
+      "code": "7201",
+      "name": "장례식장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 920,
+      "code": "7300",
+      "name": "격리병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 921,
+      "code": "7301",
+      "name": "전염병원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 922,
+      "code": "7302",
+      "name": "마약진료소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 923,
+      "code": "7999",
+      "name": "기타의료시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 924,
+      "code": "8000",
+      "name": "교육연구및복지시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 925,
+      "code": "8001",
+      "name": "교육(연수)원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 926,
+      "code": "8002",
+      "name": "직업훈련소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 927,
+      "code": "8003",
+      "name": "학원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 928,
+      "code": "8004",
+      "name": "연구소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 929,
+      "code": "8005",
+      "name": "도서관",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 930,
+      "code": "8100",
+      "name": "학교",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 931,
+      "code": "8101",
+      "name": "초등학교",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 932,
+      "code": "8102",
+      "name": "중학교",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 933,
+      "code": "8103",
+      "name": "고등학교",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 934,
+      "code": "8104",
+      "name": "대학교",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 935,
+      "code": "8105",
+      "name": "전문대학",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 936,
+      "code": "8106",
+      "name": "대학",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 937,
+      "code": "8199",
+      "name": "기타학교",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 938,
+      "code": "8200",
+      "name": "아동관련시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 939,
+      "code": "8201",
+      "name": "유치원",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 940,
+      "code": "8202",
+      "name": "영유아보육시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 941,
+      "code": "8203",
+      "name": "어린이집",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 942,
+      "code": "8204",
+      "name": "아동복지시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 943,
+      "code": "8299",
+      "name": "기타아동관련시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 944,
+      "code": "8300",
+      "name": "노인복지시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 945,
+      "code": "8400",
+      "name": "사회복지시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 946,
+      "code": "8500",
+      "name": "근로복지시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 947,
+      "code": "8600",
+      "name": "생활권수련시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 948,
+      "code": "8601",
+      "name": "청소년수련원(관)",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 949,
+      "code": "8602",
+      "name": "유스호스텔",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 950,
+      "code": "8603",
+      "name": "청소년문화의집",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 951,
+      "code": "8699",
+      "name": "기타생활권수련시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 952,
+      "code": "8700",
+      "name": "자연권수련시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 953,
+      "code": "8701",
+      "name": "청소년수련원(관)",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 954,
+      "code": "8702",
+      "name": "청소년야영장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 955,
+      "code": "8799",
+      "name": "기타자연권수련시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 956,
+      "code": "8999",
+      "name": "기타교육연구및복지시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 957,
+      "code": "9000",
+      "name": "공공용시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 958,
+      "code": "9001",
+      "name": "교도소",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 959,
+      "code": "9002",
+      "name": "운동장시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 960,
+      "code": "9003",
+      "name": "탁구장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 961,
+      "code": "9004",
+      "name": "체육도장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 962,
+      "code": "9005",
+      "name": "테니스장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 963,
+      "code": "9006",
+      "name": "체력단련장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 964,
+      "code": "9007",
+      "name": "에어로빅장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 965,
+      "code": "9008",
+      "name": "볼링장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 966,
+      "code": "9009",
+      "name": "당구장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 967,
+      "code": "9010",
+      "name": "실내낚시터",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 968,
+      "code": "9011",
+      "name": "골프연습장",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    },
+    {
+      "row": 969,
+      "code": "9999",
+      "name": "기타공공용시설",
+      "note": "2009년 12월 24일 개정, 코드길이 5자리로 변경",
+      "reason": "legacy_length_change"
+    }
+  ],
+  "leadingZeroCodes": 293
+}

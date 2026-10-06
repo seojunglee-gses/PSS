@@ -12,6 +12,14 @@ const llm = load('lib/llm/index.js');
 const searchHandler = load('pages/api/research/search.js').default;
 const answerHandler = load('pages/api/research/answer.js').default;
 
+test('spatial AI context resolves building names on the server and keeps original codes',async t=>{
+ let received;
+ mockLLM(t,async request=>{received=JSON.parse(request.userText);return JSON.stringify({...response(),caseFindings:[],researchFindings:[]})});
+ const spatialContext={projectId:'uses',type:'area',timestamp:new Date().toISOString(),layerIds:['buildings'],parameters:{},metrics:{buildingCount:2},notes:[],buildingUses:[{use_code:'03000',use_name:'사용자가 지어낸 이름',count:1},{use_code:'XXXXX',use_name:'임의 용도',count:1}]};
+ const result=await runRoute(answerHandler,{question:'건물 용도를 설명해줘',selectedSources:['spatial'],spatialContext});
+ assert.equal(result.status,200);assert.equal(received.spatialContext.buildingUses[0].use_code,'03000');assert.equal(received.spatialContext.buildingUses[0].use_name,'제1종근린생활시설');assert.equal(received.spatialContext.buildingUses[1].use_code,'XXXXX');assert.equal(received.spatialContext.buildingUses[1].use_name,'용도 정보 없음');
+});
+
 const material = { id: 'park', label: 'Local park', title: 'Neighborhood park', text: 'Public participation improved neighborhood connectivity; displacement remained a concern.' };
 const work = (overrides = {}) => ({ id: 'https://openalex.org/W1', display_name: 'Participatory regeneration', publication_year: 2024, relevance_score: 10, authorships: [{ author: { display_name: 'A. Author' } }], primary_location: { source: { display_name: 'Urban Studies' } }, open_access: { is_oa: true }, cited_by_count: 12, doi: 'https://doi.org/10.1/example', topics: [{ display_name: 'Urban regeneration' }], abstract_inverted_index: { Public: [0], participation: [1], improves: [2], governance: [3] }, ...overrides });
 const evidence = () => ({ question: 'public participation', selectedSources: ['cases', 'research'], cases: selectCases('participation', [material]), papers: selectPapers([work()]), warnings: [] });

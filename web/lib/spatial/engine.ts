@@ -10,6 +10,7 @@ import {
   featureCollection,
 } from "@turf/turf";
 import type { Feature, Geometry } from "geojson";
+import { buildingUseCode, UNKNOWN_BUILDING_USE } from "./building-use";
 import type {
   AreaFeature,
   LoadedLayer,
@@ -40,6 +41,7 @@ function coveredArea(polygons: AreaFeature[]): number {
   return merged ? area(merged) : 0;
 }
 export function areaStatistics(selection: AreaFeature, layers: LoadedLayer[]) {
+  let buildingUses: SpatialResult["buildingUses"];
   const metrics: Record<string, number> = { areaSqm: area(selection) };
   const notes: string[] = [
     "면적은 선택 영역 안에서 계산하고, 개수는 영역에 걸친 도형도 포함합니다.",
@@ -56,6 +58,16 @@ export function areaStatistics(selection: AreaFeature, layers: LoadedLayer[]) {
       l.data.features.filter((f) => touches(f, selection)),
     );
     if (role === "buildings") {
+      const groups = new Map<string, { use_code: string; use_name: string; count: number }>();
+      for (const feature of features) {
+        const code = buildingUseCode(feature.properties);
+        const current = groups.get(code);
+        if (current) current.count++;
+        else groups.set(code, { use_code: code, use_name: typeof feature.properties?.use_name === "string" ? feature.properties.use_name : UNKNOWN_BUILDING_USE, count: 1 });
+      }
+      // Keep the existing compact spatial summary, including code traceability.
+      buildingUses = [...groups.values()].sort((a, b) => b.count - a.count || a.use_code.localeCompare(b.use_code)).slice(0, 20);
+      if (groups.size > 20) notes.push(`건물 용도는 개수가 많은 20개 코드를 표시합니다. ${groups.size - 20}개 코드는 요약에서 제외했습니다.`);
       metrics.buildingCount = features.length;
       metrics.buildingFootprintSqm = coveredArea(
         features
@@ -121,7 +133,7 @@ export function areaStatistics(selection: AreaFeature, layers: LoadedLayer[]) {
         metrics[`averageCount:${l.config.id}:${field}`] = values.length;
       }
     }
-  return { metrics, notes };
+  return { metrics, notes, ...(buildingUses ? { buildingUses } : {}) };
 }
 export function createBuffer(
   feature: Feature<Geometry>,

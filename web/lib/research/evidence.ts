@@ -1,4 +1,5 @@
 import { parseSpatialResult } from "../spatial/context";
+import { canonicalBuildingContext } from "../spatial/building-use-server";
 import type { SpatialResult } from "../spatial/types";
 import { searchOpenAlex } from "./openalex";
 import { SOURCE_OPTIONS } from "./types";
@@ -30,7 +31,7 @@ export function parseAnalysisRequest(body: unknown): AnalysisRequest {
   const sources = resolveSources(input.question.trim(), selected);
   return {
     question: input.question.trim(),
-    spatialContext: sources.includes("spatial") ? parseSpatialResult(input.spatialContext) : undefined,
+    spatialContext: sources.includes("spatial") ? canonicalBuildingContext(parseSpatialResult(input.spatialContext)) : undefined,
     selectedSources: sources,
     cases,
     projectContext: typeof input.projectContext === "string" ? input.projectContext.slice(0, 4000) : "",
