@@ -18,6 +18,7 @@ service cloud.firestore {
          get(/databases/$(database)/documents/users/$(request.auth.uid)/projectMemberships/$(projectId)).data.get('revoked', false) != true)
       );
     }
+    // Retired spatial permission documents remain protected; APIs no longer use them.
     function scoped(collectionId) {
       return collectionId.matches('^(users|ppssChatLogs|ppssWorkspaceSummaries|ppssEvaluations|ppssStageLocks|ppssBackgroundKnowledge|ppssBackgroundKnowledgeArchives|ppssSiteImages|ppssGeneratedImages|ppssUserDesignSubmissions|ppssEvaluationImages|ppssExecutiveSummaries|ppssSpatialDatasets|ppssSpatialPermissions)_.*');
     }

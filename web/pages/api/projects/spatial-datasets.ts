@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { adminBucket, adminDb, findUserByEmail, verifyUserRequest } from "../../../lib/firebaseAdmin";
+import { adminBucket, adminDb, verifyUserRequest } from "../../../lib/firebaseAdmin";
 import { AccessError } from "../../../lib/membership/server";
-import { listDatasets, mutateDataset, readDataset, setSpatialPermission } from "../../../lib/spatial/dataset-server";
+import { listDatasets, mutateDataset, readDataset } from "../../../lib/spatial/dataset-server";
 
 export const config = { api: { bodyParser: { sizeLimit: "4500kb" } } };
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -20,7 +20,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const db = adminDb();
     if (req.method === "POST") {
       if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) throw new AccessError(400, "요청을 확인해주세요.");
-      res.status(200).json(["grant", "revoke"].includes(req.body.action) ? await setSpatialPermission(db, user, req.body, findUserByEmail) : await mutateDataset(db, adminBucket(), user, req.body));
+      res.status(200).json(await mutateDataset(db, adminBucket(), user, req.body));
     } else {
       const projectId = req.query.projectId;
       if (typeof projectId !== "string") throw new AccessError(400, "사업을 다시 선택해주세요.");

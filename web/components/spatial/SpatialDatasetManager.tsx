@@ -7,9 +7,6 @@ export default function SpatialDatasetManager({ projectId }: { projectId: string
   const { user } = useAuth();
   const [datasets, setDatasets] = useState<SpatialDataset[]>([]);
   const [canManage, setCanManage] = useState(false);
-  const [canGrant, setCanGrant] = useState(false);
-  const [permissions, setPermissions] = useState<{ uid: string; email: string }[]>([]);
-  const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [type, setType] = useState<DatasetType>("project_boundary");
   const [file, setFile] = useState<File | null>(null);
@@ -22,29 +19,14 @@ export default function SpatialDatasetManager({ projectId }: { projectId: string
   const path = `/api/projects/spatial-datasets?${new URLSearchParams({ projectId })}`;
   useEffect(() => {
     let cancelled = false;
-    setDatasets([]); setCanManage(false); setCanGrant(false); setPermissions([]); setLoading(true);
+    setDatasets([]); setCanManage(false); setLoading(true);
     if (!user) { setLoading(false); return; }
     projectRequest(user, path).then((data) => {
-      if (!cancelled) { setDatasets(data.datasets); setCanManage(data.canManage === true); setCanGrant(data.canGrant === true); setPermissions(data.permissions ?? []); }
+      if (!cancelled) { setDatasets(data.datasets); setCanManage(data.canManage === true); }
     }).catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : "목록을 불러오지 못했어요."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [user, path]);
-
-  async function changePermission(action: "grant" | "revoke", uid?: string) {
-    if (!user || !canGrant || lock.current) return;
-    const currentUid = user.uid;
-    lock.current = true; setBusy(true); setMessage("");
-    try {
-      await projectRequest(user, "/api/projects/spatial-datasets", { action, projectId, ...(action === "grant" ? { email } : { uid }) });
-      const data = await projectRequest(user, path);
-      if (uidRef.current !== currentUid) return;
-      setPermissions(data.permissions ?? []); setCanGrant(data.canGrant === true); setCanManage(data.canManage === true);
-      if (action === "grant") setEmail("");
-      setMessage(action === "grant" ? "공간정보 관리 권한을 부여했습니다." : "공간정보 관리 권한을 회수했습니다.");
-    } catch (error) { if (uidRef.current === currentUid) setMessage(error instanceof Error ? error.message : "권한을 변경하지 못했어요."); }
-    finally { if (uidRef.current === currentUid) { lock.current = false; setBusy(false); } }
-  }
 
   async function mutate(action: "upload" | "replace" | "delete", replacement?: File, dataset?: SpatialDataset) {
     if (!user || !canManage || lock.current) return;
@@ -63,7 +45,7 @@ export default function SpatialDatasetManager({ projectId }: { projectId: string
       const result = await projectRequest(user, "/api/projects/spatial-datasets", body);
       const data = await projectRequest(user, path);
       if (uidRef.current !== uid) return;
-      setDatasets(data.datasets); setCanManage(data.canManage === true); setCanGrant(data.canGrant === true); setPermissions(data.permissions ?? []);
+      setDatasets(data.datasets); setCanManage(data.canManage === true);
       if (action === "upload") { setName(""); setFile(null); if (fileInput.current) fileInput.current.value = ""; }
       const stored = (data.datasets as SpatialDataset[]).find((d) => d.datasetId === result.datasetId);
       setMessage(action === "delete" ? "공간정보를 삭제했습니다." : !stored?.geometryType ? "파일을 보관했습니다. 좌표가 없는 CSV는 지도와 공간 계산에 사용할 수 없습니다." : action === "replace" ? "파일을 교체했습니다. 공간 분석을 다시 열어 새 자료를 확인해주세요." : "공간정보를 업로드했습니다. 공간 분석에서 사용할 수 있습니다.");
@@ -75,15 +57,6 @@ export default function SpatialDatasetManager({ projectId }: { projectId: string
     <h3 className="text-lg font-semibold">공간정보</h3>
     <p className="mt-2 text-sm text-slate-500">이 사업의 공간 자료를 등록하고 자료 분석에서 활용하세요. 배경 문서와 별도로 보관합니다.</p>
     {loading && <p className="mt-3 text-sm text-slate-500" role="status">공간정보를 불러오는 중입니다.</p>}
-    {canGrant && <div className="mt-4 rounded-2xl border border-slate-200 p-4">
-      <h4 className="text-sm font-semibold">공간정보 관리 권한</h4>
-      <p className="mt-1 text-xs text-slate-500">이 사업에 참여한 계획가를 지정하세요. 지정된 사용자는 공간정보를 업로드·교체·삭제할 수 있습니다.</p>
-      <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(event) => { event.preventDefault(); void changePermission("grant"); }}>
-        <label className="grid min-w-0 flex-1 gap-1 text-sm">계획가 이메일<input type="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} className="min-w-0 rounded-xl border border-slate-200 px-3 py-2" /></label>
-        <button type="submit" disabled={busy || !email.trim()} className="rounded-full border border-slate-200 px-3 py-2 text-sm disabled:opacity-50">권한 부여</button>
-      </form>
-      <ul className="mt-3 space-y-2">{permissions.map((permission) => <li key={permission.uid} className="flex flex-wrap items-center gap-2 text-sm"><span className="min-w-0 break-all">{permission.email}</span><button type="button" disabled={busy} aria-label={`${permission.email} 권한 회수`} className="rounded-full border border-red-200 px-3 py-1 text-red-600 disabled:opacity-50" onClick={() => { if (window.confirm(`${permission.email}의 공간정보 관리 권한을 회수할까요?`)) void changePermission("revoke", permission.uid); }}>권한 회수</button></li>)}</ul>
-    </div>}
     {canManage && <form className="mt-4 grid gap-3" onSubmit={(event) => { event.preventDefault(); void mutate("upload"); }}>
       <label className="grid gap-1 text-sm">자료 이름<input required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} disabled={busy} className="rounded-xl border border-slate-200 px-3 py-2" /></label>
       <label className="grid gap-1 text-sm">자료 유형<select aria-label="자료 유형" value={type} onChange={(e) => setType(e.target.value as DatasetType)} disabled={busy} className="rounded-xl border border-slate-200 px-3 py-2">{DATASET_TYPES.map((t) => <option key={t} value={t}>{datasetTypeLabels[t]}</option>)}</select></label>

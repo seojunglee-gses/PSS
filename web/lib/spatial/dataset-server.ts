@@ -8,7 +8,6 @@ import { AccessError, memberActive, memberPath, validProjectId, type Identity } 
 import { DATASET_TYPES, MAX_DATASET_BYTES, parseDataset, type SpatialDataset } from "./datasets";
 
 export const datasetCollection = (projectId: string) => `ppssSpatialDatasets_${validProjectId(projectId)}`;
-export const permissionCollection = (projectId: string) => `ppssSpatialPermissions_${validProjectId(projectId)}`;
 function validId(value: unknown): string {
   if (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(value)) throw new AccessError(400, "공간정보를 다시 선택해주세요.");
   return value;
@@ -17,45 +16,18 @@ async function authorize(db: Firestore, user: Identity, projectId: string, write
   const project = await db.doc(`ppssProjects/${projectId}`).get();
   if (!project.exists) throw new AccessError(404, "사업을 찾을 수 없습니다.");
   const manager = canManageProject(user.email, project.data() as ProjectMeta);
-  const member = manager ? undefined : (await db.doc(memberPath(user.uid, projectId)).get()).data();
-  if (!manager && !memberActive(member)) throw new AccessError(403, "이 사업의 공간정보를 볼 권한이 없습니다.");
-  const permission = !manager && (await db.collection(permissionCollection(projectId)).doc(user.uid).get()).exists;
-  if (write && !manager && !permission) throw new AccessError(403, "공간정보 관리 권한이 필요합니다.");
-  return { canManage: manager || permission, canGrant: manager };
+  if (write && !manager) throw new AccessError(403, "이 사업의 관리자만 공간정보를 관리할 수 있습니다.");
+  if (!manager && !memberActive((await db.doc(memberPath(user.uid, projectId)).get()).data())) throw new AccessError(403, "이 사업의 공간정보를 볼 권한이 없습니다.");
+  return manager;
 }
 export async function listDatasets(db: Firestore, user: Identity, projectId: string) {
   validProjectId(projectId);
-  const access = await authorize(db, user, projectId, false);
+  const canManage = await authorize(db, user, projectId, false);
   const snapshot = await db.collection(datasetCollection(projectId)).get();
-  const permissions = access.canGrant ? (await db.collection(permissionCollection(projectId)).get()).docs.map((d) => ({ uid: d.id, email: d.data().email })) : [];
-  return { ...access, permissions, datasets: snapshot.docs.map((d) => {
+  return { canManage, datasets: snapshot.docs.map((d) => {
     const data = d.data();
     return { ...data, datasetId: d.id, uploadedAt: data.uploadedAt.toDate().toISOString() } as SpatialDataset;
   }).sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt)) };
-}
-// Only existing platform/project administrators may assign this project-scoped permission.
-export async function setSpatialPermission(db: Firestore, user: Identity, body: Record<string, unknown>, lookup: (email: string) => Promise<{ uid: string; email?: string; disabled?: boolean }>) {
-  const projectId = validProjectId(body.projectId);
-  if (!(await authorize(db, user, projectId, false)).canGrant) throw new AccessError(403, "관리자만 공간정보 관리 권한을 지정할 수 있습니다.");
-  let target: { uid: string; email?: string; disabled?: boolean };
-  if (body.action === "grant") {
-    if (typeof body.email !== "string" || body.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) throw new AccessError(400, "계획가의 가입 이메일을 입력해주세요.");
-    try { target = await lookup(body.email.trim().toLowerCase()); }
-    catch (error) { if ((error as { code?: string }).code === "auth/user-not-found") throw new AccessError(400, "가입한 사용자를 찾을 수 없습니다."); throw error; }
-    if (target.disabled) throw new AccessError(400, "이 사용자는 권한을 받을 수 없습니다.");
-  } else if (body.action === "revoke") target = { uid: validId(body.uid) };
-  else throw new AccessError(400, "권한 요청을 확인해주세요.");
-  await db.runTransaction(async (tx) => {
-    const [project, member] = await Promise.all([tx.get(db.doc(`ppssProjects/${projectId}`)), tx.get(db.doc(memberPath(target.uid, projectId)))]);
-    if (!project.exists || !canManageProject(user.email, project.data() as ProjectMeta)) throw new AccessError(403, "관리자만 공간정보 관리 권한을 지정할 수 있습니다.");
-    const ref = db.collection(permissionCollection(projectId)).doc(target.uid);
-    if (body.action === "revoke") tx.delete(ref);
-    else {
-      if (!memberActive(member.data())) throw new AccessError(400, "이 사업에 참여한 사용자에게만 권한을 줄 수 있습니다.");
-      tx.set(ref, { projectId, uid: target.uid, email: target.email ?? String(body.email).trim().toLowerCase(), grantedBy: user.uid, grantedAt: Timestamp.now() });
-    }
-  });
-  return { uid: target.uid };
 }
 async function removeFile(bucket: Bucket, path: string) {
   try { await bucket.file(path).delete({ ignoreNotFound: true }); }
@@ -89,10 +61,10 @@ export async function mutateDataset(db: Firestore, bucket: Bucket, user: Identit
   let previousPath: string | undefined;
   try {
     previousPath = await db.runTransaction(async (tx) => {
-      const [project, previous, member, permission] = await Promise.all([tx.get(db.doc(`ppssProjects/${projectId}`)), tx.get(ref), tx.get(db.doc(memberPath(user.uid, projectId))), tx.get(db.collection(permissionCollection(projectId)).doc(user.uid))]);
+      const [project, previous] = await Promise.all([tx.get(db.doc(`ppssProjects/${projectId}`)), tx.get(ref)]);
       const count = creating ? (await tx.get(db.collection(datasetCollection(projectId)))).size : 0;
       // Recheck current project ownership before committing a file or deletion.
-      if (!project.exists || !(canManageProject(user.email, project.data() as ProjectMeta) || (memberActive(member.data()) && permission.exists))) throw new AccessError(403, "공간정보 관리 권한이 필요합니다.");
+      if (!project.exists || !canManageProject(user.email, project.data() as ProjectMeta)) throw new AccessError(403, "이 사업의 관리자만 공간정보를 관리할 수 있습니다.");
       if (creating ? previous.exists : !previous.exists) throw new AccessError(409, "공간정보 목록을 새로고침해주세요.");
       if (creating && count >= 20) throw new AccessError(400, "사업당 공간정보는 최대 20개까지 등록할 수 있습니다.");
       if (!creating && previous.data()?.revisionId !== body.expectedRevisionId) throw new AccessError(409, "다른 관리자가 이 자료를 변경했습니다. 목록을 새로고침해주세요.");
