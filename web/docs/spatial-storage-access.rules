@@ -1,0 +1,8 @@
+// Merge this block inside the existing Storage match /b/{bucket}/o.
+// This is a fragment, not a replacement for the deployed bucket rules.
+// Exclude ppss-spatial-datasets/** from any existing permissive wildcard too:
+// an overlapping allow rule would override this restriction.
+match /ppss-spatial-datasets/{projectId}/{datasetId}/{revisionId}/{fileName} {
+  allow read, write: if false;
+}
+// Spatial file reads/writes go through authenticated project APIs using Admin SDK.

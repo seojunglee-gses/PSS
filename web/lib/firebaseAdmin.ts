@@ -33,6 +33,8 @@ const getAdminApp = () => {
 
 export const adminDb = () => getFirestore(getAdminApp());
 
+export const findUserByEmail = (email: string) => getAuth(getAdminApp()).getUserByEmail(email);
+
 export const adminBucket = () => {
   const app = getAdminApp();
   return getStorage(app).bucket();

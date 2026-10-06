@@ -12,6 +12,7 @@ import {
 import { useI18n } from "../../lib/i18n";
 import { useProject } from "../../lib/projects";
 import { canManageProject } from "../../lib/rbac";
+import SpatialDatasetManager from "../../components/spatial/SpatialDatasetManager";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
 
@@ -480,6 +481,7 @@ export default function Setting() {
           </div>
         </div>
       </section>
+      {activeProject?.projectId === projectId && <SpatialDatasetManager key={`${projectId}-${user?.uid}`} projectId={projectId} />}
       {isAdmin && (
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold">{t("setting.admin")}</h3>
