@@ -1876,7 +1876,10 @@ const handleSend = async (suggestedQuestion?: string) => {
               className={`mt-4 text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
               contentEditable={canEditContent && editingStageId === "problem"}
               suppressContentEditableWarning
-              onBlur={(event) => setProblemDraft((prev) => ({ ...prev, title: event.currentTarget.textContent ?? "" }))}
+              onBlur={(event) => {
+                const title = event.currentTarget.textContent ?? "";
+                setProblemDraft((prev) => ({ ...prev, title }));
+              }}
             >
               {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || t("workspace.defaultProjectTitle")}
             </h4>
@@ -1884,7 +1887,10 @@ const handleSend = async (suggestedQuestion?: string) => {
               className={`mt-4 text-sm text-slate-500 ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
               contentEditable={canEditContent && editingStageId === "problem"}
               suppressContentEditableWarning
-              onBlur={(event) => setProblemDraft((prev) => ({ ...prev, text: event.currentTarget.textContent ?? "" }))}
+              onBlur={(event) => {
+                const text = event.currentTarget.textContent ?? "";
+                setProblemDraft((prev) => ({ ...prev, text }));
+              }}
             >
               {(editingStageId === "problem" ? problemDraft.text : activeProject?.workspaceContent.problem.text) || t("workspace.defaultProblemText")}
             </p>
