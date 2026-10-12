@@ -133,7 +133,7 @@ export default function SpatialAnalysis({
   };
   const activeLayers = layers.filter((l) => visible.includes(l.config.id));
   return (
-    <div className="space-y-4 p-4 sm:p-6">
+    <div className="spatial-analysis space-y-4 p-4 sm:p-6">
       <h3 className="text-lg font-semibold">공간 분석</h3>
       {loading ? (
         <p role="status" className="text-sm text-slate-500">
@@ -179,6 +179,7 @@ export default function SpatialAnalysis({
           <p className="text-xs text-slate-500">
             지도에서 도형을 선택하세요. 면 도형은 분석 영역으로 사용합니다.
             통계는 켜진 레이어만 대상으로 합니다.
+            <span className="mt-1 block">한 손가락으로 지도를 이동하고, 두 손가락으로 확대·축소할 수 있습니다. 페이지를 스크롤하려면 지도 바깥을 쓸어주세요.</span>
           </p>
           <SpatialMap
             layers={layers}

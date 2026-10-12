@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
-import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useAuth } from "../lib/auth";
 import { normalizeRoleId, roleLabelKeys, useI18n, type Locale } from "../lib/i18n";
 import { useProject } from "../lib/projects";
+import { saveSidebarPinned, sidebarPinnedSnapshot, subscribeSidebarPreference } from "../lib/sidebar-preference";
 
 const navigation = [
   {
@@ -102,6 +103,25 @@ export default function AppShell({ children }: AppShellProps) {
   const [role, setRole] = useState<string>("Guest");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showMobileAccount, setShowMobileAccount] = useState(false);
+  const sidebarPinned = useSyncExternalStore(subscribeSidebarPreference, sidebarPinnedSnapshot, () => false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const sidebarExpanded = sidebarPinned || sidebarOpen || sidebarHovered;
+  const sidebarRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!sidebarOpen || sidebarPinned) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!sidebarRef.current?.contains(event.target as Node)) setSidebarOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [sidebarOpen, sidebarPinned]);
+  const pinSidebar = (pinned: boolean) => {
+    saveSidebarPinned(pinned);
+  };
+  const closeSidebar = () => {
+    pinSidebar(false); setSidebarOpen(false); setSidebarHovered(false);
+  };
   const { activeProjectId, activeProject } = useProject();
 
   useEffect(() => {
@@ -128,7 +148,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   const sidebarContent = (isMobile = false) => (
     <>
-      <div>
+      <div className={isMobile ? undefined : "sidebar-detail"}>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">
           {t("shell.platform")}
         </p>
@@ -142,7 +162,7 @@ export default function AppShell({ children }: AppShellProps) {
           </p>
         )}
       </div>
-      <div>
+      <div className={isMobile ? undefined : "sidebar-detail"}>
         <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">
           {t("language.label")}
         </label>
@@ -163,7 +183,9 @@ export default function AppShell({ children }: AppShellProps) {
             <Link
               key={item.href}
               href={item.href === "/" ? (user ? "/?projects=1" : item.href) : { pathname: item.href, query: activeProjectId ? { projectId: activeProjectId } : {} }}
-              className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
+              aria-label={t(item.labelKey)}
+              title={t(item.labelKey)}
+              className={`sidebar-link flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
                 isActive
                   ? "bg-white/20 text-white"
                   : "text-blue-100 hover:bg-white/10 hover:text-white"
@@ -171,16 +193,16 @@ export default function AppShell({ children }: AppShellProps) {
               onClick={() => {
                 if (isMobile) {
                   setMobileNavOpen(false);
-                }
+                } else { setSidebarOpen(false); setSidebarHovered(false); }
               }}
             >
               <span className="rounded-full bg-white/15 p-2 text-white">{item.icon}</span>
-              {t(item.labelKey)}
+              <span className={isMobile ? undefined : "sidebar-detail"}>{t(item.labelKey)}</span>
             </Link>
           );
         })}
       </nav>
-      <div className="mt-auto rounded-2xl border border-white/20 bg-white/10 p-4 text-xs text-blue-100">
+      <div className={`${isMobile ? "" : "sidebar-detail"} mt-auto rounded-2xl border border-white/20 bg-white/10 p-4 text-xs text-blue-100`}>
         <p className="font-semibold text-white">{t("shell.systemStatus")}</p>
         <p className="mt-2">{t("shell.model")}</p>
         <p className="mt-1">{t("shell.latency")}</p>
@@ -189,10 +211,21 @@ export default function AppShell({ children }: AppShellProps) {
   );
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]" style={{ "--sidebar-width": sidebarPinned ? "288px" : "76px" } as CSSProperties}>
       <div className="flex min-h-screen flex-col lg:flex-row">
-        <aside className="sticky top-0 hidden h-screen w-72 flex-col gap-6 bg-[var(--primary)] px-6 py-8 text-white shadow-lg lg:flex">
-          {sidebarContent()}
+        <aside ref={sidebarRef} className="desktop-sidebar hidden lg:block" data-pinned={sidebarPinned} data-expanded={sidebarExpanded}
+          onPointerEnter={(event) => { if (event.pointerType === "mouse" && window.matchMedia("(hover: hover) and (pointer: fine)").matches) setSidebarHovered(true); }}
+          onPointerLeave={() => setSidebarHovered(false)}
+          onKeyDown={(event) => { if (event.key === "Escape") { closeSidebar(); sidebarRef.current?.querySelector<HTMLButtonElement>(".sidebar-toggle")?.focus(); } }}>
+          <div className="desktop-sidebar-panel">
+            <div className="flex items-center justify-between gap-2">
+              <button type="button" className="sidebar-toggle" aria-label={t(sidebarExpanded ? "shell.sidebarCollapse" : "shell.sidebarExpand")} aria-expanded={sidebarExpanded}
+                onClick={() => sidebarExpanded ? closeSidebar() : setSidebarOpen(true)}>☰</button>
+              <button type="button" className="sidebar-detail sidebar-pin" aria-pressed={sidebarPinned}
+                onClick={() => { pinSidebar(!sidebarPinned); setSidebarOpen(false); }}>{t(sidebarPinned ? "shell.sidebarUnpin" : "shell.sidebarPin")}</button>
+            </div>
+            {sidebarContent()}
+          </div>
         </aside>
         {mobileNavOpen && (
           <div className="fixed inset-0 z-40 bg-slate-900/50 lg:hidden" onClick={() => setMobileNavOpen(false)}>
@@ -203,7 +236,8 @@ export default function AppShell({ children }: AppShellProps) {
               <div className="mb-4 flex items-center justify-end">
                 <button
                   type="button"
-                  className="rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white"
+                  className="min-h-11 min-w-11 rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white"
+                  aria-label={t("shell.sidebarCollapse")}
                   onClick={() => setMobileNavOpen(false)}
                 >
                   ✕
@@ -213,12 +247,14 @@ export default function AppShell({ children }: AppShellProps) {
             </aside>
           </div>
         )}
-        <main className="flex-1 px-4 py-6 lg:px-10 lg:py-10">
+        <main className="min-w-0 flex-1 px-4 py-6 lg:px-10 lg:py-10">
           <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
             <div className="flex items-center justify-between rounded-2xl border border-[var(--primary)]/40 bg-[var(--primary)] px-4 py-3 text-white shadow-sm lg:hidden">
               <button
                 type="button"
-                className="flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white"
+                className="flex min-h-11 items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white"
+                aria-label={t("shell.sidebarExpand")}
+                aria-expanded={mobileNavOpen}
                 onClick={() => setMobileNavOpen(true)}
               >
                 <span className="text-base leading-none">☰</span>

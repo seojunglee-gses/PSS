@@ -22,6 +22,7 @@ body {
 }
 
 .spatial-button {
+  min-height: 44px;
   border: 1px solid #cbd5e1;
   border-radius: .5rem;
   padding: .4rem .75rem;
@@ -31,3 +32,32 @@ body {
 }
 .spatial-button:hover { background: #f8fafc; }
 .spatial-button:disabled { opacity: .45; cursor: not-allowed; }
+
+.desktop-sidebar { position: sticky; top: 0; width: 76px; height: 100vh; flex-shrink: 0; z-index: 40; }
+.desktop-sidebar-panel { position: absolute; inset: 0 auto 0 0; width: 76px; display: flex; flex-direction: column; gap: 24px; padding: 16px 12px; overflow-y: auto; background: var(--primary); color: white; box-shadow: 0 4px 16px #0f172a20; }
+.desktop-sidebar[data-pinned="true"], .desktop-sidebar[data-expanded="true"] .desktop-sidebar-panel { width: 288px; }
+.desktop-sidebar[data-pinned="true"] .desktop-sidebar-panel { width: 288px; }
+.desktop-sidebar[data-expanded="false"] .sidebar-detail { display: none; }
+.desktop-sidebar[data-expanded="false"] .sidebar-link { justify-content: center; padding: 6px; }
+.desktop-sidebar .sidebar-link { min-height: 52px; flex-shrink: 0; }
+.sidebar-toggle { min-height: 44px; min-width: 44px; border: 1px solid #ffffff40; border-radius: 12px; }
+.sidebar-pin { min-height: 44px; padding: 8px 12px; border: 1px solid #ffffff40; border-radius: 12px; font-size: 14px; }
+.desktop-sidebar button:focus-visible, .desktop-sidebar a:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+.spatial-analysis label { min-height: 44px; }
+.spatial-analysis input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--primary); }
+.spatial-analysis select, .spatial-analysis button { min-height: 44px; }
+.spatial-analysis select { padding: 8px; }
+.spatial-analysis button { min-width: 44px; }
+.workspace-composer button { min-height: 44px; min-width: 44px; }
+.workspace-composer input { min-height: 44px; font-size: 16px; }
+@media (max-width: 1279px) {
+  .workspace-content { padding-bottom: calc(176px + env(safe-area-inset-bottom, 0px)); }
+  .workspace-composer { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .workspace-composer { left: var(--sidebar-width, 76px); }
+}
+@media (pointer: coarse) {
+  .spatial-map .maplibregl-ctrl-group button { width: 44px; height: 44px; }
+  .spatial-analysis select { font-size: 16px; }
+}

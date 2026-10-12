@@ -1565,7 +1565,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       });
     const isStageLocked = Boolean(lockedStages[activeStep.id]);
     return (
-    <div className="relative flex h-full min-h-[460px] flex-col rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm lg:min-h-0 lg:p-6">
+    <div className="relative flex h-full min-h-[460px] flex-col rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm xl:min-h-0 xl:p-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
@@ -1639,7 +1639,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           )}
         </div>
       )}
-      <div className="mt-4 max-h-[46vh] flex-1 space-y-4 overflow-auto pb-24 text-sm text-slate-600 lg:max-h-[420px] lg:pb-0">
+      <div className="mt-4 max-h-[46vh] flex-1 space-y-4 overflow-auto pb-24 text-sm text-slate-600 xl:max-h-[420px] xl:pb-0">
         {hasLoadedChatLogs && displayedMessages.length === 0 && guide && (
           <StageChatEmptyState guide={guide}
             disabled={isSending || isLoadingAlternatives || isStageLocked}
@@ -1685,7 +1685,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         })}
         <div ref={chatEndRef} />
       </div>
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] lg:static lg:mt-4 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:shadow-none">
+      <div className="workspace-composer fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] xl:static xl:mt-4 xl:border-0 xl:bg-transparent xl:px-0 xl:py-0 xl:shadow-none">
         {activeStep.id === "data" && <div className="mb-2 flex flex-wrap items-center gap-2">
           {selectedSources.map((source) => <button key={source} type="button" disabled={isSending || isStageLocked}
             onClick={() => setSelectedSources((prev) => prev.filter((item) => item !== source))}
@@ -1759,12 +1759,12 @@ const handleSend = async (suggestedQuestion?: string) => {
   );
   };
 
-  const responsiveWorkspaceSection = "grid gap-4 lg:gap-6 lg:grid-cols-[1.1fr_0.9fr]";
+  const responsiveWorkspaceSection = "grid gap-4 xl:gap-6 xl:grid-cols-[1.1fr_0.9fr]";
 
   return (
     <AppShell>
       {projectError && <p role="alert" className="mb-4 text-sm text-rose-600">{projectError}</p>}
-      <div className="space-y-6 pb-24 lg:space-y-0 lg:pb-0">
+      <div className="workspace-content space-y-6 pb-44 xl:space-y-0 xl:pb-0">
       <section className="flex flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
           {t("workspace.badge")}
@@ -2491,7 +2491,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               </div>
             </div>
           </div>
-          <div className="min-w-0 lg:col-span-2">{renderChatPanel()}</div>
+          <div className="min-w-0 xl:col-span-2">{renderChatPanel()}</div>
         </section>
       )}
       </div>
