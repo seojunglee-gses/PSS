@@ -43,6 +43,7 @@ test("project config rejects cross-project, remote URLs and traversal", () => {
       ),
     );
   assert.throws(() => loader.projectDirectory("../other"));
+  assert.throws(() => loader.validateConfig({ ...config, layers: [{ ...config.layers[0], id: "__basemap_water" }], priority: undefined }, "spatial-test"));
 });
 test("valid geometries pass; empty, null, invalid rings and projected coordinates fail", () => {
   assert.equal(

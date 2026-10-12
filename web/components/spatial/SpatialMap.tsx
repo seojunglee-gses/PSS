@@ -3,6 +3,7 @@ import * as maplibregl from "maplibre-gl";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { LoadedLayer } from "../../lib/spatial/types";
 import { bbox, featureCollection } from "../../lib/spatial/engine";
+import { BASEMAP_PREFIX, BASEMAP_STYLE_URL, basemapStyle } from "../../lib/spatial/basemap";
 export default function SpatialMap({
   layers,
   visible,
@@ -24,9 +25,18 @@ export default function SpatialMap({
   selectRef.current = onSelect;
   const layersRef = useRef(layers);
   layersRef.current = layers;
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const overlayRef = useRef(overlay);
+  overlayRef.current = overlay;
   const [error, setError] = useState("");
+  const [basemapError, setBasemapError] = useState("");
   useEffect(() => {
     if (!container.current) return;
+    setError("");
+    setBasemapError("");
+    const controller = new AbortController();
+    let fitted = false;
     let map: maplibregl.Map;
     try {
       map = new maplibregl.Map({
@@ -44,6 +54,7 @@ export default function SpatialMap({
         },
         center: [127, 37.5],
         zoom: 12,
+        attributionControl: { compact: true },
       });
       mapRef.current = map;
       map.addControl(new maplibregl.NavigationControl(), "top-right");
@@ -51,11 +62,16 @@ export default function SpatialMap({
       resize.observe(container.current);
       map.on("error", (event) => {
         console.error("Spatial map:", event.error.message);
+        if ((event as { sourceId?: string }).sourceId?.startsWith(BASEMAP_PREFIX)) {
+          setBasemapError("배경 지도를 불러오지 못했어요. 업로드한 레이어와 공간 분석은 계속 사용할 수 있습니다.");
+          return;
+        }
         setError(
           "지도를 표시하는 중 오류가 발생했어요. 새로고침 후 다시 시도해주세요.",
         );
       });
-      map.on("load", () => {
+      // Add project data as soon as the style is ready, even when map tiles fail.
+      map.on("style.load", () => {
         for (const layer of layers) {
           const data = {
             ...layer.data,
@@ -98,7 +114,7 @@ export default function SpatialMap({
                   },
           );
         }
-        map.addSource("__selection", { type: "geojson", data: overlay });
+        map.addSource("__selection", { type: "geojson", data: overlayRef.current });
         map.addLayer({
           id: "__selection",
           type: "fill",
@@ -110,7 +126,7 @@ export default function SpatialMap({
           },
         });
         const data = featureCollection(layers.flatMap((l) => l.data.features));
-        if (data.features.length) {
+        if (data.features.length && !fitted) {
           const bounds = bbox(data);
           map.fitBounds(
             [
@@ -119,12 +135,13 @@ export default function SpatialMap({
             ],
             { padding: 35, maxZoom: 17, duration: 0 },
           );
+          fitted = true;
         }
         for (const layer of layers)
           map.setLayoutProperty(
             layer.config.id,
             "visibility",
-            visible.includes(layer.config.id) ? "visible" : "none",
+            visibleRef.current.includes(layer.config.id) ? "visible" : "none",
           );
       });
       map.on("click", (event) => {
@@ -138,18 +155,33 @@ export default function SpatialMap({
         if (layer && layer.data.features[index])
           selectRef.current(layer, layer.data.features[index], index);
       });
+      // Keep the initial project map working while the optional background loads.
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      fetch(BASEMAP_STYLE_URL, { signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) throw new Error("Basemap unavailable");
+          const style = await response.json() as maplibregl.StyleSpecification;
+          if (style.version !== 8 || !style.sources || !Array.isArray(style.layers)) throw new Error("Invalid basemap style");
+          if (!controller.signal.aborted) map.setStyle(basemapStyle(style), { diff: false });
+        })
+        .catch(() => {
+          if (mapRef.current === map) setBasemapError("배경 지도를 불러오지 못했어요. 업로드한 레이어와 공간 분석은 계속 사용할 수 있습니다.");
+        })
+        .finally(() => clearTimeout(timeout));
       return () => {
+        clearTimeout(timeout);
+        controller.abort();
         resize.disconnect();
         map.remove();
         mapRef.current = null;
       };
     } catch {
+      controller.abort();
       setError(
         "지도를 표시하지 못했어요. 브라우저의 WebGL 지원을 확인해주세요.",
       );
     }
     // A dataset load builds its map once; visibility and results update independently.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers]);
   useEffect(() => {
     const map = mapRef.current;
@@ -174,6 +206,9 @@ export default function SpatialMap({
         aria-label="사업 공간 데이터 지도"
         className="h-[360px] w-full rounded-xl border border-slate-200 sm:h-[420px]"
       />
+      {basemapError && (
+        <p role="status" className="mt-2 text-sm text-amber-700">{basemapError}</p>
+      )}
       {error && (
         <p role="alert" className="mt-2 text-sm text-amber-700">
           {error}
