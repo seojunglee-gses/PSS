@@ -200,7 +200,7 @@ export default function SpatialMap({
     source?.setData(overlay);
   }, [overlay]);
   return (
-    <div>
+    <div className="spatial-map">
       <div
         ref={container}
         aria-label="사업 공간 데이터 지도"
