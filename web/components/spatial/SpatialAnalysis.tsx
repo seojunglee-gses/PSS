@@ -18,6 +18,7 @@ import type {
   SpatialResult,
 } from "../../lib/spatial/types";
 import SpatialSummary from "./SpatialSummary";
+import { spatialGoals } from "../../lib/spatial/goals";
 import { useAuth } from "../../lib/auth";
 export default function SpatialAnalysis({
   projectId,
@@ -49,6 +50,7 @@ export default function SpatialAnalysis({
   const [overlay, setOverlay] = useState<FeatureCollection>(
     featureCollection([]),
   );
+  const [tool, setTool] = useState<SpatialResult["type"] | null>(null);
   const [distance, setDistance] = useState(300);
   const [overlayA, setOverlayA] = useState("");
   const [overlayB, setOverlayB] = useState("");
@@ -60,7 +62,9 @@ export default function SpatialAnalysis({
       try {
         const token = await user?.getIdToken();
         const c = await loadSpatialConfig(projectId, controller.signal, token);
-        const results = await Promise.allSettled(c.layers.map((layer) => loadLayer(layer, token)));
+        const results = await Promise.allSettled(
+          c.layers.map((layer) => loadLayer(layer, token)),
+        );
         if (!current) return;
         const available: LoadedLayer[] = [];
         const failed: string[] = [...(c.datasetWarnings ?? [])];
@@ -149,7 +153,9 @@ export default function SpatialAnalysis({
       ) : (
         <>
           <fieldset className="rounded-xl border border-slate-200 p-3">
-            <legend className="px-1 text-sm font-semibold">레이어</legend>
+            <legend className="px-1 text-sm font-semibold">
+              지도에 표시할 자료
+            </legend>
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               {config.layers.map((l) => (
                 <label key={l.id} className="flex items-center gap-2 text-sm">
@@ -179,7 +185,10 @@ export default function SpatialAnalysis({
           <p className="text-xs text-slate-500">
             지도에서 도형을 선택하세요. 면 도형은 분석 영역으로 사용합니다.
             통계는 켜진 레이어만 대상으로 합니다.
-            <span className="mt-1 block">한 손가락으로 지도를 이동하고, 두 손가락으로 확대·축소할 수 있습니다. 페이지를 스크롤하려면 지도 바깥을 쓸어주세요.</span>
+            <span className="mt-1 block">
+              한 손가락으로 지도를 이동하고, 두 손가락으로 확대·축소할 수
+              있습니다. 페이지를 스크롤하려면 지도 바깥을 쓸어주세요.
+            </span>
           </p>
           <SpatialMap
             layers={layers}
@@ -214,181 +223,289 @@ export default function SpatialAnalysis({
               </dl>
             </section>
           )}
-          <fieldset className="space-y-3 rounded-xl border border-slate-200 p-3">
-            <legend className="px-1 text-sm font-semibold">분석 도구</legend>
-            <button
-              type="button"
-              className="spatial-button"
-              disabled={!selected || !isArea(selected.feature)}
-              onClick={() =>
-                execute(() => {
-                  if (!selected || !isArea(selected.feature)) return;
-                  setOverlay(featureCollection([selected.feature]));
-                  onResult(
-                    resultFor(
-                      projectId,
-                      "area",
-                      activeLayers,
-                      selected.feature,
-                      {
-                        selectedLayerId: selected.layer.config.id,
-                        selectedFeatureId: featureKey(
-                          selected.feature,
-                          selected.index,
-                        ),
-                      },
-                    ),
-                  );
-                  onInclude(false);
-                })
-              }
-            >
-              영역 통계
-            </button>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="text-sm">
-                버퍼 거리{" "}
-                <select
-                  aria-label="버퍼 거리"
-                  value={distance}
-                  onChange={(e) => setDistance(Number(e.target.value))}
-                  className="rounded border p-1"
-                >
-                  {[100, 300, 500].map((n) => (
-                    <option key={n} value={n}>
-                      {n}m
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className="spatial-button"
-                disabled={!selected}
-                onClick={() =>
-                  execute(() => {
-                    if (!selected) return;
-                    const shape = createBuffer(selected.feature, distance);
-                    setOverlay(featureCollection([shape]));
-                    onResult(
-                      resultFor(projectId, "buffer", activeLayers, shape, {
-                        distanceMeters: distance,
-                        selectedLayerId: selected.layer.config.id,
-                        selectedFeatureId: featureKey(
-                          selected.feature,
-                          selected.index,
-                        ),
-                      }),
-                    );
-                    onInclude(false);
-                  })
-                }
-              >
-                버퍼 분석
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {[
-                ["A", overlayA, setOverlayA],
-                ["B", overlayB, setOverlayB],
-              ].map(([name, value, setter]) => (
-                <select
-                  key={String(name)}
-                  aria-label={`중첩 레이어 ${name}`}
-                  value={value as string}
-                  onChange={(e) =>
-                    (setter as (v: string) => void)(e.target.value)
-                  }
-                  className="min-w-0 max-w-full rounded border p-1 text-sm"
-                >
-                  <option value="">레이어 {String(name)}</option>
-                  {polygons.map((l) => (
-                    <option key={l.config.id} value={l.config.id}>
-                      {l.config.label}
-                    </option>
-                  ))}
-                </select>
-              ))}
-              <button
-                type="button"
-                className="spatial-button"
-                disabled={!overlayA || !overlayB || overlayA === overlayB}
-                onClick={() =>
-                  execute(() => {
-                    const a = layers.find((l) => l.config.id === overlayA)!;
-                    const b = layers.find((l) => l.config.id === overlayB)!;
-                    const shapes = intersectionAreas(a, b);
-                    setOverlay(featureCollection(shapes));
-                    onResult({
-                      projectId,
-                      type: "intersection",
-                      timestamp: new Date().toISOString(),
-                      layerIds: [overlayA, overlayB],
-                      parameters: { layerA: overlayA, layerB: overlayB },
-                      metrics: { intersectionAreaSqm: overlayArea(shapes) },
-                      notes: [
-                        "선택한 두 면 레이어의 중첩 영역입니다. 속성 조건은 원본 데이터에서 미리 정의해주세요.",
-                      ],
-                    });
-                    onInclude(false);
-                  })
-                }
-              >
-                중첩 분석
-              </button>
-            </div>
+          <section aria-label="분석 목적" className="space-y-3">
             <div>
-              <button
-                type="button"
-                className="spatial-button"
-                disabled={!priorityLayer || !!priorityError}
-                onClick={() =>
-                  execute(() => {
-                    if (!priorityLayer || !config.priority) return;
-                    const scores = scorePriority(
-                      priorityLayer,
-                      config.priority.criteria,
-                    );
-                    setOverlay(
-                      featureCollection(
-                        priorityLayer.data.features.filter(isArea),
-                      ),
-                    );
-                    onResult({
-                      projectId,
-                      type: "priority",
-                      timestamp: new Date().toISOString(),
-                      layerIds: [priorityLayer.config.id],
-                      parameters: {
-                        criteria: JSON.stringify(config.priority.criteria),
-                      },
-                      metrics: { priorityCount: scores.length },
-                      priorities: scores.slice(0, 20),
-                      notes: [
-                        "사업별 기준을 0~1로 정규화한 가중 점수입니다. 통계적 유의성을 나타내지 않습니다. 값이 모두 같으면 해당 기준은 0.5점을 부여합니다. 목록은 상위 20개 지역입니다.",
-                      ],
-                    });
-                    onInclude(false);
-                  })
-                }
-              >
-                우선지역 찾기
-              </button>
-              <p className="mt-1 text-xs text-slate-500">
-                {priorityError ||
-                  (!config.priority
-                    ? "사업별 지표와 가중치를 설정하면 사용할 수 있습니다."
-                    : !priorityLayer
-                      ? "우선순위를 계산할 레이어가 필요합니다."
-                      : config.priority.criteria
-                          .map(
-                            (c) =>
-                              `${priorityLayer?.config.fieldLabels?.[c.field] ?? c.field} (${c.direction === "higher" ? "높을수록 우선" : "낮을수록 우선"}, 가중치 ${c.weight})`,
-                          )
-                          .join(" · "))}
+              <h4 className="font-semibold">무엇을 알고 싶나요?</h4>
+              <p className="mt-1 text-sm text-slate-500">
+                분석 목적을 선택하면 필요한 항목만 안내해드려요.
               </p>
             </div>
-          </fieldset>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {spatialGoals.map((goal) => (
+                <button
+                  key={goal.type}
+                  type="button"
+                  aria-pressed={tool === goal.type}
+                  aria-controls="spatial-tool-controls"
+                  onClick={() => {
+                    setTool(goal.type);
+                    setError("");
+                  }}
+                  className={`min-w-0 rounded-xl border p-4 text-left ${tool === goal.type ? "border-blue-600 bg-blue-50 ring-1 ring-blue-600" : "border-slate-200 hover:bg-slate-50"}`}
+                >
+                  <span className="block text-sm font-semibold">
+                    {goal.name}
+                  </span>
+                  <span className="mt-1 block text-sm text-slate-600">
+                    {goal.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {tool && (
+              <fieldset
+                id="spatial-tool-controls"
+                className="space-y-3 rounded-xl border border-slate-200 p-3"
+              >
+                <legend className="px-1 text-sm font-semibold">
+                  {spatialGoals.find((goal) => goal.type === tool)?.name}
+                </legend>
+                <p className="text-xs text-slate-500">
+                  (
+                  {
+                    spatialGoals.find((goal) => goal.type === tool)
+                      ?.technicalName
+                  }
+                  )
+                </p>
+                {(tool === "area" || tool === "buffer") && (
+                  <div className="space-y-2 text-sm">
+                    <p>
+                      <span className="font-medium">
+                        {tool === "area" ? "확인할 지역" : "기준 대상"}
+                      </span>
+                      :{" "}
+                      {selected
+                        ? `${selected.layer.config.label} · ${featureKey(selected.feature, selected.index)}`
+                        : "지도에서 선택해주세요."}
+                    </p>
+                    {tool === "area" &&
+                      (!selected || !isArea(selected.feature)) && (
+                        <p className="text-slate-600">
+                          지도에서 경계나 건물처럼 면으로 표시된 지역을
+                          선택해주세요.
+                        </p>
+                      )}
+                    <p>
+                      <span className="font-medium">확인할 자료</span>:{" "}
+                      {activeLayers
+                        .map((layer) => layer.config.label)
+                        .join(" · ") || "선택한 자료 없음"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      위의 ‘지도에 표시할 자료’에서 확인할 자료를 선택할 수
+                      있습니다.
+                    </p>
+                  </div>
+                )}
+                {tool === "area" && (
+                  <div>
+                    <button
+                      type="button"
+                      className="spatial-button w-full"
+                      disabled={!selected || !isArea(selected.feature)}
+                      onClick={() =>
+                        execute(() => {
+                          if (!selected || !isArea(selected.feature)) return;
+                          setOverlay(featureCollection([selected.feature]));
+                          onResult(
+                            resultFor(
+                              projectId,
+                              "area",
+                              activeLayers,
+                              selected.feature,
+                              {
+                                selectedLayerId: selected.layer.config.id,
+                                selectedFeatureId: featureKey(
+                                  selected.feature,
+                                  selected.index,
+                                ),
+                              },
+                            ),
+                          );
+                          onInclude(false);
+                        })
+                      }
+                    >
+                      지역 특징 확인
+                    </button>
+                  </div>
+                )}
+                {tool === "buffer" && (
+                  <div className="space-y-3">
+                    <label className="block text-sm">
+                      거리
+                      <select
+                        aria-label="거리"
+                        value={distance}
+                        onChange={(e) => setDistance(Number(e.target.value))}
+                        className="mt-1 block w-full rounded border p-2"
+                      >
+                        {[100, 300, 500].map((n) => (
+                          <option key={n} value={n}>
+                            {n}m
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="spatial-button w-full"
+                      disabled={!selected}
+                      onClick={() =>
+                        execute(() => {
+                          if (!selected) return;
+                          const shape = createBuffer(
+                            selected.feature,
+                            distance,
+                          );
+                          setOverlay(featureCollection([shape]));
+                          onResult(
+                            resultFor(
+                              projectId,
+                              "buffer",
+                              activeLayers,
+                              shape,
+                              {
+                                distanceMeters: distance,
+                                selectedLayerId: selected.layer.config.id,
+                                selectedFeatureId: featureKey(
+                                  selected.feature,
+                                  selected.index,
+                                ),
+                              },
+                            ),
+                          );
+                          onInclude(false);
+                        })
+                      }
+                    >
+                      주변 대상 확인
+                    </button>
+                  </div>
+                )}
+                {tool === "intersection" && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-600">
+                      면으로 표시된 공간 자료 두 개를 선택해주세요. 지도에서
+                      숨긴 자료도 비교할 수 있습니다.
+                    </p>
+                    {[
+                      ["기준 공간", overlayA, setOverlayA],
+                      ["비교할 공간", overlayB, setOverlayB],
+                    ].map(([name, value, setter]) => (
+                      <label key={String(name)} className="block text-sm">
+                        {String(name)}
+                        <select
+                          aria-label={String(name)}
+                          value={value as string}
+                          onChange={(e) =>
+                            (setter as (v: string) => void)(e.target.value)
+                          }
+                          className="mt-1 block w-full min-w-0 rounded border p-2 text-sm"
+                        >
+                          <option value="">선택해주세요</option>
+                          {polygons.map((l) => (
+                            <option key={l.config.id} value={l.config.id}>
+                              {l.config.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ))}
+                    <button
+                      type="button"
+                      className="spatial-button w-full"
+                      disabled={!overlayA || !overlayB || overlayA === overlayB}
+                      onClick={() =>
+                        execute(() => {
+                          const a = layers.find(
+                            (l) => l.config.id === overlayA,
+                          )!;
+                          const b = layers.find(
+                            (l) => l.config.id === overlayB,
+                          )!;
+                          const shapes = intersectionAreas(a, b);
+                          setOverlay(featureCollection(shapes));
+                          onResult({
+                            projectId,
+                            type: "intersection",
+                            timestamp: new Date().toISOString(),
+                            layerIds: [overlayA, overlayB],
+                            parameters: { layerA: overlayA, layerB: overlayB },
+                            metrics: {
+                              intersectionAreaSqm: overlayArea(shapes),
+                            },
+                            notes: [
+                              "선택한 두 면 레이어의 중첩 영역입니다. 속성 조건은 원본 데이터에서 미리 정의해주세요.",
+                            ],
+                          });
+                          onInclude(false);
+                        })
+                      }
+                    >
+                      겹치는 영역 확인
+                    </button>
+                  </div>
+                )}
+                {tool === "priority" && (
+                  <div>
+                    <button
+                      type="button"
+                      className="spatial-button w-full"
+                      disabled={!priorityLayer || !!priorityError}
+                      onClick={() =>
+                        execute(() => {
+                          if (!priorityLayer || !config.priority) return;
+                          const scores = scorePriority(
+                            priorityLayer,
+                            config.priority.criteria,
+                          );
+                          setOverlay(
+                            featureCollection(
+                              priorityLayer.data.features.filter(isArea),
+                            ),
+                          );
+                          onResult({
+                            projectId,
+                            type: "priority",
+                            timestamp: new Date().toISOString(),
+                            layerIds: [priorityLayer.config.id],
+                            parameters: {
+                              criteria: JSON.stringify(
+                                config.priority.criteria,
+                              ),
+                            },
+                            metrics: { priorityCount: scores.length },
+                            priorities: scores.slice(0, 20),
+                            notes: [
+                              "사업별 기준을 0~1로 정규화한 가중 점수입니다. 통계적 유의성을 나타내지 않습니다. 값이 모두 같으면 해당 기준은 0.5점을 부여합니다. 목록은 상위 20개 지역입니다.",
+                            ],
+                          });
+                          onInclude(false);
+                        })
+                      }
+                    >
+                      우선 검토 지역 찾기
+                    </button>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {priorityError ||
+                        (!config.priority
+                          ? "사업별 지표와 가중치를 설정하면 사용할 수 있습니다."
+                          : !priorityLayer
+                            ? "우선순위를 계산할 레이어가 필요합니다."
+                            : config.priority.criteria
+                                .map(
+                                  (c) =>
+                                    `${priorityLayer?.config.fieldLabels?.[c.field] ?? c.field} (${c.direction === "higher" ? "높을수록 우선" : "낮을수록 우선"}, 가중치 ${c.weight})`,
+                                )
+                                .join(" · "))}
+                    </p>
+                  </div>
+                )}
+              </fieldset>
+            )}
+          </section>
         </>
       )}
       {warnings.length > 0 && (
