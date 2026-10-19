@@ -1,3 +1,4 @@
+import { MODELS } from "../../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { adminBucket, adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
 
@@ -168,7 +169,7 @@ export default async function handler(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
+        model: MODELS.chat,
         input: [
           {
             role: "system",

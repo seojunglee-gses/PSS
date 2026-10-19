@@ -1,3 +1,4 @@
+import { MODELS } from "../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { callLLM } from "../../lib/llm";
 import { loadBackgroundKnowledge } from "../../lib/firebase";
@@ -61,7 +62,7 @@ export default async function handler(
           ? "gemini-2.5-flash"
           : provider === "deepseek"
             ? "deepseek-chat"
-            : "gpt-5-mini",
+            : MODELS.chat,
       systemText,
       userText,
     });

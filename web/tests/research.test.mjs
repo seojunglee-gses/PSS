@@ -9,8 +9,41 @@ const { parseAnalysisRequest, selectCases, retrieveEvidence } = load('lib/resear
 const { parseAnswer, answerFromEvidence, answerText } = load('lib/research/answer.js');
 const { compactEvidence, usedSourceIds, usedAnswerEvidence } = load('lib/research/types.js');
 const llm = load('lib/llm/index.js');
+const { MODELS, selectOpenAIChatModel, callOpenAI } = load('lib/llm/openai.js');
 const searchHandler = load('pages/api/research/search.js').default;
 const answerHandler = load('pages/api/research/answer.js').default;
+
+test('OpenAI model routing reserves Fast Chat for clear simple tasks', () => {
+  assert.deepEqual(MODELS, { fastChat: 'gpt-6-luna', chat: 'gpt-6.1-sol', image: 'gpt-image-2.5-flare' });
+  for (const question of ['안녕하세요', '이 문장 맞춤법 고쳐줘', '다음 글을 요약해줘: 짧은 글입니다.', 'Rewrite this sentence', 'What is a glossary?']) {
+    assert.equal(selectOpenAIChatModel(question, 'problem'), MODELS.fastChat);
+  }
+  for (const question of ['공간 분석 결과를 해석해줘', '여러 근거를 종합해줘', 'Compare design alternatives', 'Rewrite the report', '다음 단계는?', 'rewrite ' + 'x'.repeat(601)]) {
+    assert.equal(selectOpenAIChatModel(question, 'problem'), MODELS.chat);
+  }
+});
+test('report and analysis stages cannot be routed to Fast Chat even for simple requests', () => {
+  for (const stage of ['report', 'summary', 'data', 'alternatives', 'evaluation']) {
+    for (const question of ['요약해줘', '안녕하세요', 'Rewrite this sentence']) {
+      assert.equal(selectOpenAIChatModel(question, stage), MODELS.chat);
+    }
+  }
+});
+test('OpenAI gateway defaults to Chat and sends a selected Fast Chat model without extra requests', async (t) => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = 'mock-model-routing-key';
+  t.after(() => { if (previousKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previousKey; });
+  const models = [];
+  mockFetch(t, async (url, options) => {
+    assert.equal(url, 'https://api.openai.com/v1/responses');
+    const body = JSON.parse(options.body); models.push(body.model);
+    assert.equal(body.input[0].content[0].text, 'unchanged prompt');
+    return Response.json({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'reply' }] }] });
+  });
+  await callOpenAI({ systemText: 'unchanged prompt', userText: 'task' });
+  await callOpenAI({ model: MODELS.fastChat, systemText: 'unchanged prompt', userText: 'task' });
+  assert.deepEqual(models, [MODELS.chat, MODELS.fastChat]);
+});
 
 test('spatial AI context resolves building names on the server and keeps original codes',async t=>{
  let received;

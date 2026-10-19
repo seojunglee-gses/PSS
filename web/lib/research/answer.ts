@@ -1,3 +1,4 @@
+import { MODELS } from "../llm/openai";
 import { callLLM } from "../llm";
 import type { AnalysisRequest } from "./evidence";
 import type { AnalysisAnswer, EvidenceBundle, EvidenceCitation, Finding } from "./types";
@@ -52,7 +53,7 @@ Return JSON only, with exactly this structure:
 {"summary":"...","caseFindings":[{"text":"...","sourceIds":["C:1"]}],"researchFindings":[{"text":"...","sourceIds":["R:W123"]}],"agreement":"...","differences":"...","integratedInterpretation":"...","projectImplications":["..."],"limitations":"..."}`;
   const response = await callLLM({
     provider: request.provider,
-    model: request.provider === "gemini" ? "gemini-2.5-flash" : request.provider === "deepseek" ? "deepseek-chat" : "gpt-5-mini",
+    model: request.provider === "gemini" ? "gemini-2.5-flash" : request.provider === "deepseek" ? "deepseek-chat" : MODELS.chat,
     systemText,
     userText: JSON.stringify({ question: request.question, projectMaterial: evidence.projectContext, spatialContext: request.spatialContext, projectContext: request.projectContext, cases: evidence.cases, papers: evidence.papers.filter((p) => p.usedInAnswer), retrievalWarnings: evidence.warnings }),
   });

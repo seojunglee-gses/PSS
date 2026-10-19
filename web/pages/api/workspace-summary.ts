@@ -1,3 +1,4 @@
+import { MODELS } from "../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { loadBackgroundKnowledge } from "../../lib/firebase";
 
@@ -48,7 +49,7 @@ export default async function handler(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-5-mini",
+        model: MODELS.chat,
         input: `${buildSystemPrompt(curatedBackground)}\n\n${buildPrompt(req.body)}`,
         text: {
           format: { type: "json_object" }, 

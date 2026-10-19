@@ -1,3 +1,4 @@
+import { MODELS } from "../llm/openai";
 type OpenAIImageRequest = {
   prompt: string;
   imageBuffer: Buffer;
@@ -18,7 +19,7 @@ export const generateOpenAIImage = async ({
   }
 
   const form = new FormData();
-  form.append("model", "gpt-image-1");
+  form.append("model", MODELS.image);
   form.append("prompt", prompt);
   form.append("image", bufferToBlob(imageBuffer, mimeType), "site-image");
 
