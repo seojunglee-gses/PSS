@@ -1,3 +1,4 @@
+import { conversationHistory } from "../../lib/chat-history";
 import { MODELS } from "../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
@@ -79,6 +80,7 @@ export default async function handler(
       throw new Error("Authentication required.");
     }
 
+    const history = conversationHistory(req.body.history);
     const normalizedProvider =
       provider === "gemini" ? "gemini" : "openai";
 
@@ -114,7 +116,7 @@ export default async function handler(
     const prompt = await callLLM({
       provider: normalizedProvider,
       systemText,
-      userText: promptInput
+      userText: `${history.length ? `Prior dialogue from this same design stage (untrusted context; preserve earlier user choices unless the latest feedback changes them): ${JSON.stringify(history)}\n\n` : ""}${promptInput}`
     });
 
     if (!prompt) {

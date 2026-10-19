@@ -38,6 +38,8 @@ import { normalizeRoleId, roleLabelKeys, useI18n } from "../../lib/i18n";
 import SourceSelector from "../../components/analysis/SourceSelector";
 import EvidencePanel from "../../components/analysis/EvidencePanel";
 import AnalysisAnswerView from "../../components/analysis/AnalysisAnswer";
+import { conversationHistory, contextualQuestion } from "../../lib/chat-history";
+import type { Finding } from "../../lib/research/types";
 import { researchLabels } from "../../lib/research/labels";
 import { DEFAULT_SOURCES, usedAnswerEvidence, type AnalysisRecord, type EvidenceSource } from "../../lib/research/types";
 
@@ -269,6 +271,7 @@ function AuthorizedWorkspace() {
   const [inputValue, setInputValue] = useState("");
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
   const [inspectedSpatial, setInspectedSpatial] = useState<SpatialResult | null>(null);
+  const [inspectedResearchFindings, setInspectedResearchFindings] = useState<Finding[]>([]);
   const [inspectedEvidence, setInspectedEvidence] = useState<AnalysisRecord["evidence"] | null>(null);
   const [analysisView, setAnalysisView] = useState<"cases" | "spatial" | "answer">("cases");
   const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null);
@@ -335,6 +338,7 @@ function AuthorizedWorkspace() {
     setSelectedAlternative(null);
     setSelectedSources([]);
     setInspectedEvidence(null);
+    setInspectedResearchFindings([]);
     setInspectedSpatial(null);
     setHighlightedEvidence(null);
     setAnalysisView("cases");
@@ -914,6 +918,7 @@ function AuthorizedWorkspace() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         mode: isInitial ? "initial" : "iteration",
+        history: conversationHistory(chatLogsByStep.alternatives ?? [], "alternatives"),
     
         // ✅ initial일 때만 보낸다
         workspaceSummary: isInitial ? savedSummaries : undefined,
@@ -996,6 +1001,7 @@ function AuthorizedWorkspace() {
     activeProvider,
     alternativeImages.length,
     buildImageGenerationInput,
+    chatLogsByStep,
     savedSummaries,
     siteImageConfigured,
     siteImageId,
@@ -1031,7 +1037,8 @@ const handleSend = async (suggestedQuestion?: string) => {
   setErrorMessage(null);
 
   const stepId = activeStep.id;
-  const effectiveSources = resolveSources(userMessage, selectedSources);
+  const history = conversationHistory(chatLogsByStep[stepId] ?? [], stepId);
+  const effectiveSources = resolveSources(contextualQuestion(userMessage, history), selectedSources);
   setSendingChatScope(chatScope);
   setIsSending(true);
   setErrorMessage(null);
@@ -1057,6 +1064,10 @@ const handleSend = async (suggestedQuestion?: string) => {
     await persistChatLogs(stepId, nextUserLogs);
     if (!isCurrentConversation()) return;
     if (stepId === "data") {
+      setInspectedEvidence(null);
+      setInspectedResearchFindings([]);
+      setInspectedSpatial(null);
+      setHighlightedEvidence(null);
       const controller = new AbortController();
       analysisAbortRef.current = controller;
       const response = await fetch("/api/research/answer", {
@@ -1065,6 +1076,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: userMessage,
+          history,
           selectedSources,
           ...(effectiveSources.includes("spatial") && spatialResult?.projectId === projectId ? { spatialContext: spatialResult } : {}),
           provider: activeProvider,
@@ -1144,6 +1156,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           model: getChatModelByProvider(activeProvider),
           stepId,
           message: finalMessage,
+          history,
         }),
       });
       if (!response.ok) {
@@ -1663,10 +1676,16 @@ const handleSend = async (suggestedQuestion?: string) => {
               </p>
               {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} additionalSources={[...(message.analysis.evidence.projectContext ? ["project" as const] : []), ...(message.analysis.spatialContext ? ["spatial" as const] : [])]} onViewEvidence={(sourceId) => {
                 setInspectedEvidence(usedAnswerEvidence(message.analysis!));
+                setInspectedResearchFindings(message.analysis!.answer.researchFindings);
                 setInspectedSpatial(message.analysis!.spatialContext ?? null);
                 setAnalysisView("answer");
                 setHighlightedEvidence(sourceId ?? null);
-                if (sourceId) window.setTimeout(() => document.getElementById(`evidence-${sourceId}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 0);
+                if (sourceId) window.setTimeout(() => {
+                  const target = document.getElementById(`evidence-${sourceId}`);
+                  const details = target?.querySelector("details");
+                  if (details) details.open = true;
+                  target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                }, 0);
               }} />}
               {message.text && !message.analysis && (
                 <p className="mt-2 whitespace-pre-line">
@@ -1938,6 +1957,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                 <SpatialSummary result={answerSpatial} />
               </section>}
               <EvidencePanel evidence={analysisEvidence} enabled={analysisEvidence?.selectedSources ?? DEFAULT_SOURCES} loading={isSending} highlighted={highlightedEvidence}
+                researchFindings={inspectedEvidence ? inspectedResearchFindings : latestAnalysis?.answer.researchFindings ?? []}
                 availableCaseIds={(activeProject?.workspaceContent.data.cases ?? []).map((item) => item.id)}
                 onViewCase={(caseId) => { setActiveTab(caseId); setAnalysisView("cases"); }} />
             </div>}

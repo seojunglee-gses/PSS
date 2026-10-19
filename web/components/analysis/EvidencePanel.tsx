@@ -1,11 +1,12 @@
 import { useI18n } from "../../lib/i18n";
 import { researchLabels } from "../../lib/research/labels";
-import type { AnalysisRecord, EvidenceSource } from "../../lib/research/types";
+import type { AnalysisRecord, EvidenceSource, Finding } from "../../lib/research/types";
 
-export default function EvidencePanel({ evidence, enabled, loading, highlighted, onViewCase, availableCaseIds = [] }: {
+export default function EvidencePanel({ evidence, enabled, loading, highlighted, onViewCase, availableCaseIds = [], researchFindings = [] }: {
   evidence: AnalysisRecord["evidence"] | null; enabled: EvidenceSource[]; loading: boolean; highlighted: string | null;
   onViewCase?: (caseId: string) => void;
   availableCaseIds?: string[];
+  researchFindings?: Finding[];
 }) {
   const { locale } = useI18n();
   const labels = researchLabels(locale);
@@ -51,7 +52,11 @@ export default function EvidencePanel({ evidence, enabled, loading, highlighted,
           <p className="text-xs text-blue-700">[{p.sourceId}]</p><h5 className="mt-1 font-semibold">{p.title}</h5>
           <p className="mt-2 text-xs text-slate-600">{p.authors.length ? p.authors.join(", ") : labels.authorUnknown}</p>
           <p className="mt-1 text-xs text-slate-500">{p.year ?? labels.unknown} · {p.journal ?? labels.unknown}</p>
-          <details className="mt-2 text-xs text-slate-500"><summary className="cursor-pointer font-semibold">{labels.paperDetails}</summary>
+          <details open={highlighted === p.sourceId ? true : undefined} className="mt-2 text-xs text-slate-500"><summary className="cursor-pointer font-semibold">{labels.paperDetails}</summary>
+          {researchFindings.some((finding) => finding.sourceIds.includes(p.sourceId)) && <section className="mt-3 text-sm text-slate-700">
+            <h6 className="font-semibold">{labels.researchFindings}</h6>
+            <ul className="mt-1 space-y-2">{researchFindings.filter((finding) => finding.sourceIds.includes(p.sourceId)).map((finding, index) => <li key={index} className="whitespace-pre-line">{finding.text.replace(/\[(?:[CR]:)[^\[\]]+\]/g, "")}</li>)}</ul>
+          </section>}
           <p className="mt-2">{p.citationCount} {labels.citations}</p>
           <p className="mt-1 text-xs text-slate-500">{labels.openAccess}: {p.openAccess === null ? labels.unknown : p.openAccess ? "✓" : "—"}</p>
           <p className="mt-2 text-xs text-slate-600">{p.usedInAnswer ? labels.used : labels.metadata}</p>

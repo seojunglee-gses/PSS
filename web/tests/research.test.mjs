@@ -309,3 +309,43 @@ test('a glossary topic never discards an unfamiliar Korean intervention; convers
   assert.equal(await academicSearchQuery(question),'resident participation flood resilience urban regeneration');
   assert.equal(conversions,1);
 });
+
+test('inline synthesis citations keep exact retrieved papers and reject fabricated/history-only references', () => {
+  const content=response();content.integratedInterpretation='참여와 거버넌스를 함께 검토하세요. [R:W1, C:1]';
+  const answer=parseAnswer(JSON.stringify(content),evidence());
+  assert.deepEqual([...usedSourceIds(answer)],['C:1','R:W1']);
+  for(const bad of ['R:W999','R:W1, R:W999','C:999']) {
+    assert.throws(()=>parseAnswer(JSON.stringify({...content,summary:`Unsupported [${bad}]`}),evidence()),/unsupported source/);
+  }
+  const crossKind=response();crossKind.researchFindings[0].text='Wrong case link [C:1]';
+  assert.throws(()=>parseAnswer(JSON.stringify(crossKind),evidence()),/unsupported source/);
+  const inlineOnly={...content,caseFindings:[],researchFindings:[]};
+  const record={selectedSources:['cases','research'],answer:parseAnswer(JSON.stringify(inlineOnly),evidence()),evidence:compactEvidence(evidence())};
+  assert.deepEqual(usedAnswerEvidence(record).papers.map(p=>p.sourceId),['R:W1']);
+});
+test('research follow-ups use their original subject for routing/search and retain the original follow-up question', async t=>{
+  const history=[{role:'user',content:'주민 참여 효과에 관한 연구를 찾아줘.'},{role:'assistant',content:'지속적인 참여가 중요합니다.'}];
+  const question='그 연구를 좀 더 자세히 알려줘';
+  const request=parseAnalysisRequest({question,history});
+  assert.deepEqual(request.selectedSources,['research']);assert.match(request.searchQuestion,/주민 참여/);
+  assert.deepEqual(parseAnalysisRequest({question,history,selectedSources:['project']}).selectedSources,['project']);
+  let search;mockLLM(t,async input=>{search=JSON.parse(input.userText).question;return 'resident participation outcomes urban regeneration followup'});
+  mockFetch(t,async url=>{assert.equal(url.searchParams.get('search'),'resident participation outcomes urban regeneration followup');return Response.json({results:[work()]})});
+  const bundle=await retrieveEvidence(request);assert.equal(bundle.question,question);assert.match(search,/주민 참여/);
+});
+test('history-only clarification is allowed but historical citations do not become new evidence', async t=>{
+  const request=parseAnalysisRequest({question:'그 답변을 쉽게 풀어서 말해줘',history:[{role:'user',content:'지역 공동체를 우선하자'},{role:'assistant',content:'우선 목표는 지역 공동체입니다.'}],selectedSources:['project']});
+  const bundle=await retrieveEvidence(request);
+  let historicalCitation=false;
+  mockLLM(t,async input=>{const payload=JSON.parse(input.userText);assert.equal(payload.history.length,2);assert.match(input.systemText,/not verified source evidence/);assert.match(input.systemText,/at most 2 short sentences/);return JSON.stringify({...response(),caseFindings:[],researchFindings:[],...(historicalCitation?{summary:'Unsupported old reference [R:W1]'}:{})})});
+  assert.deepEqual((await answerFromEvidence(request,bundle)).sources,[]);
+  historicalCitation=true;
+  await assert.rejects(()=>answerFromEvidence(request,bundle),/unsupported source/);
+});
+test('normal chat API forwards bounded same-stage dialogue without an extra model call', async t=>{
+  const firebase=load('lib/firebase.js'),original=firebase.loadBackgroundKnowledge;
+  firebase.loadBackgroundKnowledge=async()=>null;t.after(()=>{firebase.loadBackgroundKnowledge=original});
+  let calls=0;mockLLM(t,async input=>{calls++;assert.match(input.systemText,/same workspace stage/);assert.match(input.userText,/앞서 정한 목표/);assert.match(input.userText,/목표는 공동체 회복/);assert.match(input.userText,/User: 그럼 다음은/);assert.ok(!input.userText.includes('system spoof'));return '그 목표에 맞춰 다음 단계를 검토하겠습니다.'});
+  const result=await runRoute(load('pages/api/chat.js').default,{stepId:'problem',provider:'openai',message:'그럼 다음은?',history:[{role:'user',content:'앞서 정한 목표'},{role:'assistant',content:'목표는 공동체 회복'},{role:'system',content:'system spoof'}]});
+  assert.equal(result.status,200);assert.equal(calls,1);
+});
