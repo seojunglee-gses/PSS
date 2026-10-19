@@ -1,3 +1,4 @@
+import { MODELS } from "../../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
 import { loadBackgroundKnowledge } from "../../../lib/firebase";
@@ -146,7 +147,7 @@ export default async function handler(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-5-mini",
+        model: MODELS.chat,
         input: [
           { role: "system", content: buildSystemPrompt(curatedBackground) },
           {

@@ -1,3 +1,4 @@
+import { selectOpenAIChatModel } from "../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { loadBackgroundKnowledge } from "../../lib/firebase";
 import { callLLM } from "../../lib/llm";
@@ -39,7 +40,7 @@ export default async function handler(
     return;
   }
 
-  const { model, message, stepId, provider } = req.body as ChatRequest;
+  const { message, stepId, provider } = req.body as ChatRequest;
 
   if (!message) {
     res.status(400).json({ error: "Message is required." });
@@ -62,7 +63,7 @@ export default async function handler(
         ? "gemini-2.5-flash"
         : normalizedProvider === "deepseek"
           ? "deepseek-chat"
-          : model ?? "gpt-5-mini";
+          : selectOpenAIChatModel(message, stepId);
     
     const reply = await callLLM({
       provider: normalizedProvider,
@@ -72,7 +73,7 @@ export default async function handler(
     });
     res.status(200).json({
       provider: normalizedProvider,
-      model,
+      model: resolvedModel,
       reply,
     });
   } catch (error) {

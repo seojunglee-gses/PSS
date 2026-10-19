@@ -1,3 +1,4 @@
+import { MODELS } from "../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
 import crypto from "crypto";
 import { loadCurrentSiteImage, loadGeneratedImage, } from "../../lib/firebase";
@@ -151,7 +152,7 @@ export default async function handler(
       }
     
       const formData = new FormData();
-      formData.append("model", "gpt-image-1");
+      formData.append("model", MODELS.image);
       formData.append("prompt", prompt);
       formData.append("image", imageBlob, "site-image.png");
       formData.append("size", "1024x1024");
