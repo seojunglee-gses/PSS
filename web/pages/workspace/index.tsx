@@ -368,6 +368,7 @@ function AuthorizedWorkspace() {
   };
 
   const [isSending, setIsSending] = useState(false);
+  const [sendingChatScope, setSendingChatScope] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedAlternative, setSelectedAlternative] = useState<string | null>(
     null
@@ -1031,6 +1032,7 @@ const handleSend = async (suggestedQuestion?: string) => {
 
   const stepId = activeStep.id;
   const effectiveSources = resolveSources(userMessage, selectedSources);
+  setSendingChatScope(chatScope);
   setIsSending(true);
   setErrorMessage(null);
 
@@ -1329,7 +1331,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [chatLogs, activeStep.id]);
+  }, [chatLogs, activeStep.id, isSending]);
 
   const aggregatedResults = useMemo(() => {
     if (!evaluationResults.length) {
@@ -1683,6 +1685,13 @@ const handleSend = async (suggestedQuestion?: string) => {
             </div>
           );
         })}
+        {isSending && sendingChatScope === chatScope && displayedMessages[displayedMessages.length - 1]?.sender === "user" && (
+          <div role="status" aria-live="polite" aria-atomic="true"
+            className="mr-auto flex max-w-[85%] items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-600">
+            <span aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600 motion-reduce:animate-none" />
+            <span>{activeStep.id === "data" ? analysisLabels.loading : t("workspace.replyLoading")}</span>
+          </div>
+        )}
         <div ref={chatEndRef} />
       </div>
       <div className="workspace-composer fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] xl:static xl:mt-4 xl:border-0 xl:bg-transparent xl:px-0 xl:py-0 xl:shadow-none">
@@ -1724,7 +1733,6 @@ const handleSend = async (suggestedQuestion?: string) => {
         </div>
       </div>
       {!hasLoadedChatLogs && !errorMessage && <p role="status" className="mt-3 text-xs text-slate-500">{t("workspace.chatLoading")}</p>}
-      {activeStep.id === "data" && isSending && <p role="status" className="mt-3 text-xs text-blue-700">{analysisLabels.loading}</p>}
       {errorMessage && (
         <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-600">
           {errorMessage}
