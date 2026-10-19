@@ -1873,8 +1873,8 @@ const handleSend = async (suggestedQuestion?: string) => {
               )}
             </button>
             <h4
-              className={`mt-4 text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-              contentEditable={canEditContent && editingStageId === "problem"}
+              className={`mt-4 whitespace-pre-wrap text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
+              contentEditable={canEditContent && editingStageId === "problem" ? "plaintext-only" : false}
               suppressContentEditableWarning
               onBlur={(event) => {
                 const title = event.currentTarget.textContent ?? "";
@@ -1884,8 +1884,8 @@ const handleSend = async (suggestedQuestion?: string) => {
               {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || t("workspace.defaultProjectTitle")}
             </h4>
             <p
-              className={`mt-4 text-sm text-slate-500 ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-              contentEditable={canEditContent && editingStageId === "problem"}
+              className={`mt-4 whitespace-pre-wrap text-sm text-slate-500 ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
+              contentEditable={canEditContent && editingStageId === "problem" ? "plaintext-only" : false}
               suppressContentEditableWarning
               onBlur={(event) => {
                 const text = event.currentTarget.textContent ?? "";
@@ -1981,13 +1981,13 @@ const handleSend = async (suggestedQuestion?: string) => {
                       onClick={() => setActiveTab(tab.id)}
                     >
                       <span
-                        contentEditable={canEditContent && editingStageId === "data"}
+                        contentEditable={canEditContent && editingStageId === "data" ? "plaintext-only" : false}
                         suppressContentEditableWarning
                         onBlur={(event) => saveDataCaseDraft(tab.id, { label: event.currentTarget.textContent ?? "" })}
                         onClick={(event) => {
                           if (canEditContent && editingStageId === "data") event.stopPropagation();
                         }}
-                        className={canEditContent && editingStageId === "data" ? "rounded px-1 hover:bg-white/70" : ""}
+                        className={`whitespace-pre-wrap ${canEditContent && editingStageId === "data" ? "rounded px-1 hover:bg-white/70" : ""}`}
                       >
                         {tab.label}
                       </span>
@@ -2009,8 +2009,8 @@ const handleSend = async (suggestedQuestion?: string) => {
                     return (
                       <>
                         <h4
-                          className={`text-base font-semibold text-slate-800 ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-white" : ""}`}
-                          contentEditable={canEditContent && editingStageId === "data"}
+                          className={`whitespace-pre-wrap text-base font-semibold text-slate-800 ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-white" : ""}`}
+                          contentEditable={canEditContent && editingStageId === "data" ? "plaintext-only" : false}
                           suppressContentEditableWarning
                           onBlur={(event) => saveDataCaseDraft(activeCase.id, { title: event.currentTarget.textContent ?? "" })}
                         >
@@ -2034,7 +2034,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                         </button>
                         <p
                           className={`mt-3 whitespace-pre-wrap text-sm text-slate-600 ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-white" : ""}`}
-                          contentEditable={canEditContent && editingStageId === "data"}
+                          contentEditable={canEditContent && editingStageId === "data" ? "plaintext-only" : false}
                           suppressContentEditableWarning
                           onBlur={(event) => saveDataCaseDraft(activeCase.id, { text: event.currentTarget.textContent ?? "" })}
                         >
