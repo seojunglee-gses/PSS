@@ -1,3 +1,4 @@
+import { useI18n } from "../../lib/i18n";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/router";
 import AppShell from "../AppShell";
@@ -12,6 +13,7 @@ export default function ProjectAccessGate({
 }: {
   children: ReactNode;
 }) {
+  const { t, localize } = useI18n();
   const router = useRouter();
   const { user, loading } = useAuth();
   const { activeProjectId, setActiveProjectId, refreshProjects } = useProject();
@@ -50,7 +52,7 @@ export default function ProjectAccessGate({
         if (entry?.project?.projectId !== projectId)
           throw new ProjectRequestError(
             503,
-            "참여 정보를 확인하지 못했어요. 잠시 후 다시 시도해주세요.",
+            "access.checkFailed",
           );
         if (!alive || currentRef.current !== key) return;
         await refreshProjects();
@@ -76,7 +78,7 @@ export default function ProjectAccessGate({
           setNeedsCode(true);
         else
           setError(
-            e instanceof Error ? e.message : "참여 여부를 확인하지 못했어요.",
+            e instanceof Error ? e.message : "access.membershipFailed",
           );
       } finally {
         if (alive && currentRef.current === key) setChecking(false);
@@ -113,7 +115,7 @@ export default function ProjectAccessGate({
       if (entry?.project?.projectId !== projectId)
         throw new ProjectRequestError(
           503,
-          "참여 정보를 확인하지 못했어요. 잠시 후 다시 시도해주세요.",
+          t("access.checkFailed"),
         );
       if (currentRef.current !== key) return;
       await refreshProjects();
@@ -125,7 +127,7 @@ export default function ProjectAccessGate({
     } catch (e) {
       if (currentRef.current === key)
         setError(
-          e instanceof Error ? e.message : "참여 정보를 저장하지 못했어요.",
+          e instanceof Error ? e.message : t("access.saveFailed"),
         );
     } finally {
       if (currentRef.current === key) setSaving(false);
@@ -137,8 +139,7 @@ export default function ProjectAccessGate({
       <section className="mx-auto w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         {checking || loading ? (
           <p role="status" className="text-sm text-slate-500">
-            참여 여부를 확인하고 있습니다.
-          </p>
+            {t("access.checking")}</p>
         ) : needsCode ? (
           <form
             onSubmit={(e) => {
@@ -146,14 +147,11 @@ export default function ProjectAccessGate({
               void join();
             }}
           >
-            <h3 className="text-lg font-semibold">참여 코드 입력</h3>
+            <h3 className="text-lg font-semibold">{t("access.codeTitle")}</h3>
             <p className="mt-2 text-sm text-slate-500">
-              처음 참여할 때만 코드를 입력합니다. 다음부터는 바로 들어갈 수
-              있어요.
-            </p>
+              {t("access.codeHint")}</p>
             <label className="mt-4 block text-sm">
-              참여 코드
-              <input
+              {t("access.code")}<input
                 type="text"
                 inputMode="numeric"
                 autoComplete="off"
@@ -168,17 +166,16 @@ export default function ProjectAccessGate({
               disabled={saving || code.length !== 4}
               className="mt-4 w-full rounded-xl bg-[var(--primary)] p-3 text-sm font-semibold text-white disabled:opacity-50"
             >
-              {saving ? "참여 정보를 저장하는 중입니다." : "프로젝트 참여"}
+              {saving ? t("access.saving") : t("access.join")}
             </button>
           </form>
         ) : (
           <p className="text-sm text-slate-500">
-            사업을 선택하거나 참여 권한을 확인해주세요.
-          </p>
+            {t("access.choose")}</p>
         )}
         {error && (
           <p role="alert" className="mt-3 text-sm text-rose-600">
-            {error}
+            {localize(error, "access.membershipFailed")}
           </p>
         )}
         <button
@@ -186,8 +183,7 @@ export default function ProjectAccessGate({
           className="mt-4 text-sm font-semibold text-blue-700"
           onClick={() => void router.push("/?projects=1")}
         >
-          프로젝트 목록으로
-        </button>
+          {t("access.projectList")}</button>
       </section>
     </AppShell>
   );

@@ -3,7 +3,8 @@ import dynamic from "next/dynamic";
 import SpatialSummary from "../../components/spatial/SpatialSummary";
 import { parseSpatialResult } from "../../lib/spatial/context";
 import type { SpatialResult } from "../../lib/spatial/types";
-const SpatialAnalysis = dynamic(() => import("../../components/spatial/SpatialAnalysis"), { ssr: false, loading: () => <p className="p-6 text-sm text-slate-500">공간 분석을 불러오는 중입니다.</p> });
+function SpatialLoading() { const { t } = useI18n(); return <p className="p-6 text-sm text-slate-500">{t("spatial.loadingView")}</p>; }
+const SpatialAnalysis = dynamic(() => import("../../components/spatial/SpatialAnalysis"), { ssr: false, loading: SpatialLoading });
 
 import ProjectAccessGate from "../../components/projects/ProjectAccessGate";
 import AppShell from "../../components/AppShell";
@@ -37,7 +38,7 @@ import { useProject } from "../../lib/projects";
 import { canManageProject, isSystemAdmin } from "../../lib/rbac";
 import { loadGeneratedImages } from "../../lib/firebase";
 import type { SiteImage } from "../../lib/firebase";
-import { normalizeRoleId, roleLabelKeys, useI18n } from "../../lib/i18n";
+import { normalizeRoleId, roleLabelKeys, useI18n, localizeDefaultContent } from "../../lib/i18n";
 import SourceSelector from "../../components/analysis/SourceSelector";
 import EvidencePanel from "../../components/analysis/EvidencePanel";
 import AnalysisAnswerView from "../../components/analysis/AnalysisAnswer";
@@ -262,7 +263,7 @@ function AuthorizedWorkspace() {
   const [currentSiteImage, setCurrentSiteImage] =
   useState<SiteImage | null>(null);
   const router = useRouter();
-  const { t, locale } = useI18n();
+  const { t, locale, localize } = useI18n();
   const analysisLabels = researchLabels(locale);
   const { activeProjectId, setActiveProjectId, touchProject, activeProject, updateProject, projectError } = useProject();
   const { user, loading } = useAuth();
@@ -908,9 +909,9 @@ function AuthorizedWorkspace() {
       if (image.userId && roleByUserId.has(image.userId)) {
         return roleByUserId.get(image.userId) ?? t("workspace.participant");
       }
-      return image.submittedBy ?? t("workspace.participant");
+      return localize(image.submittedBy ?? t("workspace.participant"));
     },
-    [roleByUserId, t]
+    [roleByUserId, t, localize]
   );
 
   const buildWorkspaceInput = useCallback(() => {
@@ -980,7 +981,7 @@ function AuthorizedWorkspace() {
   async (feedback?: string) => {
     const generation = chatGenerationRef.current;
     if (!userKey) {
-      throw new Error("Authentication required.");
+      throw new Error(t("common.authRequired"));
     }
 
     const isInitial = alternativeImages.length === 0;
@@ -1015,7 +1016,7 @@ function AuthorizedWorkspace() {
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       if (response.status === 400 && /대상지 이미지|site image/i.test(err.error ?? "")) setShowSiteImageWarning(true);
-      throw new Error(err.error ?? "Image generation failed.");
+      throw new Error(err.error ?? t("workspace.imageFailed"));
     }
 
     const payload = (await response.json()) as {
@@ -1024,7 +1025,7 @@ function AuthorizedWorkspace() {
       downloadUrl?: string;
       prompt?: string;
     };
-    if (generation !== chatGenerationRef.current) throw new Error("Image generation was cancelled.");
+    if (generation !== chatGenerationRef.current) throw new Error(t("workspace.imageCancelled"));
 
     const label = `Alternative ${alternativeImages.length + 1}`;
     const note =
@@ -1032,12 +1033,13 @@ function AuthorizedWorkspace() {
         ? payload.prompt
         : "";
 
-    if (!payload.downloadUrl) throw new Error("서버에서 저장한 이미지 주소를 받지 못했습니다.");
+    if (!payload.downloadUrl) throw new Error(t("image.missingUrl"));
     setLastGeneratedImageId(payload.imageId);
     return { id: payload.imageId, label, note, imageUrl: payload.downloadUrl, createdAt: new Date().toISOString() };
   },
   [
     activeProvider,
+    t,
     alternativeImages.length,
     buildImageGenerationInput,
     chatLogsByStep,
@@ -1068,7 +1070,7 @@ const handleSend = async (suggestedQuestion?: string) => {
 
   if (sendingRef.current) return;
   if (activeStep.id === "alternatives" && isLoadingAlternatives) {
-    setErrorMessage("Image generation already in progress.");
+    setErrorMessage(t("workspace.imageBusy"));
     return;
   }
   sendingRef.current = true;
@@ -1127,7 +1129,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       const payload = await response.json();
       if (controller.signal.aborted || !isCurrentConversation()) return;
       if (!response.ok) {
-        throw new Error(payload.error ?? "Analysis request failed.");
+        throw new Error(payload.error ?? t("workspace.analysisFailed"));
       }
       const analysis = payload.analysis as AnalysisRecord;
       const nextLogs: ChatLog[] = [...nextUserLogs, {
@@ -1150,7 +1152,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         if (!isCurrentConversation()) return;
 
         if (!imageRecord?.imageUrl) {
-          setErrorMessage("Unable to generate the image.");
+          setErrorMessage(t("workspace.imageFailed"));
           return;
         }
 
@@ -1160,7 +1162,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               stepId,
               provider: activeProvider,
               sender: "assistant" as const,
-              text: "Generated a new concept image based on your feedback.",
+              text: t("workspace.imageFeedback"),
               label: activeProvider,
               createdAt: new Date().toISOString(),
               imageUrl: imageRecord.imageUrl,
@@ -1197,7 +1199,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Chat request failed.");
+        throw new Error(payload?.error ?? t("workspace.chatFailed"));
       }
       const payload = (await response.json()) as { reply: string };
       if (!isCurrentConversation()) return;
@@ -1223,7 +1225,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         setErrorMessage(
           error instanceof Error
             ? error.message
-            : "Unable to connect to the LLM API."
+            : t("workspace.connectFailed")
         );
       } finally {
         if (isCurrentConversation()) {
@@ -1238,14 +1240,14 @@ const handleSend = async (suggestedQuestion?: string) => {
     if (lockedStages[activeStep.id]) {
       setFinishNotice({
         status: "error",
-        message: "This stage is locked.",
+        message: t("workspace.lockedError"),
       });
     return;
     }
     if (!userKey) {
       setFinishNotice({
         status: "error",
-        message: "Authentication required.",
+        message: t("common.authRequired"),
         });
       return;
     }
@@ -1269,7 +1271,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Summary generation failed.");
+        throw new Error(payload?.error ?? t("workspace.summaryFailed"));
       }
       const payload = (await response.json()) as {
         workspaceSummary: {
@@ -1305,7 +1307,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         message:
            error instanceof Error
             ? `Upload failed: ${error.message}`
-            : "Upload failed.",
+            : t("workspace.uploadFailed"),
         });
     } finally {
       setIsSummarizing(false);
@@ -1533,6 +1535,8 @@ const handleSend = async (suggestedQuestion?: string) => {
   const [contentSaveError, setContentSaveError] = useState("");
   const [contentSaveNotice, setContentSaveNotice] = useState("");
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
+  const [pendingDeleteCaseId, setPendingDeleteCaseId] = useState<string | null>(null);
+  const caseDeleteDialog = useRef<HTMLDialogElement>(null);
   const problemEditor = useRef<ContentEditorHandle>(null);
   const caseEditor = useRef<ContentEditorHandle>(null);
   const isEditingExplanation = editingStageId !== null;
@@ -1548,7 +1552,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     if (imageUploading || isSavingContent) return false;
     if (!hasUnsavedExplanationChanges) return true;
     return window.confirm(t("workspace.unsavedDiscard"));
-  }, [hasUnsavedExplanationChanges, imageUploading, isSavingContent]);
+  }, [hasUnsavedExplanationChanges, imageUploading, isSavingContent, t]);
 
   const beginEditStage = useCallback(
     (stageId: EditableStageId) => {
@@ -1557,7 +1561,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       setProblemDraft(activeProject.workspaceContent.problem);
       setDataDraft(activeProject.workspaceContent.data);
       setEditingStageId(stageId);
-      setEditingCaseId(stageId === "data" ? activeTab : null);
+      setEditingCaseId(stageId === "data" ? (activeProject.workspaceContent.data.cases.find((item) => item.id === activeTab) ?? activeProject.workspaceContent.data.cases[0])?.id ?? null : null);
       setContentSaveError(""); setContentSaveNotice("");
     },
     [activeProject, canEditContent, confirmDiscardUnsaved, activeTab]
@@ -1569,7 +1573,9 @@ const handleSend = async (suggestedQuestion?: string) => {
     setProblemDraft(activeProject.workspaceContent.problem);
     setDataDraft(activeProject.workspaceContent.data);
     setEditingStageId(null);
-  }, [activeProject, confirmDiscardUnsaved]);
+    setEditingCaseId(null); setContentSaveError(""); setContentSaveNotice("");
+    if (!activeProject.workspaceContent.data.cases.some((item) => item.id === activeTab)) setActiveTab(activeProject.workspaceContent.data.cases[0]?.id ?? "");
+  }, [activeProject, confirmDiscardUnsaved, activeTab]);
 
   const saveEditStage = async () => {
     if (!activeProject || !editingStageId || isSavingContent || imageUploading) return;
@@ -1578,30 +1584,26 @@ const handleSend = async (suggestedQuestion?: string) => {
       const problem = editingStageId === "problem" ? { ...problemDraft, text: problemEditor.current?.getValue() ?? problemDraft.text } : activeProject.workspaceContent.problem;
       const data = editingStageId === "data" ? { ...dataDraft, cases: dataDraft.cases.map((item) => item.id === editingCaseId ? { ...item, text: caseEditor.current?.getValue() ?? item.text } : item) } : activeProject.workspaceContent.data;
       await updateProject(projectId, { workspaceContent: editingStageId === "problem" ? { problem } : { data } });
-      setEditingStageId(null); setEditingCaseId(null); setContentSaveNotice("저장했습니다.");
-    } catch (error) { setContentSaveError(error instanceof Error ? error.message : "저장하지 못했습니다. 다시 시도해주세요."); }
+      setEditingStageId(null); setEditingCaseId(null); setContentSaveNotice(t("common.saved"));
+    } catch (error) { setContentSaveError(error instanceof Error ? error.message : t("common.saveFailed")); }
     finally { setIsSavingContent(false); }
   };
 
   const addCase = () => {
-    if (!activeProject || !canEditContent || !confirmDiscardUnsaved()) return;
-    const item = { id: `case-${crypto.randomUUID()}`, label: "새 사례", title: "새 사례", text: "", imageUrl: "" };
-    setDataDraft({ ...activeProject.workspaceContent.data, cases: [...activeProject.workspaceContent.data.cases, item] });
+    if (!activeProject || !canEditContent || editingStageId !== "data" || imageUploading || isSavingContent) return;
+    const item = { id: `case-${crypto.randomUUID()}`, label: t("cases.new"), title: t("cases.new"), text: "", imageUrl: "" };
+    const currentText = caseEditor.current?.getValue();
+    setDataDraft((prev) => ({ ...prev, cases: [...prev.cases.map((entry) => entry.id === editingCaseId && currentText !== undefined ? { ...entry, text: currentText } : entry), item] }));
     setEditingStageId("data"); setEditingCaseId(item.id); setActiveTab(item.id);
     setContentSaveError(""); setContentSaveNotice("");
   };
-  const deleteCase = async (caseId: string) => {
-    if (!activeProject || !canEditContent || imageUploading || isSavingContent) return;
-    if (!window.confirm(`${hasUnsavedExplanationChanges ? "저장하지 않은 변경사항은 취소됩니다.\n" : ""}이 사례를 삭제할까요?`)) return;
-    setIsSavingContent(true); setContentSaveError(""); setContentSaveNotice("");
-    try {
-      const data = { ...activeProject.workspaceContent.data, cases: activeProject.workspaceContent.data.cases.filter((item) => item.id !== caseId) };
-      await updateProject(projectId, { workspaceContent: { data } });
-      setDataDraft(data); setEditingStageId(null); setEditingCaseId(null);
-      if (activeTab === caseId) setActiveTab(data.cases[0]?.id ?? "");
-      setContentSaveNotice("사례를 삭제했습니다.");
-    } catch (error) { setContentSaveError(error instanceof Error ? error.message : "삭제하지 못했습니다."); }
-    finally { setIsSavingContent(false); }
+  const deleteCase = (caseId: string) => {
+    if (!canEditContent || editingStageId !== "data" || imageUploading || isSavingContent) return;
+    const currentText = caseEditor.current?.getValue();
+    const cases = dataDraft.cases.filter((item) => item.id !== caseId).map((item) => item.id === editingCaseId && currentText !== undefined ? { ...item, text: currentText } : item);
+    setDataDraft((prev) => ({ ...prev, cases }));
+    if (editingCaseId === caseId) { setActiveTab(cases[0]?.id ?? ""); setEditingCaseId(cases[0]?.id ?? null); }
+    setPendingDeleteCaseId(null); caseDeleteDialog.current?.close();
   };
 
   const saveDataCaseDraft = useCallback((caseId: string, patch: Record<string, unknown>) => {
@@ -1623,7 +1625,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     return () => {
       router.events.off("routeChangeStart", onRouteChangeStart);
     };
-  }, [router.events, isEditingExplanation, hasUnsavedExplanationChanges]);
+  }, [router.events, isEditingExplanation, hasUnsavedExplanationChanges, t]);
 
   if (loading) {
     return (
@@ -1756,7 +1758,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               } ${isAssistant ? "mr-auto" : "ml-auto"}`}
             >
               <p className="text-xs font-semibold text-slate-400">
-                {providerLabel(message.label)}
+                {normalizeRoleId(message.label) ? t(roleLabelKeys[normalizeRoleId(message.label)!]) : localize(providerLabel(message.label))}
               </p>
               {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} additionalSources={[...(message.analysis.evidence.projectContext ? ["project" as const] : []), ...(message.analysis.spatialContext ? ["spatial" as const] : [])]} onViewEvidence={(sourceId) => {
                 setInspectedEvidence(usedAnswerEvidence(message.analysis!));
@@ -1775,14 +1777,14 @@ const handleSend = async (suggestedQuestion?: string) => {
               }} />}
               {message.text && !message.analysis && (
                 <p className="mt-2 whitespace-pre-line">
-                  {formatMessage(message.text)}
+                  {formatMessage(isAssistant && message.imageUrl ? localize(message.text) : message.text)}
                 </p>
               )}
               {message.imageUrl && (
                 <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
                   <img
                     src={message.imageUrl}
-                    alt="Generated concept"
+                    alt={t("workspace.generatedConcept")}
                     className="h-48 w-full object-cover"
                   />
                 </div>
@@ -1841,7 +1843,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       {!hasLoadedChatLogs && !errorMessage && <p role="status" className="mt-3 text-xs text-slate-500">{t("workspace.chatLoading")}</p>}
       {errorMessage && (
         <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-600">
-          {errorMessage}
+          {localize(errorMessage, "common.requestFailed")}
         </div>
       )}
       {finishNotice && (
@@ -1858,7 +1860,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       {finishNotice.status === "uploading" && (
         <div className="h-3 w-3 animate-spin rounded-full border-2 border-rose-300 border-t-transparent" />
       )}
-        {finishNotice.message}  
+        {localize(finishNotice.message, "common.requestFailed")}
       </div>
       )}
       <button
@@ -1876,7 +1878,7 @@ const handleSend = async (suggestedQuestion?: string) => {
 
   return (
     <AppShell workspaceLayout>
-      {projectError && !contentSaveError && <p role="alert" className="mb-4 text-sm text-rose-600">{projectError}</p>}
+      {projectError && !contentSaveError && <p role="alert" className="mb-4 text-sm text-rose-600">{localize(projectError, "common.requestFailed")}</p>}
       <div ref={workspaceContentRef} className="workspace-content" data-header-compact={compactHeader}>
       <section className="workspace-intro flex flex-col gap-2" aria-label={t("workspace.title")}>
         <p className="workspace-intro-badge text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
@@ -1972,17 +1974,17 @@ const handleSend = async (suggestedQuestion?: string) => {
                 </div>
               )}
             </div>
-            {contentSaveError && <p role="alert" className="mt-3 text-sm text-rose-600">{contentSaveError}</p>}
-            {contentSaveNotice && <p role="status" className="mt-3 text-sm text-emerald-700">{contentSaveNotice}</p>}
+            {contentSaveError && <p role="alert" className="mt-3 text-sm text-rose-600">{localize(contentSaveError, "common.requestFailed")}</p>}
+            {contentSaveNotice && <p role="status" className="mt-3 text-sm text-emerald-700">{localize(contentSaveNotice)}</p>}
             <ProjectImageGallery value={(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ?? ""}
               editable={canEditContent && editingStageId === "problem" && !isSavingContent} projectId={projectId} onBusyChange={setImageUploading}
               onChange={(imageUrl) => setProblemDraft((prev) => ({ ...prev, imageUrl }))} />
-            {editingStageId === "problem" && canEditContent ? <input aria-label="사업 설명 제목" className="mt-4 w-full rounded-lg border p-2 text-lg font-semibold" value={problemDraft.title}
+            {editingStageId === "problem" && canEditContent ? <input aria-label={t("editor.projectTitle")} className="mt-4 w-full rounded-lg border p-2 text-lg font-semibold" value={problemDraft.title}
               disabled={isSavingContent} onChange={(event) => setProblemDraft((prev) => ({ ...prev, title: event.target.value }))} />
-              : <h4 className="mt-4 whitespace-pre-wrap text-lg font-semibold">{activeProject?.workspaceContent.problem.title || t("workspace.defaultProjectTitle")}</h4>}
+              : <h4 className="mt-4 whitespace-pre-wrap text-lg font-semibold">{localizeDefaultContent(locale, activeProject?.workspaceContent.problem.title || t("workspace.defaultProjectTitle"))}</h4>}
             {canEditContent && editingStageId === "problem" ? (
-              <ContentEditor ref={problemEditor} disabled={isSavingContent} label="사업 배경 및 설명" value={problemDraft.text} onChange={(text) => setProblemDraft((prev) => ({ ...prev, text }))} />
-            ) : <ContentText value={activeProject?.workspaceContent.problem.text || t("workspace.defaultProblemText")} />}
+              <ContentEditor ref={problemEditor} disabled={isSavingContent} label={t("editor.projectBody")} value={problemDraft.text} onChange={(text) => setProblemDraft((prev) => ({ ...prev, text }))} />
+            ) : <ContentText value={localizeDefaultContent(locale, activeProject?.workspaceContent.problem.text || t("workspace.defaultProblemText"))} />}
 
           </div>
           {renderChatPanel()}
@@ -1993,11 +1995,11 @@ const handleSend = async (suggestedQuestion?: string) => {
         <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
-              <p className="text-sm leading-relaxed text-slate-600">대상지 자료를 확인하고, 비슷한 사례와 관련 연구를 찾아 현재 사업에 적용할 수 있는 근거를 정리해보세요.</p>
-              <ul className="mt-3 flex flex-wrap gap-2 text-xs text-blue-700">{["대상지 확인", "공간 분석", "사례 비교", "연구 근거 찾기"].map((goal) => <li key={goal} className="rounded-full bg-blue-50 px-3 py-1">{goal}</li>)}</ul>
+              <p className="text-sm leading-relaxed text-slate-600">{t("workspace.dataPurpose")}</p>
+              <ul className="mt-3 flex flex-wrap gap-2 text-xs text-blue-700">{[t("workspace.goal.site"), t("workspace.goal.spatial"), t("workspace.goal.cases"), t("workspace.goal.research")].map((goal) => <li key={goal} className="rounded-full bg-blue-50 px-3 py-1">{goal}</li>)}</ul>
 
             </div>
-            <div role="tablist" aria-label={`${analysisLabels.cases} / 공간 분석 / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
+            <div role="tablist" aria-label={`${t("cases.heading")} / ${t("workspace.goal.spatial")} / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
               {(["cases", "spatial", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
                 id={`analysis-${view}-tab`} aria-controls={`analysis-${view}-panel`} aria-selected={analysisView === view}
                 tabIndex={analysisView === view ? 0 : -1}
@@ -2012,7 +2014,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                   }
                 }}
                 className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold ${analysisView === view ? "bg-white text-[var(--primary)] shadow-sm" : "text-slate-500 hover:bg-white/60"}`}>
-                {view === "cases" ? analysisLabels.cases : view === "spatial" ? "공간 분석" : analysisLabels.answerEvidence}
+                {view === "cases" ? t("cases.heading") : view === "spatial" ? t("workspace.goal.spatial") : analysisLabels.answerEvidence}
               </button>)}
             </div>
             {analysisView === "spatial" && <div role="tabpanel" id="analysis-spatial-panel" aria-labelledby="analysis-spatial-tab">
@@ -2021,7 +2023,7 @@ const handleSend = async (suggestedQuestion?: string) => {
             {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
               <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>
               {answerSpatial && <section className="m-6 space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-4 text-sm">
-                <h4 className="font-semibold">이 답변에 사용한 공간 분석 결과</h4>
+                <h4 className="font-semibold">{t("workspace.spatialEvidence")}</h4>
                 <SpatialSummary result={answerSpatial} />
               </section>}
               <EvidencePanel evidence={analysisEvidence} enabled={analysisEvidence?.selectedSources ?? DEFAULT_SOURCES} loading={isSending} highlighted={highlightedEvidence}
@@ -2031,30 +2033,43 @@ const handleSend = async (suggestedQuestion?: string) => {
             </div>}
             <div role="tabpanel" id="analysis-cases-panel" aria-labelledby="analysis-cases-tab" hidden={analysisView !== "cases"}>
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
-              <h3 className="text-lg font-semibold text-slate-900">{analysisLabels.cases}</h3>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-slate-900">{t("cases.heading")}</h3>
+                {canEditContent && <div className="flex items-center gap-2">
+                  <button type="button" className={`rounded-full border px-3 py-1 text-xs font-semibold ${editingStageId === "data" ? "border-[var(--primary)] text-[var(--primary)]" : "border-slate-200"}`} disabled={imageUploading || isSavingContent} onClick={() => editingStageId === "data" ? cancelEditStage() : beginEditStage("data")}>{t(editingStageId === "data" ? "workspace.editing" : "workspace.edit")}</button>
+                  {editingStageId === "data" && <>
+                    <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" disabled={imageUploading || isSavingContent} onClick={cancelEditStage}>{t("workspace.cancel")}</button>
+                    <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" disabled={imageUploading || isSavingContent} onClick={() => { void saveEditStage(); }}>{t(isSavingContent ? "common.saving" : "workspace.save")}</button>
+                  </>}
+                </div>}
+              </div>
               <p className="mt-1 text-sm text-slate-500">{analysisLabels.caseIntro}</p>
-              {activeProject?.workspaceContent.data.text && <ContentText value={activeProject.workspaceContent.data.text} />}
+              {activeProject?.workspaceContent.data.text && <ContentText value={localizeDefaultContent(locale, activeProject.workspaceContent.data.text)} />}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {(editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases ?? []).map((tab) => (
                   <div key={tab.id} className="flex min-w-0 items-center gap-1">
                     <button type="button" disabled={isSavingContent || imageUploading} className={`max-w-full rounded-full px-4 py-2 text-xs font-semibold ${activeTab === tab.id ? "bg-[var(--primary)] text-white" : "border bg-white text-slate-600"}`}
                       onClick={() => {
                         if (activeTab === tab.id) return;
-                        if (!confirmDiscardUnsaved()) return;
-                        setEditingStageId(null); setEditingCaseId(null); setActiveTab(tab.id);
+                        if (editingStageId === "data") {
+                          const text = caseEditor.current?.getValue();
+                          if (editingCaseId && text !== undefined) saveDataCaseDraft(editingCaseId, { text });
+                          setEditingCaseId(tab.id);
+                        }
+                        setActiveTab(tab.id);
                       }}>{tab.label || tab.title}</button>
-                    {canEditContent && <button type="button" aria-label={`${tab.label || tab.title} 삭제`} title="사례 삭제" disabled={isSavingContent || imageUploading}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600" onClick={() => { void deleteCase(tab.id); }}>
+                    {canEditContent && editingStageId === "data" && <button type="button" aria-label={t("cases.deleteNamed", { name: tab.label || tab.title })} title={t("cases.deleteTitle")} disabled={isSavingContent || imageUploading}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600" onClick={() => { setPendingDeleteCaseId(tab.id); caseDeleteDialog.current?.showModal(); }}>
                       <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
                     </button>}
                   </div>
                 ))}
-                {canEditContent && <button type="button" aria-label="사례 추가" className="min-h-11 rounded-full border border-blue-200 px-4 text-sm font-semibold text-blue-700" disabled={isSavingContent || imageUploading} onClick={addCase}>+ 사례 추가</button>}
+                {canEditContent && editingStageId === "data" && <button type="button" aria-label={t("cases.add")} className="min-h-11 rounded-full border border-blue-200 px-4 text-sm font-semibold text-blue-700" disabled={isSavingContent || imageUploading} onClick={addCase}>{t("cases.addButton")}</button>}
               </div>
             </div>
             <div className="p-6">
-              {contentSaveError && <p role="alert" className="mb-3 text-sm text-rose-600">{contentSaveError}</p>}
-              {contentSaveNotice && <p role="status" className="mb-3 text-sm text-emerald-700">{contentSaveNotice}</p>}
+              {contentSaveError && <p role="alert" className="mb-3 text-sm text-rose-600">{localize(contentSaveError, "common.requestFailed")}</p>}
+              {contentSaveNotice && <p role="status" className="mb-3 text-sm text-emerald-700">{localize(contentSaveNotice)}</p>}
               <div className="max-h-[70vh] overflow-y-auto pr-2">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
@@ -2066,21 +2081,15 @@ const handleSend = async (suggestedQuestion?: string) => {
                     }
                     return (
                       <>
-                        {canEditContent && <div className="flex flex-wrap justify-end gap-2">
-                          {editingStageId === "data" && editingCaseId === activeCase.id ? <>
-                            <button type="button" disabled={imageUploading || isSavingContent} className="min-h-11 rounded-full border px-4" onClick={cancelEditStage}>{t("workspace.cancel")}</button>
-                            <button type="button" disabled={imageUploading || isSavingContent} className="min-h-11 rounded-full bg-[var(--primary)] px-4 text-white" onClick={() => { void saveEditStage(); }}>{isSavingContent ? "저장 중…" : t("workspace.save")}</button>
-                          </> : <button type="button" className="min-h-11 rounded-full border px-4" disabled={isSavingContent} onClick={() => { beginEditStage("data"); setEditingCaseId(activeCase.id); }}>사례 수정</button>}
-                        </div>}
                         {canEditContent && editingStageId === "data" && editingCaseId === activeCase.id
-                          ? <input aria-label="사례 제목" className="w-full rounded-lg border p-2 text-base font-semibold" disabled={isSavingContent} value={activeCase.title} onChange={(event) => saveDataCaseDraft(activeCase.id, { title: event.target.value, label: event.target.value })} />
-                          : <h4 className="whitespace-pre-wrap text-base font-semibold text-slate-800">{activeCase.title}</h4>}
+                          ? <input aria-label={t("cases.title")} className="w-full rounded-lg border p-2 text-base font-semibold" disabled={isSavingContent} value={activeCase.title} onChange={(event) => saveDataCaseDraft(activeCase.id, { title: event.target.value, label: event.target.value })} />
+                          : <h4 className="whitespace-pre-wrap text-base font-semibold text-slate-800">{localizeDefaultContent(locale, activeCase.title)}</h4>}
                         <ProjectImageGallery key={activeCase.id} purpose="case" projectId={projectId} value={activeCase.imageUrl}
                           editable={canEditContent && editingStageId === "data" && editingCaseId === activeCase.id && !isSavingContent} onBusyChange={setImageUploading}
                           onChange={(imageUrl) => saveDataCaseDraft(activeCase.id, { imageUrl })} />
                         {canEditContent && editingStageId === "data" && editingCaseId === activeCase.id
-                          ? <ContentEditor key={activeCase.id} ref={caseEditor} disabled={isSavingContent} label="사례 자료" value={activeCase.text} onChange={(text) => saveDataCaseDraft(activeCase.id, { text })} />
-                          : <ContentText value={activeCase.text} />}
+                          ? <ContentEditor key={activeCase.id} ref={caseEditor} disabled={isSavingContent} label={t("cases.body")} value={activeCase.text} onChange={(text) => saveDataCaseDraft(activeCase.id, { text })} />
+                          : <ContentText value={localizeDefaultContent(locale, activeCase.text)} />}
                       </>
                     );
                   })()}
@@ -2128,7 +2137,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                         {item.imageUrl && (
                           <img
                             src={item.imageUrl}
-                            alt={item.label}
+                            alt={localize(item.label)}
                             className="h-full w-full object-contain"
                           />
                         )}
@@ -2210,7 +2219,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                     {image.imageUrl && (
                       <img
                         src={image.imageUrl}
-                        alt={image.label}
+                        alt={localize(image.label)}
                         className="h-full w-full object-cover"
                       />
                     )}
@@ -2218,7 +2227,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                   <div className="mt-3 space-y-2 text-xs text-slate-500">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-slate-700">
-                        {image.label}
+                        {localize(image.label)}
                       </span>
                       <div className="flex items-center gap-2">
                         <span>{t("workspace.rank")}</span>
@@ -2239,7 +2248,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                     </div>
                     {image.submittedBy && (
                       <p className="text-[11px] text-slate-400">
-                        {image.submittedBy}
+                        {localize(image.submittedBy)}
                       </p>
                     )}
                     {image.note && (
@@ -2416,16 +2425,16 @@ const handleSend = async (suggestedQuestion?: string) => {
                   {topPreference?.imageUrl && (
                     <img
                       src={topPreference.imageUrl}
-                      alt={topPreference.label}
+                      alt={localize(topPreference.label)}
                       className="h-full w-full object-contain"
                     />
                   )}
                 </div>
                 <p className="mt-3 text-sm font-semibold text-slate-700">
-                  {topPreference?.label ?? t("workspace.topConcept")}
+                  {localize(topPreference?.label ?? t("workspace.topConcept"))}
                 </p>
                 <p className="mt-1 text-xs text-slate-400">
-                  {topPreference?.label ?? t("workspace.design")} ·{" "}
+                  {localize(topPreference?.label ?? t("workspace.design"))} ·{" "}
                   {getParticipantRoleLabel(topPreference)}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
@@ -2478,7 +2487,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                       <div className="flex items-center justify-between text-xs text-slate-500">
                         <div className="relative group font-semibold text-slate-700">
                           <span className="cursor-default">
-                            {result.label}{" "}
+                            {localize(result.label)}{" "}
                             <span className="text-[11px] font-normal text-slate-400">
                               {getParticipantRoleLabel(
                                 evaluationImages.find(
@@ -2497,18 +2506,18 @@ const handleSend = async (suggestedQuestion?: string) => {
                                     (image) => image.id === result.id
                                   )?.imageUrl
                                 }
-                                alt={`${result.label} preview`}
+                                alt={t("home.preview", { project: localize(result.label) })}
                                 className="h-40 w-full rounded-lg object-cover"
                               />
                             </div>
                           )}
                         </div>
                         <span>
-                          Avg rank{" "}
+                          {t("workspace.avgRank")}{" "}
                           {result.average > 0
                             ? result.average.toFixed(1)
                             : "N/A"}{" "}
-                          · Top choice {result.topChoice}
+                          {t("workspace.topChoice")}{result.topChoice}
                         </span>
                         <span>{result.voteCount}</span>
                       </div>
@@ -2536,14 +2545,22 @@ const handleSend = async (suggestedQuestion?: string) => {
         </WorkspacePanels>
       )}
       </div>
+      <dialog ref={caseDeleteDialog} aria-labelledby="case-delete-title" aria-describedby="case-delete-description" onCancel={() => setPendingDeleteCaseId(null)} className="m-auto w-[calc(100%_-_32px)] max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-xl backdrop:bg-slate-900/40">
+        <h3 id="case-delete-title" className="text-lg font-semibold">{t("cases.deleteConfirm")}</h3>
+        <p id="case-delete-description" className="mt-2 text-sm text-slate-600">{t("cases.deleteWarning")}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="min-h-11 rounded-full border px-4" onClick={() => { setPendingDeleteCaseId(null); caseDeleteDialog.current?.close(); }}>{t("workspace.cancel")}</button>
+          <button type="button" className="min-h-11 rounded-full bg-rose-600 px-4 text-white" onClick={() => { if (pendingDeleteCaseId) deleteCase(pendingDeleteCaseId); }}>{t("common.delete")}</button>
+        </div>
+      </dialog>
       <dialog ref={completionDialog} aria-labelledby="completion-title" aria-describedby="completion-description"
         className="m-auto w-[calc(100%_-_32px)] max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl backdrop:bg-slate-900/40"
         onCancel={(event) => { event.preventDefault(); closeCompletion(false); }}>
-        <h3 id="completion-title" className="text-lg font-semibold">이 단계를 완료할까요?</h3>
-        <p id="completion-description" className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600">{"단계를 완료하면 더 이상 이 단계에서 채팅을 작성할 수 없습니다.\n지금까지의 대화와 결과를 바탕으로 다음 단계에서 활용할 요약 보고서가 생성됩니다."}</p>
+        <h3 id="completion-title" className="text-lg font-semibold">{t("workspace.completeTitle")}</h3>
+        <p id="completion-description" className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600">{t("workspace.completeBody")}</p>
         <div className="mt-6 flex justify-end gap-3">
-          <button type="button" className="min-h-11 rounded-full border px-5 py-2 text-sm" onClick={() => closeCompletion(false)}>취소</button>
-          <button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-5 py-2 text-sm font-semibold text-white" onClick={() => closeCompletion(true)}>단계 완료</button>
+          <button type="button" className="min-h-11 rounded-full border px-5 py-2 text-sm" onClick={() => closeCompletion(false)}>{t("workspace.cancel")}</button>
+          <button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-5 py-2 text-sm font-semibold text-white" onClick={() => closeCompletion(true)}>{t("workspace.finishStage")}</button>
         </div>
       </dialog>
       {selectedImage && (
@@ -2558,10 +2575,9 @@ const handleSend = async (suggestedQuestion?: string) => {
             <div className="sticky top-0 z-10 flex items-start justify-between border-b bg-white px-6 py-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
-                  Design preview
-                </p>
+                  {t("workspace.designPreview")}</p>
                 <h3 className="mt-2 text-xl font-semibold">
-                  {selectedImageItem?.label ?? "Design concept"}
+                  {localize(selectedImageItem?.label ?? t("workspace.designConcept"))}
                 </h3>
               </div>
               <button
@@ -2569,15 +2585,14 @@ const handleSend = async (suggestedQuestion?: string) => {
                 type="button"
                 onClick={() => setSelectedImage(null)}
               >
-                Close
-              </button>
+                {t("common.close")}</button>
             </div>
       
             <div className="max-h-[calc(90vh-96px)] overflow-y-auto px-6 py-6">
               {selectedImageItem?.imageUrl ? (
                 <img
                   src={selectedImageItem.imageUrl}
-                  alt="Selected concept"
+                  alt={t("workspace.selectedConcept")}
                   className="max-h-[60vh] w-full rounded-2xl bg-slate-50 object-contain"
                 />
               ) : (
@@ -2598,18 +2613,15 @@ const handleSend = async (suggestedQuestion?: string) => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold text-slate-900">
-              Site image not uploaded yet
-            </h3>
+              {t("workspace.siteMissing")}</h3>
             <p className="mt-3 text-sm text-slate-500">
-              Image-based generation is disabled.
-            </p>
+              {t("workspace.siteDisabled")}</p>
             <button
               className="mt-6 w-full rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
               type="button"
               onClick={() => setShowSiteImageWarning(false)}
             >
-              Close
-            </button>
+              {t("common.close")}</button>
           </div>
         </div>
       )}

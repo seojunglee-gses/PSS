@@ -92,7 +92,7 @@ export default function Report() {
   const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
   const projectId = queryProjectId ?? activeProjectId ?? "project-1";
   const userKey = user?.uid;
-  const { t } = useI18n();
+  const { t, localize } = useI18n();
   useEffect(() => {
     if (queryProjectId && queryProjectId !== activeProjectId) setActiveProjectId(queryProjectId);
   }, [queryProjectId, activeProjectId, setActiveProjectId]);
@@ -135,7 +135,7 @@ export default function Report() {
     } finally {
       setLoading(false);
     }
-  }, [userKey, projectId]);
+  }, [userKey, projectId, t]);
 
   useEffect(() => {
     if (!userKey) {
@@ -368,7 +368,7 @@ export default function Report() {
               : t("report.overall.empty")}
           </div>
           {errorMessage && (
-            <p className="mt-3 text-xs text-rose-600">{errorMessage}</p>
+            <p className="mt-3 text-xs text-rose-600">{localize(errorMessage, "common.requestFailed")}</p>
           )}
         </div>
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
