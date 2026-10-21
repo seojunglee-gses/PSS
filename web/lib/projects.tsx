@@ -28,6 +28,8 @@ export type ProjectMeta = {
   workspaceContent: StageWorkspaceContent;
 };
 
+export type ProjectPatch = Omit<Partial<ProjectMeta>, "workspaceContent"> & { workspaceContent?: Partial<StageWorkspaceContent> };
+
 type ProjectContextValue = {
   projects: ProjectMeta[];
   activeProjectId: string | null;
@@ -39,7 +41,7 @@ type ProjectContextValue = {
   ) => Promise<ProjectMeta>;
 
   touchProject: (projectId: string) => void;
-  updateProject: (projectId: string, patch: Partial<ProjectMeta>) => Promise<void>;
+  updateProject: (projectId: string, patch: ProjectPatch) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
   loadingProjects: boolean;
   projectError: string;
@@ -219,8 +221,7 @@ const normalizeProject = (
                       ? value.imageUrl
                       : fallback.imageUrl,
                 };
-              })
-              .slice(0, 3) as CaseStudyContent[])
+              }) as CaseStudyContent[])
           : defaults.data.cases.map((item) => ({ ...item })),
       },
       alternatives: normalizeStage(incoming.alternatives, defaults.alternatives),
@@ -327,16 +328,17 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const mutate = async (
     action: string,
     projectId: string,
-    project?: Partial<ProjectMeta>,
+    project?: ProjectPatch,
   ) => {
     if (!user) throw new Error("로그인 상태를 확인해주세요.");
     try {
-      await projectRequest(user, "/api/projects", {
+      const result = await projectRequest(user, "/api/projects", {
         action,
         projectId,
         ...(project ? { project } : {}),
       });
-      if (uidRef.current === user.uid) projectLoadRef.current += 1;
+      if (uidRef.current === user.uid) { projectLoadRef.current += 1; setProjectError(""); }
+      return result;
     } catch (e) {
       if (uidRef.current === user.uid)
         setProjectError(
@@ -373,14 +375,14 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   };
   const updateProject = async (
     projectId: string,
-    patch: Partial<ProjectMeta>,
+    patch: ProjectPatch,
   ) => {
-    await mutate("update", projectId, patch);
+    const result = await mutate("update", projectId, patch);
     if (uidRef.current !== user?.uid) return;
     setProjects((prev) =>
       prev.map((p) =>
         p.projectId === projectId
-          ? normalizeProject({
+          ? normalizeProject(result.project ?? {
               ...p,
               ...patch,
               workspaceContent: {

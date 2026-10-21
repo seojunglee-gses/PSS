@@ -1,8 +1,10 @@
+import { loadProjectContext } from "../../../lib/project-context-server";
+import { canManageProject } from "../../../lib/rbac";
 import { prepareStorageUpload, readStorageUpload } from "../../../lib/storage-upload-server";
-import { validProjectId } from "../../../lib/membership/server";
+import { AccessError, validProjectId } from "../../../lib/membership/server";
 import { MODELS } from "../../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
+import { adminDb } from "../../../lib/firebaseAdmin";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -57,8 +59,9 @@ export default async function handler(
         .json({ error: "Missing or invalid Authorization header" });
     }
 
-    const token = authHeader.replace("Bearer ", "");
-    const decoded = await verifyAdminRequest(token);
+    const context = await loadProjectContext(req, "problem");
+    if (!canManageProject(context.user.email, context.project)) throw new AccessError(403, "이 사업의 관리자만 배경 자료를 올릴 수 있습니다.");
+    const decoded = context.user;
     if (req.body?.action === "prepare") { res.status(200).json(await prepareStorageUpload(req, decoded.uid, "ppss-background-knowledge/originals")); return; }
     const { files, projectId } = req.body as { files?: UploadedFile[]; projectId?: string };
     const scopedProjectId = validProjectId(projectId);
@@ -205,7 +208,7 @@ export default async function handler(
     res.status(200).json({ ok: true, curatedText });
   } catch (error) {
     console.error("ADMIN BACKGROUND ERROR:", error);
-    res.status(500).json({
+    res.status(error instanceof AccessError ? error.status : 500).json({
       error: error instanceof Error ? error.message : "Unexpected error",
     });
   }
