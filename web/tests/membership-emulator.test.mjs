@@ -384,3 +384,13 @@ test('project-owner editing preserves other stages and cases in the existing pro
   assert.deepEqual(saved.workspaceContent.problem,problem);assert.deepEqual(saved.workspaceContent.data,workspace.data);
   assert.deepEqual(saved.workspaceContent.evaluation,workspace.evaluation);assert.equal(saved.accessCode,'1111');
 });
+
+test('rich project content and ordered cases persist through update/list without a three-case limit', async () => {
+  const cases=Array.from({length:6},(_,i)=>({id:`stable-${i}`,label:`Case ${i}`,title:`Case ${i}`,text:`## **Case ${i}**`,imageUrl:''}));
+  const rich='<span data-font-size="20"># **사업 설명**</span>\n\n## 소제목\n\n본문';
+  await mutateProject(db,manager,{action:'update',projectId:'p1',project:{workspaceContent:{...workspace,problem:{...workspace.problem,text:rich},data:{...workspace.data,cases}}}});
+  let restored=(await listProjects(db,manager)).projects.find(p=>p.projectId==='p1');
+  assert.equal(restored.workspaceContent.problem.text,rich);assert.deepEqual(restored.workspaceContent.data.cases.map(c=>c.id),cases.map(c=>c.id));
+  await mutateProject(db,manager,{action:'update',projectId:'p1',project:{workspaceContent:{...restored.workspaceContent,data:{...restored.workspaceContent.data,cases:cases.filter(c=>c.id!=='stable-2')}}}});
+  restored=(await listProjects(db,manager)).projects.find(p=>p.projectId==='p1');assert.deepEqual(restored.workspaceContent.data.cases.map(c=>c.id),['stable-0','stable-1','stable-3','stable-4','stable-5']);assert.equal(restored.workspaceContent.problem.text,rich);
+});

@@ -1,11 +1,13 @@
 import { useRef, useState } from "react";
-import { getApps } from "firebase/app";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useAuth } from "../lib/auth";
+import { uploadProjectFile } from "../lib/storage-upload";
+import { logStorageFailure } from "../lib/storage-errors";
 import { imageList } from "../lib/content-format";
 
-export default function ProjectImageGallery({ value, editable, projectId, onChange, onBusyChange }: {
-  value: string; editable: boolean; projectId: string; onChange: (value: string) => void; onBusyChange: (busy: boolean) => void;
+export default function ProjectImageGallery({ value, editable, projectId, onChange, onBusyChange, purpose = "background" }: {
+  value: string; editable: boolean; projectId: string; onChange: (value: string) => void; onBusyChange: (busy: boolean) => void; purpose?: "background" | "case";
 }) {
+  const { user } = useAuth();
   const images = imageList(value);
   const [index, setIndex] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -21,15 +23,21 @@ export default function ProjectImageGallery({ value, editable, projectId, onChan
     setBusy(true); onBusyChange(true); setError("");
     const added: string[] = [];
     try {
-      const app = getApps()[0];
-      if (!app) throw new Error();
+      if (!user) throw Object.assign(new Error("로그인이 필요합니다."), { code: "auth/unauthenticated" });
+      const token = await user.getIdToken();
       for (const file of files) {
-        // Reuse the existing project site-image folder without changing its current-image pointer.
-        const target = ref(getStorage(app), `ppss-site-image/${projectId}/${crypto.randomUUID()}.${file.name.split(".").pop()?.replace(/[^a-z0-9]/gi, "") || "png"}`);
-        await uploadBytes(target, file, { contentType: file.type });
-        added.push(await getDownloadURL(target));
+        const uploaded = await uploadProjectFile("/api/projects/content-image", file, projectId, token, { purpose });
+        const response = await fetch("/api/projects/content-image", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ projectId, purpose, ...uploaded }) });
+        const result = await response.json();
+        if (!response.ok) throw Object.assign(new Error(result.error ?? "이미지를 저장하지 못했습니다."), { code: result.code ?? `http/${response.status}`, storagePath: uploaded.storagePath });
+        added.push(result.downloadUrl);
       }
-    } catch { setError("이미지를 올리지 못했습니다. 잠시 후 다시 시도해주세요."); }
+    } catch (error) {
+      const details = error as { code?: string; storagePath?: string };
+      logStorageFailure(error, details.storagePath ?? `projects/${projectId}/${purpose === "case" ? "case-images" : "background-images"}/(pending)`, Boolean(user));
+      setError(error instanceof Error ? error.message : "이미지를 올리지 못했습니다. 잠시 후 다시 시도해주세요.");
+    }
     finally {
       if (added.length) { onChange([...images, ...added].join("\n")); setIndex(images.length); }
       setBusy(false); onBusyChange(false);

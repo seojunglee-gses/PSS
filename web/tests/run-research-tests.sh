@@ -5,5 +5,5 @@ research_test_build=$(mktemp -d /tmp/pss-research-test.XXXXXX)
 trap 'rm -rf "$research_test_build"' EXIT
 ./node_modules/.bin/tsc --module commonjs --moduleResolution node --target es2020 --esModuleInterop --resolveJsonModule --skipLibCheck --jsx react-jsx --outDir "$research_test_build" \
   lib/content-format.ts lib/workspace-layout.ts lib/sidebar-preference.ts lib/spatial/goals.ts lib/spatial/engine.ts lib/spatial/loader.ts lib/spatial/context.ts lib/chat-history.ts lib/research/answer.ts lib/research/evidence.ts lib/research/openalex.ts lib/research/types.ts \
-  pages/api/admin/background-knowledge.ts pages/api/admin/site-image.ts pages/api/generate-alternative.ts lib/storage-upload.ts pages/api/chat.ts pages/api/research/search.ts pages/api/research/answer.ts
+  pages/api/admin/background-knowledge.ts pages/api/admin/site-image.ts pages/api/generate-alternative.ts pages/api/projects/content-image.ts lib/storage-upload.ts pages/api/chat.ts pages/api/research/search.ts pages/api/research/answer.ts
 PSS_TEST_BUILD="$research_test_build" NODE_PATH="$PWD/node_modules${NODE_PATH:+:$NODE_PATH}" node --test tests/research.test.mjs tests/chat-history.test.mjs tests/spatial.test.mjs tests/spatial-goals.test.mjs tests/sidebar-preference.test.mjs tests/workspace-layout.test.mjs tests/content-format.test.mjs tests/project-data-flow.test.mjs

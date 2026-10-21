@@ -8,7 +8,7 @@ const SpatialAnalysis = dynamic(() => import("../../components/spatial/SpatialAn
 import ProjectAccessGate from "../../components/projects/ProjectAccessGate";
 import AppShell from "../../components/AppShell";
 import WorkspacePanels from "../../components/WorkspacePanels";
-import ContentEditor, { ContentText } from "../../components/ContentEditor";
+import ContentEditor, { ContentText, type ContentEditorHandle } from "../../components/ContentEditor";
 import ProjectImageGallery from "../../components/ProjectImageGallery";
 import { DEFAULT_PANEL_RATIO, type WorkspacePanelView } from "../../lib/workspace-layout";
 import StageChatEmptyState from "../../components/chat/StageChatEmptyState";
@@ -19,7 +19,6 @@ import {
   loadCurrentSiteImage,
   loadStageLocks,
   loadWorkspaceSummary,
-  saveGeneratedImageFromBase64,
   saveChatLogsToFirestore,
   saveUserDesignSubmission,
   saveWorkspaceSummary,
@@ -955,6 +954,7 @@ function AuthorizedWorkspace() {
         feedback: isInitial ? undefined : feedback,
     
         siteImageId,
+        label: `Alternative ${alternativeImages.length + 1}`,
         provider:
           activeProvider.toLowerCase() === "gemini"
             ? "gemini"
@@ -983,44 +983,9 @@ function AuthorizedWorkspace() {
         ? payload.prompt
         : "";
 
-    if (payload.downloadUrl && !payload.base64) {
-      setLastGeneratedImageId(payload.imageId);
-      return {
-        id: payload.imageId,
-        label,
-        note,
-        imageUrl: payload.downloadUrl,
-        createdAt: new Date().toISOString(),
-      };
-    }
-
-    if (!payload.base64) {
-      throw new Error("No image data returned.");
-    }
-
-    const saved = await saveGeneratedImageFromBase64({
-      projectId,
-      imageId: payload.imageId,
-      base64: payload.base64,
-      label,
-      note,
-      userId: userKey,
-    });
-    if (generation !== chatGenerationRef.current) throw new Error("Image generation was cancelled.");
-
-    if (!saved) {
-      throw new Error("Unable to save generated image.");
-    }
-
-    setLastGeneratedImageId(saved.imageId);
-
-    return {
-      id: saved.imageId,
-      label: saved.label,
-      note: saved.note,
-      imageUrl: saved.downloadUrl,
-      createdAt: saved.createdAt,
-    };
+    if (!payload.downloadUrl) throw new Error("서버에서 저장한 이미지 주소를 받지 못했습니다.");
+    setLastGeneratedImageId(payload.imageId);
+    return { id: payload.imageId, label, note, imageUrl: payload.downloadUrl, createdAt: new Date().toISOString() };
   },
   [
     activeProvider,
@@ -1515,6 +1480,12 @@ const handleSend = async (suggestedQuestion?: string) => {
   }, [activeProject?.projectId]);
 
   const [imageUploading, setImageUploading] = useState(false);
+  const [isSavingContent, setIsSavingContent] = useState(false);
+  const [contentSaveError, setContentSaveError] = useState("");
+  const [contentSaveNotice, setContentSaveNotice] = useState("");
+  const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
+  const problemEditor = useRef<ContentEditorHandle>(null);
+  const caseEditor = useRef<ContentEditorHandle>(null);
   const isEditingExplanation = editingStageId !== null;
   const hasUnsavedExplanationChanges = useMemo(() => {
     if (!activeProject || !editingStageId) return false;
@@ -1525,10 +1496,10 @@ const handleSend = async (suggestedQuestion?: string) => {
   }, [activeProject, editingStageId, problemDraft, dataDraft]);
 
   const confirmDiscardUnsaved = useCallback(() => {
-    if (imageUploading) return false;
+    if (imageUploading || isSavingContent) return false;
     if (!hasUnsavedExplanationChanges) return true;
     return window.confirm(t("workspace.unsavedDiscard"));
-  }, [hasUnsavedExplanationChanges, imageUploading]);
+  }, [hasUnsavedExplanationChanges, imageUploading, isSavingContent]);
 
   const beginEditStage = useCallback(
     (stageId: EditableStageId) => {
@@ -1537,8 +1508,10 @@ const handleSend = async (suggestedQuestion?: string) => {
       setProblemDraft(activeProject.workspaceContent.problem);
       setDataDraft(activeProject.workspaceContent.data);
       setEditingStageId(stageId);
+      setEditingCaseId(stageId === "data" ? activeTab : null);
+      setContentSaveError(""); setContentSaveNotice("");
     },
-    [activeProject, canEditContent, confirmDiscardUnsaved]
+    [activeProject, canEditContent, confirmDiscardUnsaved, activeTab]
   );
 
   const cancelEditStage = useCallback(() => {
@@ -1549,28 +1522,38 @@ const handleSend = async (suggestedQuestion?: string) => {
     setEditingStageId(null);
   }, [activeProject, confirmDiscardUnsaved]);
 
-  const saveEditStage = useCallback(async () => {
+  const saveEditStage = async () => {
+    if (!activeProject || !editingStageId || isSavingContent || imageUploading) return;
+    setIsSavingContent(true); setContentSaveError(""); setContentSaveNotice("");
     try {
-    if (!activeProject || !editingStageId) return;
-    if (editingStageId === "problem") {
-      await updateProject(projectId, {
-        workspaceContent: {
-          ...activeProject.workspaceContent,
-          problem: problemDraft,
-        } as any,
-      });
-    }
-    if (editingStageId === "data") {
-      await updateProject(projectId, {
-        workspaceContent: {
-          ...activeProject.workspaceContent,
-          data: dataDraft,
-        } as any,
-      });
-    }
-    setEditingStageId(null);
-    } catch { /* Keep the draft open; show the provider error. */ }
-  }, [activeProject, editingStageId, problemDraft, dataDraft, projectId, updateProject]);
+      const problem = editingStageId === "problem" ? { ...problemDraft, text: problemEditor.current?.getValue() ?? problemDraft.text } : activeProject.workspaceContent.problem;
+      const data = editingStageId === "data" ? { ...dataDraft, cases: dataDraft.cases.map((item) => item.id === editingCaseId ? { ...item, text: caseEditor.current?.getValue() ?? item.text } : item) } : activeProject.workspaceContent.data;
+      await updateProject(projectId, { workspaceContent: editingStageId === "problem" ? { problem } : { data } });
+      setEditingStageId(null); setEditingCaseId(null); setContentSaveNotice("저장했습니다.");
+    } catch (error) { setContentSaveError(error instanceof Error ? error.message : "저장하지 못했습니다. 다시 시도해주세요."); }
+    finally { setIsSavingContent(false); }
+  };
+
+  const addCase = () => {
+    if (!activeProject || !canEditContent || !confirmDiscardUnsaved()) return;
+    const item = { id: `case-${crypto.randomUUID()}`, label: "새 사례", title: "새 사례", text: "", imageUrl: "" };
+    setDataDraft({ ...activeProject.workspaceContent.data, cases: [...activeProject.workspaceContent.data.cases, item] });
+    setEditingStageId("data"); setEditingCaseId(item.id); setActiveTab(item.id);
+    setContentSaveError(""); setContentSaveNotice("");
+  };
+  const deleteCase = async (caseId: string) => {
+    if (!activeProject || !canEditContent || imageUploading || isSavingContent) return;
+    if (!window.confirm(`${hasUnsavedExplanationChanges ? "저장하지 않은 변경사항은 취소됩니다.\n" : ""}이 사례를 삭제할까요?`)) return;
+    setIsSavingContent(true); setContentSaveError(""); setContentSaveNotice("");
+    try {
+      const data = { ...activeProject.workspaceContent.data, cases: activeProject.workspaceContent.data.cases.filter((item) => item.id !== caseId) };
+      await updateProject(projectId, { workspaceContent: { data } });
+      setDataDraft(data); setEditingStageId(null); setEditingCaseId(null);
+      if (activeTab === caseId) setActiveTab(data.cases[0]?.id ?? "");
+      setContentSaveNotice("사례를 삭제했습니다.");
+    } catch (error) { setContentSaveError(error instanceof Error ? error.message : "삭제하지 못했습니다."); }
+    finally { setIsSavingContent(false); }
+  };
 
   const saveDataCaseDraft = useCallback((caseId: string, patch: Record<string, unknown>) => {
     setDataDraft((prev) => ({
@@ -1844,7 +1827,7 @@ const handleSend = async (suggestedQuestion?: string) => {
 
   return (
     <AppShell workspaceLayout>
-      {projectError && <p role="alert" className="mb-4 text-sm text-rose-600">{projectError}</p>}
+      {projectError && !contentSaveError && <p role="alert" className="mb-4 text-sm text-rose-600">{projectError}</p>}
       <div className="workspace-content">
       <section className="workspace-intro flex flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
@@ -1873,7 +1856,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                 }`}
                 type="button"
                 onClick={() => {
-                  if (imageUploading || step.id === activeStep.id) return;
+                  if (imageUploading || isSavingContent || step.id === activeStep.id) return;
                   if (isEditingExplanation && hasUnsavedExplanationChanges) {
                     const ok = window.confirm(t("workspace.unsavedSwitchStage"));
                     if (!ok) return;
@@ -1930,29 +1913,23 @@ const handleSend = async (suggestedQuestion?: string) => {
                   </button>
                   {editingStageId === "problem" && (
                     <>
-                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" disabled={imageUploading} onClick={cancelEditStage}>{t("workspace.cancel")}</button>
-                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" disabled={imageUploading} onClick={saveEditStage}>{t("workspace.save")}</button>
+                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" disabled={imageUploading || isSavingContent} onClick={cancelEditStage}>{t("workspace.cancel")}</button>
+                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" disabled={imageUploading || isSavingContent} onClick={saveEditStage}>{t("workspace.save")}</button>
                     </>
                   )}
                 </div>
               )}
             </div>
+            {contentSaveError && <p role="alert" className="mt-3 text-sm text-rose-600">{contentSaveError}</p>}
+            {contentSaveNotice && <p role="status" className="mt-3 text-sm text-emerald-700">{contentSaveNotice}</p>}
             <ProjectImageGallery value={(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ?? ""}
-              editable={canEditContent && editingStageId === "problem"} projectId={projectId} onBusyChange={setImageUploading}
+              editable={canEditContent && editingStageId === "problem" && !isSavingContent} projectId={projectId} onBusyChange={setImageUploading}
               onChange={(imageUrl) => setProblemDraft((prev) => ({ ...prev, imageUrl }))} />
-            <h4
-              className={`mt-4 whitespace-pre-wrap text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-              contentEditable={canEditContent && editingStageId === "problem" ? "plaintext-only" : false}
-              suppressContentEditableWarning
-              onBlur={(event) => {
-                const title = event.currentTarget.textContent ?? "";
-                setProblemDraft((prev) => ({ ...prev, title }));
-              }}
-            >
-              {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || t("workspace.defaultProjectTitle")}
-            </h4>
+            {editingStageId === "problem" && canEditContent ? <input aria-label="사업 설명 제목" className="mt-4 w-full rounded-lg border p-2 text-lg font-semibold" value={problemDraft.title}
+              disabled={isSavingContent} onChange={(event) => setProblemDraft((prev) => ({ ...prev, title: event.target.value }))} />
+              : <h4 className="mt-4 whitespace-pre-wrap text-lg font-semibold">{activeProject?.workspaceContent.problem.title || t("workspace.defaultProjectTitle")}</h4>}
             {canEditContent && editingStageId === "problem" ? (
-              <ContentEditor label="사업 배경 및 설명" value={problemDraft.text} onChange={(text) => setProblemDraft((prev) => ({ ...prev, text }))} />
+              <ContentEditor ref={problemEditor} disabled={isSavingContent} label="사업 배경 및 설명" value={problemDraft.text} onChange={(text) => setProblemDraft((prev) => ({ ...prev, text }))} />
             ) : <ContentText value={activeProject?.workspaceContent.problem.text || t("workspace.defaultProblemText")} />}
 
           </div>
@@ -1966,7 +1943,7 @@ const handleSend = async (suggestedQuestion?: string) => {
             <div className="border-b border-slate-200 px-5 py-4">
               <p className="text-sm leading-relaxed text-slate-600">대상지 자료를 확인하고, 비슷한 사례와 관련 연구를 찾아 현재 사업에 적용할 수 있는 근거를 정리해보세요.</p>
               <ul className="mt-3 flex flex-wrap gap-2 text-xs text-blue-700">{["대상지 확인", "공간 분석", "사례 비교", "연구 근거 찾기"].map((goal) => <li key={goal} className="rounded-full bg-blue-50 px-3 py-1">{goal}</li>)}</ul>
-              {canEditContent && editingStageId === "data" ? <ContentEditor label="사업 자료 설명" value={dataDraft.text} onChange={(text) => setDataDraft((prev) => ({ ...prev, text }))} /> : activeProject?.workspaceContent.data.text && <ContentText value={activeProject.workspaceContent.data.text} />}
+
             </div>
             <div role="tablist" aria-label={`${analysisLabels.cases} / 공간 분석 / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
               {(["cases", "spatial", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
@@ -2004,66 +1981,28 @@ const handleSend = async (suggestedQuestion?: string) => {
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
               <h3 className="text-lg font-semibold text-slate-900">{analysisLabels.cases}</h3>
               <p className="mt-1 text-sm text-slate-500">{analysisLabels.caseIntro}</p>
-              <div className="flex items-start justify-end gap-3">
-              {canEditContent && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${editingStageId === "data" ? "border-[var(--primary)] text-[var(--primary)]" : "border-slate-200"}`}
-                    onClick={() => {
-                      if (editingStageId === "data") {
-                        cancelEditStage();
-                        return;
-                      }
-                      beginEditStage("data");
-                    }}
-                  >
-                    {editingStageId === "data" ? t("workspace.editing") : analysisLabels.editCases}
-                  </button>
-                  {editingStageId === "data" && (
-                    <>
-                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" disabled={imageUploading} onClick={cancelEditStage}>{t("workspace.cancel")}</button>
-                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" disabled={imageUploading} onClick={saveEditStage}>{t("workspace.save")}</button>
-                    </>
-                  )}
-                </div>
-              )}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {((editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases) ?? [
-                  { label: "789 Art Zone", id: "patterns" },
-                  { label: "Gyeungui Line Forest Park", id: "painpoints" },
-                  { label: "Highline Park", id: "opportunities" },
-                ]).map((tab) => {
-                  const isActive = tab.id === activeTab;
-                  return (
-                    <button
-                      key={tab.id}
-                      className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
-                        isActive
-                          ? "bg-[var(--primary)] text-white"
-                          : "border border-slate-200 bg-white text-slate-600 hover:border-[var(--primary)]"
-                      }`}
-                      type="button"
-                      onClick={() => setActiveTab(tab.id)}
-                    >
-                      <span
-                        contentEditable={canEditContent && editingStageId === "data" ? "plaintext-only" : false}
-                        suppressContentEditableWarning
-                        onBlur={(event) => saveDataCaseDraft(tab.id, { label: event.currentTarget.textContent ?? "" })}
-                        onClick={(event) => {
-                          if (canEditContent && editingStageId === "data") event.stopPropagation();
-                        }}
-                        className={`whitespace-pre-wrap ${canEditContent && editingStageId === "data" ? "rounded px-1 hover:bg-white/70" : ""}`}
-                      >
-                        {tab.label}
-                      </span>
-                    </button>
-                  );
-                })}
+              {activeProject?.workspaceContent.data.text && <ContentText value={activeProject.workspaceContent.data.text} />}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                {(editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases ?? []).map((tab) => (
+                  <div key={tab.id} className="flex min-w-0 items-center gap-1">
+                    <button type="button" disabled={isSavingContent || imageUploading} className={`max-w-full rounded-full px-4 py-2 text-xs font-semibold ${activeTab === tab.id ? "bg-[var(--primary)] text-white" : "border bg-white text-slate-600"}`}
+                      onClick={() => {
+                        if (activeTab === tab.id) return;
+                        if (!confirmDiscardUnsaved()) return;
+                        setEditingStageId(null); setEditingCaseId(null); setActiveTab(tab.id);
+                      }}>{tab.label || tab.title}</button>
+                    {canEditContent && <button type="button" aria-label={`${tab.label || tab.title} 삭제`} title="사례 삭제" disabled={isSavingContent || imageUploading}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-rose-50 hover:text-rose-600" onClick={() => { void deleteCase(tab.id); }}>
+                      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
+                    </button>}
+                  </div>
+                ))}
+                {canEditContent && <button type="button" aria-label="사례 추가" className="min-h-11 rounded-full border border-blue-200 px-4 text-sm font-semibold text-blue-700" disabled={isSavingContent || imageUploading} onClick={addCase}>+ 사례 추가</button>}
               </div>
             </div>
             <div className="p-6">
+              {contentSaveError && <p role="alert" className="mb-3 text-sm text-rose-600">{contentSaveError}</p>}
+              {contentSaveNotice && <p role="status" className="mb-3 text-sm text-emerald-700">{contentSaveNotice}</p>}
               <div className="max-h-[70vh] overflow-y-auto pr-2">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
@@ -2075,34 +2014,21 @@ const handleSend = async (suggestedQuestion?: string) => {
                     }
                     return (
                       <>
-                        <h4
-                          className={`whitespace-pre-wrap text-base font-semibold text-slate-800 ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-white" : ""}`}
-                          contentEditable={canEditContent && editingStageId === "data" ? "plaintext-only" : false}
-                          suppressContentEditableWarning
-                          onBlur={(event) => saveDataCaseDraft(activeCase.id, { title: event.currentTarget.textContent ?? "" })}
-                        >
-                          {activeCase.title}
-                        </h4>
-                        <button
-                          type="button"
-                          className="mt-3 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-500"
-                          onClick={() => {
-                            if (!canEditContent || editingStageId !== "data") return;
-                            const next = window.prompt(t("workspace.caseImageUrlPrompt"), activeCase.imageUrl ?? "");
-                            if (next === null) return;
-                            saveDataCaseDraft(activeCase.id, { imageUrl: next.trim() });
-                          }}
-                        >
-                          {activeCase.imageUrl ? (
-                            <img src={activeCase.imageUrl} alt={activeCase.label} className="h-auto w-full object-contain" />
-                          ) : (
-                            <span>{canEditContent && editingStageId === "data" ? t("workspace.clickToAddImage") : t("workspace.noImage")}</span>
-                          )}
-                        </button>
-                        {canEditContent && editingStageId === "data" ? (
-                          <ContentEditor key={activeCase.id} label="사례 자료" value={activeCase.text} onChange={(text) => saveDataCaseDraft(activeCase.id, { text })} />
-                        ) : <ContentText value={activeCase.text} />}
-
+                        {canEditContent && <div className="flex flex-wrap justify-end gap-2">
+                          {editingStageId === "data" && editingCaseId === activeCase.id ? <>
+                            <button type="button" disabled={imageUploading || isSavingContent} className="min-h-11 rounded-full border px-4" onClick={cancelEditStage}>{t("workspace.cancel")}</button>
+                            <button type="button" disabled={imageUploading || isSavingContent} className="min-h-11 rounded-full bg-[var(--primary)] px-4 text-white" onClick={() => { void saveEditStage(); }}>{isSavingContent ? "저장 중…" : t("workspace.save")}</button>
+                          </> : <button type="button" className="min-h-11 rounded-full border px-4" disabled={isSavingContent} onClick={() => { beginEditStage("data"); setEditingCaseId(activeCase.id); }}>사례 수정</button>}
+                        </div>}
+                        {canEditContent && editingStageId === "data" && editingCaseId === activeCase.id
+                          ? <input aria-label="사례 제목" className="w-full rounded-lg border p-2 text-base font-semibold" disabled={isSavingContent} value={activeCase.title} onChange={(event) => saveDataCaseDraft(activeCase.id, { title: event.target.value, label: event.target.value })} />
+                          : <h4 className="whitespace-pre-wrap text-base font-semibold text-slate-800">{activeCase.title}</h4>}
+                        <ProjectImageGallery key={activeCase.id} purpose="case" projectId={projectId} value={activeCase.imageUrl}
+                          editable={canEditContent && editingStageId === "data" && editingCaseId === activeCase.id && !isSavingContent} onBusyChange={setImageUploading}
+                          onChange={(imageUrl) => saveDataCaseDraft(activeCase.id, { imageUrl })} />
+                        {canEditContent && editingStageId === "data" && editingCaseId === activeCase.id
+                          ? <ContentEditor key={activeCase.id} ref={caseEditor} disabled={isSavingContent} label="사례 자료" value={activeCase.text} onChange={(text) => saveDataCaseDraft(activeCase.id, { text })} />
+                          : <ContentText value={activeCase.text} />}
                       </>
                     );
                   })()}

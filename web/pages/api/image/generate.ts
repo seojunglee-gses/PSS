@@ -1,3 +1,4 @@
+import { storeGeneratedImage } from "../../../lib/generated-image-server";
 import { AccessError } from "../../../lib/membership/server";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { adminDb } from "../../../lib/firebaseAdmin";
@@ -77,10 +78,9 @@ export default async function handler(
     });
     const imageId = crypto.randomUUID();
 
-    res.status(200).json({
-      imageId,
-      base64,
-    });
+    const saved = await storeGeneratedImage({ projectId: context.projectId, imageId, base64, note: effectivePrompt,
+      label: "Alternative", userId: context.user.uid });
+    res.status(200).json({ imageId, downloadUrl: saved.downloadUrl, createdAt: saved.createdAt });
   } catch (error) {
     res.status(error instanceof AccessError ? error.status : 500).json({
       error: error instanceof Error ? error.message : "Unexpected error.",

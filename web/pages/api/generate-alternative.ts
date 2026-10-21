@@ -1,3 +1,5 @@
+import { storageFailureDetails } from "../../lib/storage-errors";
+import { storeGeneratedImage } from "../../lib/generated-image-server";
 import { AccessError } from "../../lib/membership/server";
 import { conversationHistory } from "../../lib/chat-history";
 import { MODELS } from "../../lib/llm/openai";
@@ -55,8 +57,12 @@ export default async function handler(
     return;
   }
 
+  let authenticated = false;
+  let targetPath = "projects/(pending)/generated-images";
   try {
     const context = await loadProjectContext(req, "alternatives");
+    authenticated = true;
+    targetPath = `projects/${context.projectId}/generated-images`;
     const currentSiteImage = (await adminDb().doc(`ppssSiteImages_${context.projectId}/current`).get()).data();
     if (!currentSiteImage?.downloadUrl || !currentSiteImage.imageId) {
       res.status(400).json({ error: "대상지 이미지가 없습니다. 설정에서 현재 사업의 대상지 이미지를 등록해주세요." });
@@ -126,6 +132,7 @@ export default async function handler(
       return;
     }
     const imageId = crypto.randomUUID();
+    targetPath += `/${imageId}.png`;
 
     const existing = (await adminDb().doc(`ppssGeneratedImages_${context.projectId}/${imageId}`).get()).data();
     if (existing?.downloadUrl) {
@@ -222,15 +229,13 @@ export default async function handler(
       throw new Error("Failed to generate image base64 data");
       }
   
-      res.status(200).json({
-        imageId,
-        prompt,
-        base64,
-      });
+      const saved = await storeGeneratedImage({ projectId: context.projectId, imageId, base64, note: prompt,
+        label: typeof req.body.label === "string" ? req.body.label.slice(0, 200) : "Alternative", userId: context.user.uid });
+      res.status(200).json({ imageId, prompt, downloadUrl: saved.downloadUrl, createdAt: saved.createdAt });
     return;
   
     } catch (error) {
-      console.error("Generate Error:", error); // 서버 로그 확인용
+      console.error("Image generation failed", storageFailureDetails(error, targetPath, authenticated)); // 서버 로그 확인용
       res.status(error instanceof AccessError ? error.status : 500).json({
         error: error instanceof Error ? error.message : "Unexpected error.",
       });

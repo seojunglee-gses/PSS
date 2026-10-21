@@ -4,6 +4,7 @@ import {
   AccessError,
   listProjects,
   mutateProject,
+  safeProject,
 } from "../../../lib/membership/server";
 export const config = { api: { bodyParser: { sizeLimit: "512kb" } } };
 export default async function handler(
@@ -41,8 +42,15 @@ export default async function handler(
     if (!req.body || typeof req.body !== "object")
       throw new AccessError(400, "잘못된 요청입니다.");
     await mutateProject(adminDb(), user, req.body);
-    return res.status(200).json({ ok: true });
+    const project = req.body.action === "update"
+      ? { ...(await adminDb().doc(`ppssProjects/${req.body.projectId}`).get()).data(), projectId: req.body.projectId }
+      : undefined;
+    return res.status(200).json({ ok: true, ...(project ? { project: safeProject(project as import("../../../lib/projects").ProjectMeta, user, true) } : {}) });
   } catch (error) {
+    if (!(error instanceof AccessError)) {
+      const code = (error as { code?: unknown })?.code;
+      console.error("Project mutation failed", { code: typeof code === "number" || (typeof code === "string" && /^[a-z0-9_/-]{1,80}$/i.test(code)) ? code : "unknown", projectId: typeof req.body?.projectId === "string" ? req.body.projectId.slice(0, 128) : null, authenticated: true });
+    }
     return res.status(error instanceof AccessError ? error.status : 503).json({
       error:
         error instanceof AccessError

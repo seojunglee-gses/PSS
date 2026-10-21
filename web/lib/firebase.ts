@@ -553,48 +553,6 @@ export const loadCurrentSiteImage = async (projectId?: string): Promise<SiteImag
   return snapshot.data() as SiteImage;
 };
 
-export const saveGeneratedImageFromBase64 = async (payload: {
-  projectId?: string;
-  imageId: string;
-  base64: string;
-  label: string;
-  note: string;
-  userId: string;
-}): Promise<GeneratedImage | null> => {
-  const app = getFirebaseApp();
-  if (!app) {
-    return null;
-  }
-  const db = getFirestore(app);
-  const existingSnapshot = await getDoc(
-    doc(db, scopedCollection("ppssGeneratedImages", payload.projectId), payload.imageId)
-  );
-  if (existingSnapshot.exists()) {
-    return existingSnapshot.data() as GeneratedImage;
-  }
-  const storage = getStorage(app);
-  const storagePath = `${scopedStorage("ppss-generated-images", payload.projectId)}/${payload.imageId}.png`;
-  const base64 = payload.base64.includes(",")
-    ? payload.base64.split(",")[1]
-    : payload.base64;
-  await uploadString(ref(storage, storagePath), base64, "base64", {
-    contentType: "image/png",
-  });
-  const downloadUrl = await getDownloadURL(ref(storage, storagePath));
-  const createdAt = new Date().toISOString();
-  const record: GeneratedImage = {
-    imageId: payload.imageId,
-    label: payload.label,
-    note: payload.note,
-    storagePath,
-    downloadUrl,
-    createdAt,
-    userId: payload.userId,
-  };
-  await setDoc(doc(db, scopedCollection("ppssGeneratedImages", payload.projectId), payload.imageId), record);
-  return record;
-};
-
 export const loadGeneratedImages = async (
   userId: string,
   projectId?: string
