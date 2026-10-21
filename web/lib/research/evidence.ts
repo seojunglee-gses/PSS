@@ -3,8 +3,8 @@ import { canonicalBuildingContext } from "../spatial/building-use-server";
 import type { SpatialResult } from "../spatial/types";
 import { searchOpenAlex } from "./openalex";
 import { SOURCE_OPTIONS } from "./types";
-import { resolveSources } from "./routing";
-import { conversationHistory, contextualQuestion } from "../chat-history";
+import { resolveSources, sourceRoutingQuestion } from "./routing";
+import { conversationHistory } from "../chat-history";
 import type { ConversationMessage } from "../chat-history";
 import type { CaseEvidence, CaseMaterial, EvidenceBundle, EvidenceSource } from "./types";
 
@@ -16,6 +16,7 @@ export type AnalysisRequest = {
   selectedSources: EvidenceSource[];
   cases: CaseMaterial[];
   projectContext: string;
+  previousSummaries?: Record<string, unknown>;
   provider: "openai" | "gemini" | "deepseek";
 };
 
@@ -33,7 +34,7 @@ export function parseAnalysisRequest(body: unknown): AnalysisRequest {
   });
   const selected = (input.selectedSources ?? []) as EvidenceSource[];
   const history = conversationHistory(input.history);
-  const searchQuestion = contextualQuestion(input.question.trim(), history);
+  const searchQuestion = sourceRoutingQuestion(input.question.trim(), history);
   const sources = resolveSources(searchQuestion, selected);
   return {
     question: input.question.trim(),
@@ -42,7 +43,7 @@ export function parseAnalysisRequest(body: unknown): AnalysisRequest {
     spatialContext: sources.includes("spatial") ? canonicalBuildingContext(parseSpatialResult(input.spatialContext)) : undefined,
     selectedSources: sources,
     cases,
-    projectContext: typeof input.projectContext === "string" ? input.projectContext.slice(0, 4000) : "",
+    projectContext: typeof input.projectContext === "string" ? input.projectContext.slice(0, 60000) : "",
     provider: typeof input.provider === "string" && input.provider.toLowerCase() === "gemini" ? "gemini" :
       typeof input.provider === "string" && input.provider.toLowerCase() === "deepseek" ? "deepseek" : "openai",
   };
@@ -73,7 +74,7 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
   }
   if (request.selectedSources.includes("research")) {
     try {
-      evidence.papers = await searchOpenAlex(request.searchQuestion ?? request.question, request.provider);
+      evidence.papers = await searchOpenAlex(request.searchQuestion ?? request.question, request.provider, request.projectContext);
       if (!evidence.papers.length) evidence.warnings.push({ source: "research", message: "No relevant research papers were found. Try a more specific question." });
       else if (!evidence.papers.some((paper) => paper.abstract)) evidence.warnings.push({ source: "research", message: "The retrieved papers have no available abstracts; research findings cannot be inferred from titles alone." });
     } catch (error) {

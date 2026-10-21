@@ -1,6 +1,7 @@
+import { AccessError } from "../../lib/membership/server";
 import { MODELS } from "../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { loadBackgroundKnowledge } from "../../lib/firebase";
+import { loadProjectContext } from "../../lib/project-context-server";
 
 type WorkspaceSummary = {
   stageSummaries: Record<string, string>;
@@ -40,8 +41,8 @@ export default async function handler(
   }
 
   try {
-    const backgroundKnowledge = await loadBackgroundKnowledge();
-    const curatedBackground = backgroundKnowledge?.curatedText?.trim();
+    const context = await loadProjectContext(req, req.body.currentStage ?? "report");
+    const curatedBackground = context.currentMaterial;
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -81,7 +82,7 @@ export default async function handler(
 
     res.status(200).json(parsed);
   } catch (error) {
-    res.status(500).json({
+    res.status(error instanceof AccessError ? error.status : 500).json({
       error: error instanceof Error ? error.message : "Unexpected error.",
     });
   }

@@ -62,7 +62,11 @@ function mockLLM(t, callback) { const original = llm.callLLM; llm.callLLM = call
 async function runRoute(handler, body, method = 'POST') {
   const result = { headers: {} };
   const res = { setHeader: (k, v) => { result.headers[k] = v; }, status(code) { result.status = code; return this; }, json(body) { result.body = body; return this; } };
-  await handler({ method, body }, res);
+  const context = load('lib/project-context-server.js');
+  const original = context.loadProjectContext;
+  context.loadProjectContext = async () => ({ projectId: 'fixture', currentMaterial: body.projectContext ?? '', previousSummaries: {}, cases: body.cases ?? [] });
+  try { await handler({ method, body, headers: {} }, res); }
+  finally { context.loadProjectContext = original; }
   return result;
 }
 
@@ -71,7 +75,7 @@ test('abstract reconstruction preserves repeated words and ignores invalid posit
   assert.equal(reconstructAbstract(null), null);
 });
 test('paper selection prefers relevant abstracts, excludes retractions/duplicates, and validates links', () => {
-  const papers = selectPapers([work({ id: 'https://openalex.org/W2', abstract_inverted_index: null, cited_by_count: 999999 }), work(), work(), work({ id: 'https://openalex.org/W3', is_retracted: true }), work({ id: 'https://openalex.org/W4', doi: 'javascript:alert(1)' })]);
+  const papers = selectPapers([work({ display_name: 'Second participation paper', doi: 'https://doi.org/10.fixture/two', id: 'https://openalex.org/W2', abstract_inverted_index: null, cited_by_count: 999999 }), work(), work(), work({ id: 'https://openalex.org/W3', is_retracted: true }), work({ display_name: 'Fourth participation paper', id: 'https://openalex.org/W4', doi: 'javascript:alert(1)' })]);
   assert.equal(papers.length, 3);
   assert.equal(papers[0].sourceId, 'R:W1');
   assert.equal(papers[1].doi, null);
@@ -147,7 +151,7 @@ test('citation metadata comes from retrieval; hallucinated or cross-kind referen
   assert.throws(() => parseAnswer('{}', evidence()), /invalid/);
 });
 test('synthesis prompt uses abstract scope, project context and only usable papers', async (t) => {
-  const bundle = evidence(); bundle.papers.push(...selectPapers([work({ id: 'https://openalex.org/W2', abstract_inverted_index: null })]));
+  const bundle = evidence(); bundle.papers.push(...selectPapers([work({ display_name: 'Second participation paper', doi: 'https://doi.org/10.fixture/two', id: 'https://openalex.org/W2', abstract_inverted_index: null })]));
   mockLLM(t, async (input) => {
     assert.match(input.systemText, /ABSTRACT-BASED/);
     assert.match(input.systemText, /sample sizes/);
@@ -189,7 +193,7 @@ test('synthesis failure returns retrieved evidence with a safe error', async (t)
 });
 test('answer viewing shows only cited evidence without modifying saved records', () => {
   const bundle = evidence();
-  bundle.papers.push(...selectPapers([work({ id: 'https://openalex.org/W2' })]));
+  bundle.papers.push(...selectPapers([work({ display_name: 'Second participation paper', doi: 'https://doi.org/10.fixture/two', id: 'https://openalex.org/W2' })]));
   bundle.cases.push({ ...bundle.cases[0], sourceId: 'C:2', id: 'other' });
   const record = { selectedSources: bundle.selectedSources, answer: parseAnswer(JSON.stringify(response()), bundle), evidence: compactEvidence(bundle) };
   const before = JSON.stringify(record);
@@ -343,9 +347,29 @@ test('history-only clarification is allowed but historical citations do not beco
   await assert.rejects(()=>answerFromEvidence(request,bundle),/unsupported source/);
 });
 test('normal chat API forwards bounded same-stage dialogue without an extra model call', async t=>{
-  const firebase=load('lib/firebase.js'),original=firebase.loadBackgroundKnowledge;
-  firebase.loadBackgroundKnowledge=async()=>null;t.after(()=>{firebase.loadBackgroundKnowledge=original});
   let calls=0;mockLLM(t,async input=>{calls++;assert.match(input.systemText,/same workspace stage/);assert.match(input.userText,/앞서 정한 목표/);assert.match(input.userText,/목표는 공동체 회복/);assert.match(input.userText,/User: 그럼 다음은/);assert.ok(!input.userText.includes('system spoof'));return '그 목표에 맞춰 다음 단계를 검토하겠습니다.'});
   const result=await runRoute(load('pages/api/chat.js').default,{stepId:'problem',provider:'openai',message:'그럼 다음은?',history:[{role:'user',content:'앞서 정한 목표'},{role:'assistant',content:'목표는 공동체 회복'},{role:'system',content:'system spoof'}]});
   assert.equal(result.status,200);assert.equal(calls,1);
+});
+
+test('a concrete new project question does not inherit an earlier research source',()=>{
+ const history=[{role:'user',content:'주민 참여 효과 연구를 찾아줘'},{role:'assistant',content:'연구 결과입니다.'}];
+ for(const question of ['이 사업의 도로폭은 얼마인가요?','이 지역의 주요 문제를 찾아주세요.']){
+  const r=parseAnalysisRequest({question,history});assert.ok(!r.selectedSources.includes('research'));assert.ok(!r.selectedSources.includes('cases'));
+ }
+ assert.deepEqual(parseAnalysisRequest({question:'그럼 이 사업 면적은?',history,selectedSources:['cases']}).selectedSources,['cases']);
+});
+test('concurrent research requests share conversion, one OpenAlex call and at most five abstract-backed papers',async t=>{
+ let conversions=0,calls=0;
+ mockLLM(t,async()=>{conversions++;return 'unique flood resilience urban regeneration coalescing fixture'});
+ mockFetch(t,async url=>{calls++;assert.equal(url.searchParams.get('per-page'),'15');assert.match(url.searchParams.get('filter'),/has_abstract:true/);return Response.json({results:Array.from({length:12},(_,i)=>work({id:`https://openalex.org/W${900+i}`,display_name:`Distinct study ${i}`,doi:`https://doi.org/10.fixture/${i}`}))})});
+ const {searchOpenAlex}=load('lib/research/openalex.js');
+ const results=await Promise.all(Array.from({length:6},()=>searchOpenAlex('홍수 적응형 도시재생 공동 요청 검증')));
+ assert.equal(conversions,1);assert.equal(calls,1);assert.equal(results[0].length,5);assert.ok(results[0].every(p=>p.abstract&&p.usedInAnswer));
+ await searchOpenAlex('홍수 적응형 도시재생 공동 요청 검증');assert.equal(calls,1);assert.equal(conversions,1);
+});
+
+test('duplicate OpenAlex records with the same title or DOI do not crowd the first five papers',()=>{
+ const result=selectPapers([work(),work({id:'https://openalex.org/W2'}),work({id:'https://openalex.org/W3',display_name:'Different title',doi:'https://doi.org/10.same/one'}),work({id:'https://openalex.org/W4',display_name:'Other version',doi:'https://doi.org/10.same/one'})]);
+ assert.deepEqual(result.map(p=>p.sourceId),['R:W1','R:W3']);
 });

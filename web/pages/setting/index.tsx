@@ -1,3 +1,4 @@
+import { uploadProjectFile } from "../../lib/storage-upload";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import AppShell from "../../components/AppShell";
@@ -20,16 +21,6 @@ type Provider = (typeof providers)[number];
 
 const providerStorageKeyBase = "ppss-active-provider";
 
-const fileToBase64 = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : "";
-      resolve(result);
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
 
 export default function Setting() {
   const router = useRouter();
@@ -327,19 +318,8 @@ export default function Setting() {
 
       const token = await user.getIdToken();
 
-      const filesPayload = await Promise.all(
-        backgroundFiles.map(async (file) => {
-          const buffer = await file.arrayBuffer();
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-          return {
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            lastModified: file.lastModified,
-            data: base64,
-          };
-        })
-      );
+      const filesPayload = [];
+      for (const file of backgroundFiles) filesPayload.push(await uploadProjectFile("/api/admin/background-knowledge", file, projectId, token));
 
       const res = await fetch("/api/admin/background-knowledge", {
         method: "POST",
@@ -385,19 +365,14 @@ export default function Setting() {
       }
       const token = await user.getIdToken();
       const file = siteImageFiles[0];
+      const uploadedFile = await uploadProjectFile("/api/admin/site-image", file, projectId, token);
       const response = await fetch("/api/admin/site-image", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ projectId,
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          lastModified: file.lastModified,
-          data: await fileToBase64(file),
-        }),
+        body: JSON.stringify({ projectId, ...uploadedFile }),
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
@@ -408,10 +383,8 @@ export default function Setting() {
       if (payload.downloadUrl) {
         setSiteImagePreview(payload.downloadUrl);
       }
-    } catch {
-      setSiteSaveMessage(
-        "Unable to save site image. Check your Firebase connection."
-      );
+    } catch (error) {
+      setSiteSaveMessage(error instanceof Error ? error.message : "대상지 이미지를 저장하지 못했습니다. 연결 상태를 확인해주세요.");
     }
   };
 

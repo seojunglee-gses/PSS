@@ -1,3 +1,4 @@
+import { contextualQuestion, type ConversationMessage } from "../chat-history";
 import type { EvidenceSource } from "./types";
 
 export function resolveSources(question: string, selected: EvidenceSource[] = []): EvidenceSource[] {
@@ -14,4 +15,10 @@ export function resolveSources(question: string, selected: EvidenceSource[] = []
   if (research) result.push("research");
   // Ambiguous questions use existing project context and the normal answer call.
   return result.length ? result : ["project"];
+}
+
+export function sourceRoutingQuestion(question: string, history: ConversationMessage[]) {
+  // A concrete new project/spatial question must not inherit an earlier literature/case search.
+  if (!/논문|연구|학술|사례|research|stud(?:y|ies)|cases?/i.test(question) && /도로\s*폭|면적|필지|토지\s*이용|주요\s*문제|사업\s*(배경|목표)|대상지\s*확인/i.test(question)) return question;
+  return contextualQuestion(question, history);
 }
