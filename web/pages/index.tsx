@@ -160,7 +160,7 @@ export default function Home() {
   useEffect(() => {
     if (!user || projects.length === 0) return;
     const entries = projects.map((project) => {
-      const preview = project.workspaceContent?.problem?.imageUrl ?? "";
+      const preview = (project.workspaceContent?.problem?.imageUrl ?? "").split(/\r?\n/)[0];
       return [project.projectId, preview] as const;
     });
     setProjectThumbnails(Object.fromEntries(entries));

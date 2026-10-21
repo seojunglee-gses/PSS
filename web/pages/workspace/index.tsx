@@ -8,6 +8,8 @@ const SpatialAnalysis = dynamic(() => import("../../components/spatial/SpatialAn
 import ProjectAccessGate from "../../components/projects/ProjectAccessGate";
 import AppShell from "../../components/AppShell";
 import WorkspacePanels from "../../components/WorkspacePanels";
+import ContentEditor, { ContentText } from "../../components/ContentEditor";
+import ProjectImageGallery from "../../components/ProjectImageGallery";
 import { DEFAULT_PANEL_RATIO, type WorkspacePanelView } from "../../lib/workspace-layout";
 import StageChatEmptyState from "../../components/chat/StageChatEmptyState";
 import { resolveSources } from "../../lib/research/routing";
@@ -44,6 +46,8 @@ import { conversationHistory, contextualQuestion } from "../../lib/chat-history"
 import type { Finding } from "../../lib/research/types";
 import { researchLabels } from "../../lib/research/labels";
 import { DEFAULT_SOURCES, usedAnswerEvidence, type AnalysisRecord, type EvidenceSource } from "../../lib/research/types";
+
+const providerLabel = (value: string) => /^chatgpt$/i.test(value) ? "ChatGPT" : value;
 
 const getChatModelByProvider = (provider: string) => {
   if (provider.toLowerCase() === "gemini") {
@@ -478,6 +482,24 @@ function AuthorizedWorkspace() {
 }, [chatLogs, savedSummaries]);
   
   const [completedStages, setCompletedStages] = useState<string[]>([]);
+  const [completionOpen, setCompletionOpen] = useState(false);
+  const completionResolver = useRef<((confirmed: boolean) => void) | null>(null);
+  const completionDialog = useRef<HTMLDialogElement>(null);
+  const confirmCompletion = () => new Promise<boolean>((resolve) => {
+    if (completionResolver.current) { resolve(false); return; }
+    completionResolver.current = resolve;
+    setCompletionOpen(true);
+  });
+  const closeCompletion = (confirmed: boolean) => {
+    setCompletionOpen(false);
+    completionResolver.current?.(confirmed);
+    completionResolver.current = null;
+  };
+  useEffect(() => {
+    if (completionOpen) completionDialog.current?.showModal();
+    else completionDialog.current?.close();
+  }, [completionOpen]);
+  useEffect(() => () => completionResolver.current?.(false), []);
   const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
   const [revisedAfterLock, setRevisedAfterLock] = useState<
     Record<string, boolean>
@@ -1032,7 +1054,7 @@ const handleSend = async (suggestedQuestion?: string) => {
   const userMessage = (suggestedQuestion ?? inputValue).trim();
   if (!userMessage) return;
   if (!userKey || !hasLoadedChatLogs) return;
-  if (lockedStages[activeStep.id]) return;
+  if (lockedStages[activeStep.id] || completedStages.includes(activeStep.id)) return;
 
   if (sendingRef.current) return;
   if (activeStep.id === "alternatives" && isLoadingAlternatives) {
@@ -1206,7 +1228,8 @@ const handleSend = async (suggestedQuestion?: string) => {
       }
     };
 
-  const handleCompleteStep = async () => {
+  const handleCompleteStep = async (confirmed = false) => {
+    if (isSummarizing || completedStages.includes(activeStep.id)) return;
     if (lockedStages[activeStep.id]) {
       setFinishNotice({
         status: "error",
@@ -1221,6 +1244,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         });
       return;
     }
+    if (!confirmed && !await confirmCompletion()) return;
     setSavedSummaries((prev) => ({
       ...prev,
       [activeStep.id]: stepSummaries[activeStep.id],
@@ -1268,6 +1292,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       }
       setCompletedStages(nextCompletedStages);
       setFinishNotice({ status: "success", message: t("workspace.reportTitle") + " ✓" });
+      return true;
     } catch (error) {
       setFinishNotice({
         status: "error",
@@ -1310,6 +1335,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       return;
     }
 
+    if (!await confirmCompletion()) return;
     setEvaluationImages((prev) => {
       const exists = prev.some((image) => image.id === selected.id);
       if (exists) {
@@ -1324,7 +1350,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     await saveUserDesignSubmission(userKey, selected.id, projectId);
     await refreshEvaluationImages();
     setSelectedAlternative(null);
-    await handleCompleteStep();
+    await handleCompleteStep(true);
   };
 
   const handleSubmitRankings = async () => {
@@ -1334,6 +1360,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     if (!evaluationImages.length) {
       return;
     }
+    if (!await confirmCompletion()) return;
     const payload = {
       submittedAt: new Date().toISOString(),
       rankings,
@@ -1346,13 +1373,17 @@ const handleSend = async (suggestedQuestion?: string) => {
     });
     await sendEvaluationResult(payload, projectId);
 
-    await handleCompleteStep();
+    await handleCompleteStep(true);
   };
 
   useEffect(() => {
     followLatestRef.current = true;
     messageScrollRef.current = 0;
   }, [chatScope]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
+  }, [projectId]);
 
   useEffect(() => {
     const list = messageListRef.current;
@@ -1491,6 +1522,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     setEditingStageId(null);
   }, [activeProject?.projectId]);
 
+  const [imageUploading, setImageUploading] = useState(false);
   const isEditingExplanation = editingStageId !== null;
   const hasUnsavedExplanationChanges = useMemo(() => {
     if (!activeProject || !editingStageId) return false;
@@ -1501,9 +1533,10 @@ const handleSend = async (suggestedQuestion?: string) => {
   }, [activeProject, editingStageId, problemDraft, dataDraft]);
 
   const confirmDiscardUnsaved = useCallback(() => {
+    if (imageUploading) return false;
     if (!hasUnsavedExplanationChanges) return true;
     return window.confirm(t("workspace.unsavedDiscard"));
-  }, [hasUnsavedExplanationChanges]);
+  }, [hasUnsavedExplanationChanges, imageUploading]);
 
   const beginEditStage = useCallback(
     (stageId: EditableStageId) => {
@@ -1604,13 +1637,13 @@ const handleSend = async (suggestedQuestion?: string) => {
         }
         return <span key={`text-${segmentIndex}`}>{segment}</span>;
       });
-    const isStageLocked = Boolean(lockedStages[activeStep.id]);
+    const isStageLocked = Boolean(lockedStages[activeStep.id]) || completedStages.includes(activeStep.id);
     return (
     <div className="workspace-chat relative rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm xl:p-6">
       <div className="workspace-chat-header flex items-center justify-between">
         <div className="workspace-chat-title">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
-            {activeProvider}
+          <p className="text-xs font-semibold tracking-[0.3em] text-blue-400">
+            {providerLabel(activeProvider)}
           </p>
           <h3 className="mt-2 text-lg font-semibold">{activeStep.id === "data" ? analysisLabels.analysisChat : t("workspace.apiConversation")}</h3>
         </div>
@@ -1621,16 +1654,10 @@ const handleSend = async (suggestedQuestion?: string) => {
                 className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:border-[var(--primary)] hover:text-[var(--primary)]"
                 type="button"
                 onClick={async () => {
-                  const nextLocks = {
-                    ...lockedStages,
-                    [activeStep.id]: true,
-                  };
+                  if (!await handleCompleteStep()) return;
+                  const nextLocks = { ...lockedStages, [activeStep.id]: true };
                   setLockedStages(nextLocks);
-                  await saveStageLocks({
-                    lockedStages: nextLocks,
-                    revisedAfterLock,
-                    updatedBy: user.email ?? user.uid,
-                  }, projectId);
+                  await saveStageLocks({ lockedStages: nextLocks, revisedAfterLock, updatedBy: user.email ?? user.uid }, projectId);
                 }}
                 disabled={isStageLocked}
               >
@@ -1656,14 +1683,14 @@ const handleSend = async (suggestedQuestion?: string) => {
                     updatedBy: user.email ?? user.uid,
                   }, projectId);
                 }}
-                disabled={!isStageLocked}
+                disabled={!lockedStages[activeStep.id]}
               >
                 🔓 {t("workspace.reopenStage")}
               </button>
             </>
           )}
           <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[var(--primary)]">
-            {activeProvider}
+            {providerLabel(activeProvider)}
           </span>
         </div>
       </div>
@@ -1704,8 +1731,8 @@ const handleSend = async (suggestedQuestion?: string) => {
                   : "border-slate-200 bg-white"
               } ${isAssistant ? "mr-auto" : "ml-auto"}`}
             >
-              <p className="text-xs font-semibold uppercase text-slate-400">
-                {message.label}
+              <p className="text-xs font-semibold text-slate-400">
+                {providerLabel(message.label)}
               </p>
               {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} additionalSources={[...(message.analysis.evidence.projectContext ? ["project" as const] : []), ...(message.analysis.spatialContext ? ["spatial" as const] : [])]} onViewEvidence={(sourceId) => {
                 setInspectedEvidence(usedAnswerEvidence(message.analysis!));
@@ -1718,7 +1745,8 @@ const handleSend = async (suggestedQuestion?: string) => {
                   const target = document.getElementById(`evidence-${sourceId}`);
                   const details = target?.querySelector("details");
                   if (details) details.open = true;
-                  target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                  const panel = target?.closest<HTMLElement>(".workspace-information");
+                  if (target && panel) panel.scrollTo({ top: panel.scrollTop + target.getBoundingClientRect().top - panel.getBoundingClientRect().top - 12, behavior: "smooth" });
                 }, 0);
               }} />}
               {message.text && !message.analysis && (
@@ -1812,8 +1840,8 @@ const handleSend = async (suggestedQuestion?: string) => {
       <button
         className="workspace-chat-finish mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50 lg:mt-4"
         type="button"
-        onClick={handleCompleteStep}
-        disabled={isSummarizing}
+        onClick={() => { void handleCompleteStep(); }}
+        disabled={isSummarizing || isStageLocked}
       >
         {isSummarizing ? t("workspace.updating") : t("workspace.finishStage")}
       </button>
@@ -1834,8 +1862,8 @@ const handleSend = async (suggestedQuestion?: string) => {
         <p className="max-w-3xl text-sm text-slate-500">
           {(normalizedActiveRole ? t(roleDescriptionKeys[normalizedActiveRole]) : undefined) ?? t("workspace.fallback")}
         </p>
-        <div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
-          {t("workspace.provider")}: {activeProvider}
+        <div className="text-xs font-semibold tracking-[0.3em] text-blue-300">
+          {t("workspace.provider")}: {providerLabel(activeProvider)}
         </div>
       </section>
 
@@ -1853,7 +1881,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                 }`}
                 type="button"
                 onClick={() => {
-                  if (step.id === activeStep.id) return;
+                  if (imageUploading || step.id === activeStep.id) return;
                   if (isEditingExplanation && hasUnsavedExplanationChanges) {
                     const ok = window.confirm(t("workspace.unsavedSwitchStage"));
                     if (!ok) return;
@@ -1910,29 +1938,16 @@ const handleSend = async (suggestedQuestion?: string) => {
                   </button>
                   {editingStageId === "problem" && (
                     <>
-                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>{t("workspace.cancel")}</button>
-                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>{t("workspace.save")}</button>
+                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" disabled={imageUploading} onClick={cancelEditStage}>{t("workspace.cancel")}</button>
+                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" disabled={imageUploading} onClick={saveEditStage}>{t("workspace.save")}</button>
                     </>
                   )}
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              className="mt-2 flex min-h-40 w-full items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
-              onClick={() => {
-                if (!canEditContent || editingStageId !== "problem") return;
-                const next = window.prompt(t("workspace.problemImageUrlPrompt"), problemDraft.imageUrl ?? "");
-                if (next === null) return;
-                setProblemDraft((prev) => ({ ...prev, imageUrl: next.trim() }));
-              }}
-            >
-              {(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ? (
-                <img src={(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ?? ""} alt={t("step.problem")} className="h-auto w-full object-contain" />
-              ) : (
-                <span>{canEditContent && editingStageId === "problem" ? t("workspace.clickToAddImage") : t("workspace.noImage")}</span>
-              )}
-            </button>
+            <ProjectImageGallery value={(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ?? ""}
+              editable={canEditContent && editingStageId === "problem"} projectId={projectId} onBusyChange={setImageUploading}
+              onChange={(imageUrl) => setProblemDraft((prev) => ({ ...prev, imageUrl }))} />
             <h4
               className={`mt-4 whitespace-pre-wrap text-lg font-semibold ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
               contentEditable={canEditContent && editingStageId === "problem" ? "plaintext-only" : false}
@@ -1944,17 +1959,10 @@ const handleSend = async (suggestedQuestion?: string) => {
             >
               {(editingStageId === "problem" ? problemDraft.title : activeProject?.workspaceContent.problem.title) || t("workspace.defaultProjectTitle")}
             </h4>
-            <p
-              className={`mt-4 whitespace-pre-wrap text-sm text-slate-500 ${canEditContent && editingStageId === "problem" ? "cursor-text rounded px-1 hover:bg-slate-100" : ""}`}
-              contentEditable={canEditContent && editingStageId === "problem" ? "plaintext-only" : false}
-              suppressContentEditableWarning
-              onBlur={(event) => {
-                const text = event.currentTarget.textContent ?? "";
-                setProblemDraft((prev) => ({ ...prev, text }));
-              }}
-            >
-              {(editingStageId === "problem" ? problemDraft.text : activeProject?.workspaceContent.problem.text) || t("workspace.defaultProblemText")}
-            </p>
+            {canEditContent && editingStageId === "problem" ? (
+              <ContentEditor label="사업 배경 및 설명" value={problemDraft.text} onChange={(text) => setProblemDraft((prev) => ({ ...prev, text }))} />
+            ) : <ContentText value={activeProject?.workspaceContent.problem.text || t("workspace.defaultProblemText")} />}
+
           </div>
           {renderChatPanel()}
         </WorkspacePanels>
@@ -1963,6 +1971,11 @@ const handleSend = async (suggestedQuestion?: string) => {
       {activeStep.id === "data" && (
         <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <p className="text-sm leading-relaxed text-slate-600">대상지 자료를 확인하고, 비슷한 사례와 관련 연구를 찾아 현재 사업에 적용할 수 있는 근거를 정리해보세요.</p>
+              <ul className="mt-3 flex flex-wrap gap-2 text-xs text-blue-700">{["대상지 확인", "공간 분석", "사례 비교", "연구 근거 찾기"].map((goal) => <li key={goal} className="rounded-full bg-blue-50 px-3 py-1">{goal}</li>)}</ul>
+              {canEditContent && editingStageId === "data" ? <ContentEditor label="사업 자료 설명" value={dataDraft.text} onChange={(text) => setDataDraft((prev) => ({ ...prev, text }))} /> : activeProject?.workspaceContent.data.text && <ContentText value={activeProject.workspaceContent.data.text} />}
+            </div>
             <div role="tablist" aria-label={`${analysisLabels.cases} / 공간 분석 / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
               {(["cases", "spatial", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
                 id={`analysis-${view}-tab`} aria-controls={`analysis-${view}-panel`} aria-selected={analysisView === view}
@@ -2017,8 +2030,8 @@ const handleSend = async (suggestedQuestion?: string) => {
                   </button>
                   {editingStageId === "data" && (
                     <>
-                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" onClick={cancelEditStage}>{t("workspace.cancel")}</button>
-                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" onClick={saveEditStage}>{t("workspace.save")}</button>
+                      <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" disabled={imageUploading} onClick={cancelEditStage}>{t("workspace.cancel")}</button>
+                      <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" disabled={imageUploading} onClick={saveEditStage}>{t("workspace.save")}</button>
                     </>
                   )}
                 </div>
@@ -2094,14 +2107,10 @@ const handleSend = async (suggestedQuestion?: string) => {
                             <span>{canEditContent && editingStageId === "data" ? t("workspace.clickToAddImage") : t("workspace.noImage")}</span>
                           )}
                         </button>
-                        <p
-                          className={`mt-3 whitespace-pre-wrap text-sm text-slate-600 ${canEditContent && editingStageId === "data" ? "cursor-text rounded px-1 hover:bg-white" : ""}`}
-                          contentEditable={canEditContent && editingStageId === "data" ? "plaintext-only" : false}
-                          suppressContentEditableWarning
-                          onBlur={(event) => saveDataCaseDraft(activeCase.id, { text: event.currentTarget.textContent ?? "" })}
-                        >
-                          {activeCase.text}
-                        </p>
+                        {canEditContent && editingStageId === "data" ? (
+                          <ContentEditor key={activeCase.id} label="사례 자료" value={activeCase.text} onChange={(text) => saveDataCaseDraft(activeCase.id, { text })} />
+                        ) : <ContentText value={activeCase.text} />}
+
                       </>
                     );
                   })()}
@@ -2418,7 +2427,7 @@ const handleSend = async (suggestedQuestion?: string) => {
             <button
               className="mt-6 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
               type="button"
-              onClick={handleCompleteStep}
+              onClick={() => { void handleCompleteStep(); }}
             >
               {t("workspace.finishStage")}
             </button>
@@ -2557,6 +2566,16 @@ const handleSend = async (suggestedQuestion?: string) => {
         </WorkspacePanels>
       )}
       </div>
+      <dialog ref={completionDialog} aria-labelledby="completion-title" aria-describedby="completion-description"
+        className="m-auto w-[calc(100%_-_32px)] max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl backdrop:bg-slate-900/40"
+        onCancel={(event) => { event.preventDefault(); closeCompletion(false); }}>
+        <h3 id="completion-title" className="text-lg font-semibold">이 단계를 완료할까요?</h3>
+        <p id="completion-description" className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600">{"단계를 완료하면 더 이상 이 단계에서 채팅을 작성할 수 없습니다.\n지금까지의 대화와 결과를 바탕으로 다음 단계에서 활용할 요약 보고서가 생성됩니다."}</p>
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" className="min-h-11 rounded-full border px-5 py-2 text-sm" onClick={() => closeCompletion(false)}>취소</button>
+          <button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-5 py-2 text-sm font-semibold text-white" onClick={() => closeCompletion(true)}>단계 완료</button>
+        </div>
+      </dialog>
       {selectedImage && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4"
