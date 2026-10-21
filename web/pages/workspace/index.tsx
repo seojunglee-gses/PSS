@@ -274,6 +274,55 @@ function AuthorizedWorkspace() {
   const [activeStep, setActiveStep] = useState(steps[0]);
   const [panelRatio, setPanelRatio] = useState(DEFAULT_PANEL_RATIO);
   const [panelView, setPanelView] = useState<WorkspacePanelView>("information");
+  const [compactHeader, setCompactHeader] = useState(false);
+  const workspaceContentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = workspaceContentRef.current;
+    if (!root) return;
+    const positions = new WeakMap<Element, number>();
+    let activeUntil = 0;
+    let lockedUntil = 0;
+    let downwardDistance = 0;
+    let compact = root.dataset.headerCompact === "true";
+    const change = (next: boolean) => {
+      if (compact === next || performance.now() < lockedUntil) return;
+      compact = next; downwardDistance = 0; lockedUntil = performance.now() + 400;
+      setCompactHeader(next);
+    };
+    const arm = (event: Event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".maplibregl-map")) return;
+      if (event instanceof KeyboardEvent && (!['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' '].includes(event.key) || target?.closest('input, textarea, [contenteditable="true"]'))) return;
+      const now = performance.now();
+      if (now > activeUntil) downwardDistance = 0;
+      activeUntil = now + 300;
+      const panel = target?.closest(".workspace-information, .workspace-chat-messages");
+      if (panel && !positions.has(panel)) positions.set(panel, panel.scrollTop);
+      // Wheel-up at the top does not emit a scroll event.
+      if (panel && panel.scrollTop <= 8 && event instanceof WheelEvent && event.deltaY < 0) change(false);
+    };
+    const scroll = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest(".workspace-panels")) return;
+      const top = target.scrollTop;
+      const delta = top - (positions.get(target) ?? 0);
+      positions.set(target, top);
+      if (performance.now() > activeUntil || performance.now() < lockedUntil) return;
+      downwardDistance = delta > 0 ? downwardDistance + delta : 0;
+      if (top > 64 && downwardDistance > 56) change(true);
+      else if (top <= 8 && delta < 0) change(false);
+    };
+    root.addEventListener("scroll", scroll, true);
+    root.addEventListener("wheel", arm, { passive: true });
+    root.addEventListener("touchmove", arm, { passive: true });
+    root.addEventListener("keydown", arm);
+    return () => {
+      root.removeEventListener("scroll", scroll, true);
+      root.removeEventListener("wheel", arm);
+      root.removeEventListener("touchmove", arm);
+      root.removeEventListener("keydown", arm);
+    };
+  }, [loading, userKey]);
   const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
@@ -1828,27 +1877,30 @@ const handleSend = async (suggestedQuestion?: string) => {
   return (
     <AppShell workspaceLayout>
       {projectError && !contentSaveError && <p role="alert" className="mb-4 text-sm text-rose-600">{projectError}</p>}
-      <div className="workspace-content">
-      <section className="workspace-intro flex flex-col gap-2">
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
+      <div ref={workspaceContentRef} className="workspace-content" data-header-compact={compactHeader}>
+      <section className="workspace-intro flex flex-col gap-2" aria-label={t("workspace.title")}>
+        <p className="workspace-intro-badge text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
           {t("workspace.badge")}
         </p>
-        <h2 className="text-3xl font-semibold">{t("workspace.title")}</h2>
+        <h2 className="text-3xl font-semibold">{t("workspace.title")}<span className="workspace-compact-stage"> · {t(activeStep.titleKey)}</span></h2>
+        <div className="workspace-intro-details"><div>
         <p className="max-w-3xl text-sm text-slate-500">
           {(normalizedActiveRole ? t(roleDescriptionKeys[normalizedActiveRole]) : undefined) ?? t("workspace.fallback")}
         </p>
         <div className="text-xs font-semibold tracking-[0.3em] text-blue-300">
           {t("workspace.provider")}: {providerLabel(activeProvider)}
         </div>
+        </div></div>
       </section>
 
       <section className="workspace-stage-nav rounded-3xl border border-[var(--border)] bg-white px-4 py-4 shadow-sm lg:px-6 lg:py-6">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 lg:gap-3">
+        <div className="workspace-stage-list">
           {steps.map((step) => {
             const isActive = step.id === activeStep.id;
             return (
               <button
                 key={step.id}
+                aria-current={isActive ? "step" : undefined}
                 className={`flex items-center gap-2 rounded-2xl px-3 py-2 text-left text-xs font-semibold transition ${
                   isActive
                     ? "bg-[var(--primary)] text-white shadow-md"
@@ -1877,7 +1929,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                 >
                   {step.icon}
                 </span>
-                <span className="truncate">{t(step.titleKey)}</span>
+                <span className="whitespace-nowrap">{t(step.titleKey)}</span>
               </button>
             );
           })}

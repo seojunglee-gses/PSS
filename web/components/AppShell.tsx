@@ -110,6 +110,15 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const sidebarExpanded = sidebarPinned || sidebarOpen || sidebarHovered;
   const sidebarRef = useRef<HTMLElement>(null);
+  const mobileToggleRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setMobileNavOpen(false); mobileToggleRef.current?.focus(); }
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [mobileNavOpen]);
   useEffect(() => {
     if (!sidebarOpen || sidebarPinned) return;
     const closeOutside = (event: PointerEvent) => {
@@ -222,7 +231,7 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
           <div className="desktop-sidebar-panel">
             <div className="flex items-center justify-between gap-2">
               <button type="button" className="sidebar-toggle" aria-label={t(sidebarExpanded ? "shell.sidebarCollapse" : "shell.sidebarExpand")} aria-expanded={sidebarExpanded}
-                onClick={() => sidebarExpanded ? closeSidebar() : setSidebarOpen(true)}>☰</button>
+                onClick={() => sidebarOpen || sidebarPinned ? closeSidebar() : setSidebarOpen(true)}>☰</button>
               <button type="button" className="sidebar-detail sidebar-pin" aria-pressed={sidebarPinned}
                 onClick={() => { pinSidebar(!sidebarPinned); setSidebarOpen(false); }}>{t(sidebarPinned ? "shell.sidebarUnpin" : "shell.sidebarPin")}</button>
             </div>
@@ -230,9 +239,11 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
           </div>
         </aside>
         {mobileNavOpen && (
-          <div className="fixed inset-0 z-40 bg-slate-900/50 lg:hidden" onClick={() => setMobileNavOpen(false)}>
+          <div className={`shell-overlay fixed inset-0 z-40 bg-slate-900/50 ${isWorkspace ? "workspace-sidebar-overlay" : "lg:hidden"}`} onClick={() => setMobileNavOpen(false)}>
             <aside
-              className="h-full w-72 max-w-[85vw] overflow-y-auto bg-[var(--primary)] px-5 py-5 text-white shadow-xl"
+              className={`h-full w-72 max-w-[85vw] overflow-y-auto bg-[var(--primary)] px-5 py-5 text-white shadow-xl ${isWorkspace ? "workspace-sidebar-drawer" : ""}`}
+              aria-label={t("shell.sidebarExpand")}
+              id={isWorkspace ? "workspace-sidebar-drawer" : undefined}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mb-4 flex items-center justify-end">
@@ -251,6 +262,15 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
         )}
         <main className="shell-main min-w-0 flex-1 px-4 py-6 lg:px-10 lg:py-10">
           <div className="shell-content mx-auto flex w-full max-w-[1200px] flex-col gap-6">
+            {isWorkspace ? (
+              <header className="workspace-account-row">
+                <button ref={mobileToggleRef} type="button" className="workspace-menu-toggle sidebar-toggle" aria-label={t(mobileNavOpen ? "shell.sidebarCollapse" : "shell.sidebarExpand")}
+                  aria-expanded={mobileNavOpen} aria-controls="workspace-sidebar-drawer" onClick={() => setMobileNavOpen((open) => !open)}>☰</button>
+                <span className="shrink-0 font-semibold text-slate-700">{displayRole}</span>
+                <span className="min-w-0 truncate text-slate-500">{user?.email ?? t("shell.notAuthenticated")}</span>
+                {user && <button type="button" className="ml-auto min-h-11 shrink-0 px-2 font-semibold text-slate-600" onClick={handleLogout}>{t("shell.logout")}</button>}
+              </header>
+            ) : <>
             <div className="shell-mobile-bar flex items-center justify-between rounded-2xl border border-[var(--primary)]/40 bg-[var(--primary)] px-4 py-3 text-white shadow-sm lg:hidden">
               <button
                 type="button"
@@ -306,6 +326,7 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
                 )}
               </div>
             </div>
+            </>}
             <div className="shell-route-content flex w-full flex-col gap-8">{children}</div>
           </div>
         </main>
