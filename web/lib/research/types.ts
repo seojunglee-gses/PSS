@@ -71,8 +71,20 @@ export function compactEvidence(evidence: EvidenceBundle): AnalysisRecord["evide
 }
 
 // Viewing an answer uses its cited findings, independently of the next question's sources.
+export function inlineSourceIds(text: string): string[] {
+  return [...text.matchAll(/\[((?:[CR]:)[^\[\]]+)\]/g)]
+    .flatMap((match) => match[1].split(/\s*[,;]\s*/).map((id) => id.trim()));
+}
+
+export function answerNarrative(answer: AnalysisAnswer): string[] {
+  return [answer.summary, answer.agreement, answer.differences, answer.integratedInterpretation, ...answer.projectImplications, answer.limitations];
+}
+
 export function usedSourceIds(answer: AnalysisAnswer): Set<string> {
-  return new Set([...answer.caseFindings, ...answer.researchFindings].flatMap((finding) => finding.sourceIds));
+  return new Set([
+    ...[...answer.caseFindings, ...answer.researchFindings].flatMap((finding) => finding.sourceIds),
+    ...answerNarrative(answer).flatMap(inlineSourceIds),
+  ]);
 }
 
 export function usedAnswerEvidence(record: AnalysisRecord): AnalysisRecord["evidence"] {

@@ -4,10 +4,14 @@ import type { SpatialResult } from "../spatial/types";
 import { searchOpenAlex } from "./openalex";
 import { SOURCE_OPTIONS } from "./types";
 import { resolveSources } from "./routing";
+import { conversationHistory, contextualQuestion } from "../chat-history";
+import type { ConversationMessage } from "../chat-history";
 import type { CaseEvidence, CaseMaterial, EvidenceBundle, EvidenceSource } from "./types";
 
 export type AnalysisRequest = {
   question: string;
+  history?: ConversationMessage[];
+  searchQuestion?: string;
   spatialContext?: SpatialResult;
   selectedSources: EvidenceSource[];
   cases: CaseMaterial[];
@@ -28,9 +32,13 @@ export function parseAnalysisRequest(body: unknown): AnalysisRequest {
     return { id: (c.id as string).slice(0, 100), label: (c.label as string).slice(0, 200), title: (c.title as string).slice(0, 300), text: (c.text as string).slice(0, 6000) };
   });
   const selected = (input.selectedSources ?? []) as EvidenceSource[];
-  const sources = resolveSources(input.question.trim(), selected);
+  const history = conversationHistory(input.history);
+  const searchQuestion = contextualQuestion(input.question.trim(), history);
+  const sources = resolveSources(searchQuestion, selected);
   return {
     question: input.question.trim(),
+    history,
+    searchQuestion,
     spatialContext: sources.includes("spatial") ? canonicalBuildingContext(parseSpatialResult(input.spatialContext)) : undefined,
     selectedSources: sources,
     cases,
@@ -60,12 +68,12 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
   }
   if (request.selectedSources.includes("spatial") && !request.spatialContext) evidence.warnings.push({ source: "spatial", message: "공간 분석 결과가 없습니다. 공간 분석에서 질문에 필요한 분석을 먼저 실행해주세요." });
   if (request.selectedSources.includes("cases")) {
-    evidence.cases = selectCases(request.question, request.cases);
+    evidence.cases = selectCases(request.searchQuestion ?? request.question, request.cases);
     if (!evidence.cases.length) evidence.warnings.push({ source: "cases", message: "No substantive case-study materials are available for this project." });
   }
   if (request.selectedSources.includes("research")) {
     try {
-      evidence.papers = await searchOpenAlex(request.question, request.provider);
+      evidence.papers = await searchOpenAlex(request.searchQuestion ?? request.question, request.provider);
       if (!evidence.papers.length) evidence.warnings.push({ source: "research", message: "No relevant research papers were found. Try a more specific question." });
       else if (!evidence.papers.some((paper) => paper.abstract)) evidence.warnings.push({ source: "research", message: "The retrieved papers have no available abstracts; research findings cannot be inferred from titles alone." });
     } catch (error) {
