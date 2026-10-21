@@ -94,10 +94,12 @@ const navigation = [
 
 interface AppShellProps {
   children: ReactNode;
+  workspaceLayout?: boolean;
 }
 
-export default function AppShell({ children }: AppShellProps) {
+export default function AppShell({ children, workspaceLayout = false }: AppShellProps) {
   const router = useRouter();
+  const isWorkspace = workspaceLayout && router.pathname === "/workspace";
   const { user, signOutUser } = useAuth();
   const { locale, setLocale, t } = useI18n();
   const [role, setRole] = useState<string>("Guest");
@@ -211,8 +213,8 @@ export default function AppShell({ children }: AppShellProps) {
   );
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]" style={{ "--sidebar-width": sidebarPinned ? "288px" : "76px" } as CSSProperties}>
-      <div className="flex min-h-screen flex-col lg:flex-row">
+    <div className={`app-shell min-h-screen bg-[var(--background)] text-[var(--foreground)] ${isWorkspace ? "workspace-shell" : ""}`} style={{ "--sidebar-width": sidebarPinned ? "288px" : "76px" } as CSSProperties}>
+      <div className="shell-frame flex min-h-screen flex-col lg:flex-row">
         <aside ref={sidebarRef} className="desktop-sidebar hidden lg:block" data-pinned={sidebarPinned} data-expanded={sidebarExpanded}
           onPointerEnter={(event) => { if (event.pointerType === "mouse" && window.matchMedia("(hover: hover) and (pointer: fine)").matches) setSidebarHovered(true); }}
           onPointerLeave={() => setSidebarHovered(false)}
@@ -247,9 +249,9 @@ export default function AppShell({ children }: AppShellProps) {
             </aside>
           </div>
         )}
-        <main className="min-w-0 flex-1 px-4 py-6 lg:px-10 lg:py-10">
-          <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6">
-            <div className="flex items-center justify-between rounded-2xl border border-[var(--primary)]/40 bg-[var(--primary)] px-4 py-3 text-white shadow-sm lg:hidden">
+        <main className="shell-main min-w-0 flex-1 px-4 py-6 lg:px-10 lg:py-10">
+          <div className="shell-content mx-auto flex w-full max-w-[1200px] flex-col gap-6">
+            <div className="shell-mobile-bar flex items-center justify-between rounded-2xl border border-[var(--primary)]/40 bg-[var(--primary)] px-4 py-3 text-white shadow-sm lg:hidden">
               <button
                 type="button"
                 className="flex min-h-11 items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white"
@@ -286,7 +288,7 @@ export default function AppShell({ children }: AppShellProps) {
                 </div>
               </div>
             )}
-            <div className="hidden flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-white px-6 py-4 shadow-sm lg:flex">
+            <div className="shell-account-bar hidden flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--border)] bg-white px-6 py-4 shadow-sm lg:flex">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">{t("shell.signedInAs")}</p>
                 <p className="mt-1 text-lg font-semibold text-slate-800">{displayRole}</p>
@@ -304,7 +306,7 @@ export default function AppShell({ children }: AppShellProps) {
                 )}
               </div>
             </div>
-            <div className="flex w-full flex-col gap-8">{children}</div>
+            <div className="shell-route-content flex w-full flex-col gap-8">{children}</div>
           </div>
         </main>
       </div>
