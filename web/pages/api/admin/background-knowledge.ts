@@ -1,16 +1,13 @@
+import { prepareStorageUpload, readStorageUpload } from "../../../lib/storage-upload-server";
+import { validProjectId } from "../../../lib/membership/server";
 import { MODELS } from "../../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { adminBucket, adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
+import { adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
-type UploadedFile = {
-  name: string;
-  type: string;
-  size: number;
-  lastModified: number;
-  data: string;
-};
+type UploadedFile = { storagePath: string };
 
 async function extractDocxText(buffer: Buffer): Promise<string> {
   const mammothMod: any = await import("mammoth");
@@ -20,14 +17,11 @@ async function extractDocxText(buffer: Buffer): Promise<string> {
 }
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  const pdfParse: any = await import("pdf-parse");
-  const parse = pdfParse.default ?? pdfParse;
-  const data = await parse(buffer);
-  return data.text || "";
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({ data: buffer });
+  try { return (await parser.getText()).text || ""; }
+  finally { await parser.destroy(); }
 }
-
-const stripDataPrefix = (data: string) =>
-  data.includes(",") ? data.split(",")[1] : data;
 
 const isImageType = (type: string) =>
   type.startsWith("image/") || ["image/png", "image/jpeg"].includes(type);
@@ -65,39 +59,26 @@ export default async function handler(
 
     const token = authHeader.replace("Bearer ", "");
     const decoded = await verifyAdminRequest(token);
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "OPENAI_API_KEY is not configured." });
-    }
-
+    if (req.body?.action === "prepare") { res.status(200).json(await prepareStorageUpload(req, decoded.uid, "ppss-background-knowledge/originals")); return; }
     const { files, projectId } = req.body as { files?: UploadedFile[]; projectId?: string };
-    const scopedProjectId = projectId || "project-1";
-    if (!files?.length) {
+    const scopedProjectId = validProjectId(projectId);
+    if (!Array.isArray(files) || !files.length || files.length > 10) {
       res.status(400).json({ error: "At least one file is required." });
       return;
     }
 
-    const bucket = adminBucket();
     const db = adminDb();
     const timestamp = new Date().toISOString();
 
     const textChunks: string[] = [];
     const imageInputs: { type: "input_image"; image_url: string }[] = [];
 
-  await Promise.all(
-  files.map(async (file) => {
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const storagePath = `ppss-background-knowledge/originals/${scopedProjectId}/${timestamp}-${safeName}`;
-    const raw = stripDataPrefix(file.data);
-    const buffer = Buffer.from(raw, "base64");
-
-    // 1. Firebase Storage 저장
-    await bucket.file(storagePath).save(buffer, {
-      contentType: file.type || "application/octet-stream",
-    });
-
+  for (const input of files) {
+    const { buffer, ...file } = await readStorageUpload(input, scopedProjectId, decoded.uid, "ppss-background-knowledge/originals");
+    const { storagePath } = file;
     await db.collection(`ppssBackgroundKnowledgeArchives_${scopedProjectId}`).add({
       fileName: file.name,
+      projectId: scopedProjectId,
       storagePath,
       contentType: file.type || "application/octet-stream",
       size: file.size,
@@ -109,9 +90,9 @@ export default async function handler(
     if (isImageType(file.type)) {
       imageInputs.push({
         type: "input_image",
-        image_url: `data:${file.type};base64,${raw}`,
+        image_url: `data:${file.type};base64,${buffer.toString("base64")}`,
       });
-      return;
+      continue;
     }
 
     // 3. TXT
@@ -122,7 +103,7 @@ export default async function handler(
           `File: ${file.name}\n${truncate(extracted.trim(), 12000)}`
         );
       }
-      return;
+      continue;
     }
 
     // 4. DOCX
@@ -136,7 +117,7 @@ export default async function handler(
           `File: ${file.name}\n${truncate(extracted.trim(), 12000)}`
         );
       }
-      return;
+      continue;
     }
 
     // 5. PDF
@@ -147,10 +128,9 @@ export default async function handler(
           `File: ${file.name}\n${truncate(extracted.trim(), 12000)}`
         );
       }
-      return;
+      continue;
     }
-  })
-);
+  }
 
 
       if (!textChunks.length && !imageInputs.length) {
@@ -162,6 +142,8 @@ export default async function handler(
 
     const promptText = `Summarize the uploaded background knowledge for the PPSS workspace.\n\nInstructions:\n- Capture main content so every workspace user can rely on it.\n- Organize with short headings for: Project overview, Physical constrainsts, Social contexts, stakeholderIssues, Common requests, ext.\n- Keep it concise and actionable.\n\nContent:\n${textChunks.join("\n\n")}`;
 
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error("파일은 저장했지만 요약을 생성하지 못했습니다. OPENAI_API_KEY 설정을 확인해주세요.");
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {

@@ -12,7 +12,7 @@ import ContentEditor, { ContentText } from "../../components/ContentEditor";
 import ProjectImageGallery from "../../components/ProjectImageGallery";
 import { DEFAULT_PANEL_RATIO, type WorkspacePanelView } from "../../lib/workspace-layout";
 import StageChatEmptyState from "../../components/chat/StageChatEmptyState";
-import { resolveSources } from "../../lib/research/routing";
+import { resolveSources, sourceRoutingQuestion } from "../../lib/research/routing";
 import { stageChatGuide } from "../../lib/stage-chat-guides";
 import {
   loadChatLogsFromFirestore,
@@ -42,7 +42,7 @@ import { normalizeRoleId, roleLabelKeys, useI18n } from "../../lib/i18n";
 import SourceSelector from "../../components/analysis/SourceSelector";
 import EvidencePanel from "../../components/analysis/EvidencePanel";
 import AnalysisAnswerView from "../../components/analysis/AnalysisAnswer";
-import { conversationHistory, contextualQuestion } from "../../lib/chat-history";
+import { conversationHistory } from "../../lib/chat-history";
 import type { Finding } from "../../lib/research/types";
 import { researchLabels } from "../../lib/research/labels";
 import { DEFAULT_SOURCES, usedAnswerEvidence, type AnalysisRecord, type EvidenceSource } from "../../lib/research/types";
@@ -340,7 +340,6 @@ function AuthorizedWorkspace() {
     setExecutiveSummary(null);
     setAllWorkspaceSummaries([]);
     setCurrentSiteImage(null);
-    setSiteImageConfigured(false);
     setSiteImageId(null);
     setSelectedImage(null);
     setSelectedAlternative(null);
@@ -397,7 +396,6 @@ function AuthorizedWorkspace() {
   const messageHeightRef = useRef(0);
   const messageScrollRef = useRef(0);
   const [generatedImages, setGeneratedImages] = useState<DesignImage[]>([]);
-  const [siteImageConfigured, setSiteImageConfigured] = useState(false);
   const [siteImageId, setSiteImageId] = useState<string | null>(null);
   const [evaluationImages, setEvaluationImages] = useState<DesignImage[]>([]);
   const [isLoadingEvaluationImages, setIsLoadingEvaluationImages] =
@@ -759,11 +757,9 @@ function AuthorizedWorkspace() {
     const loadSiteImage = async () => {
       const current = await loadCurrentSiteImage(projectId);
       if (current?.imageId) {
-        setSiteImageConfigured(true);
         setSiteImageId(current.imageId);
         setCurrentSiteImage(current);
       } else {
-        setSiteImageConfigured(false);
         setSiteImageId(null);
       }
     };
@@ -938,15 +934,13 @@ function AuthorizedWorkspace() {
     if (!userKey) {
       throw new Error("Authentication required.");
     }
-    if (!siteImageConfigured || !siteImageId) {
-      throw new Error("Site image is not configured.");
-    }
 
     const isInitial = alternativeImages.length === 0;
     const response = await fetch("/api/generate-alternative", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user!.getIdToken()}` },
       body: JSON.stringify({
+          projectId,
         mode: isInitial ? "initial" : "iteration",
         history: conversationHistory(chatLogsByStep.alternatives ?? [], "alternatives"),
     
@@ -971,6 +965,7 @@ function AuthorizedWorkspace() {
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
+      if (response.status === 400 && /대상지 이미지|site image/i.test(err.error ?? "")) setShowSiteImageWarning(true);
       throw new Error(err.error ?? "Image generation failed.");
     }
 
@@ -1033,8 +1028,9 @@ function AuthorizedWorkspace() {
     buildImageGenerationInput,
     chatLogsByStep,
     savedSummaries,
-    siteImageConfigured,
     siteImageId,
+    projectId,
+    user,
     userKey,
   ]
 );
@@ -1069,7 +1065,7 @@ const handleSend = async (suggestedQuestion?: string) => {
 
   const stepId = activeStep.id;
   const history = conversationHistory(chatLogsByStep[stepId] ?? [], stepId);
-  const effectiveSources = resolveSources(contextualQuestion(userMessage, history), selectedSources);
+  const effectiveSources = resolveSources(sourceRoutingQuestion(userMessage, history), selectedSources);
   setSendingChatScope(chatScope);
   setIsSending(true);
   setErrorMessage(null);
@@ -1104,15 +1100,14 @@ const handleSend = async (suggestedQuestion?: string) => {
       const response = await fetch("/api/research/answer", {
         method: "POST",
         signal: controller.signal,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user!.getIdToken()}` },
         body: JSON.stringify({
+          projectId,
           question: userMessage,
           history,
           selectedSources,
           ...(effectiveSources.includes("spatial") && spatialResult?.projectId === projectId ? { spatialContext: spatialResult } : {}),
           provider: activeProvider,
-          cases: (activeProject?.workspaceContent.data.cases ?? []).map(({ id, label, title, text }) => ({ id, label, title, text })),
-          projectContext: [activeProject?.projectName, activeProject?.workspaceContent.problem.title, activeProject?.workspaceContent.problem.text, activeProject?.workspaceContent.data.text, savedSummaries.problem].filter(Boolean).join("\n\n"),
         }),
       });
       const payload = await response.json();
@@ -1131,11 +1126,6 @@ const handleSend = async (suggestedQuestion?: string) => {
     }
     let finalMessage = userMessage;
       if (stepId === "alternatives") {
-      if (!siteImageConfigured) {
-        setShowSiteImageWarning(true);
-        setErrorMessage("Image generation requires a site image.");
-        throw new Error("Site image not configured.");
-      }
 
       setIsLoadingAlternatives(true);
       try {
@@ -1181,8 +1171,9 @@ const handleSend = async (suggestedQuestion?: string) => {
 
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user!.getIdToken()}` },
         body: JSON.stringify({
+          projectId,
           provider: activeProvider,
           model: getChatModelByProvider(activeProvider),
           stepId,
@@ -1255,8 +1246,9 @@ const handleSend = async (suggestedQuestion?: string) => {
     try {
       const response = await fetch("/api/workspace-summary", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user!.getIdToken()}` },
         body: JSON.stringify({
+          projectId,
           currentStage: activeStep.id,
           workspaceInput: buildWorkspaceInput(),
         }),

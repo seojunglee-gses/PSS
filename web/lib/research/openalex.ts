@@ -37,8 +37,10 @@ function verifiedLink(value: string | undefined, host: string): string | null {
   } catch { return null; }
 }
 
-export function selectPapers(works: OpenAlexWork[], limit = 8): ResearchPaper[] {
+export function selectPapers(works: OpenAlexWork[], limit = 5): ResearchPaper[] {
   const seen = new Set<string>();
+  const titles = new Set<string>();
+  const dois = new Set<string>();
   // The provider's relevance order dominates; abstract availability breaks ties.
   // Citation counts are display metadata, never a ranking signal.
   return works
@@ -51,6 +53,14 @@ export function selectPapers(works: OpenAlexWork[], limit = 8): ResearchPaper[] 
     .map((work, position) => ({ work, position, abstract: reconstructAbstract(work.abstract_inverted_index) }))
     .sort((a, b) => Number(Boolean(b.abstract)) - Number(Boolean(a.abstract)) ||
       (b.work.relevance_score ?? 0) - (a.work.relevance_score ?? 0) || a.position - b.position)
+    .filter(({ work }) => {
+      const title = work.display_name!.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+      const doi = verifiedLink(work.doi, "doi.org")?.toLowerCase();
+      if (titles.has(title) || (doi && dois.has(doi))) return false;
+      titles.add(title);
+      if (doi) dois.add(doi);
+      return true;
+    })
     .slice(0, limit)
     .map(({ work, abstract }) => ({
       sourceId: `R:${work.id!.split("/").pop()}`,
@@ -74,15 +84,14 @@ export function researchSearchMode(question: string): "search" | "search.semanti
   return question.trim().split(/\s+/).length >= 10 || question.length >= 100 ? "search.semantic" : "search";
 }
 
-export async function searchOpenAlex(question: string, provider?: "openai" | "gemini" | "deepseek"): Promise<ResearchPaper[]> {
-  const query = await academicSearchQuery(question, provider);
+async function fetchPapers(query: string): Promise<ResearchPaper[]> {
   const cached = cache.get(query);
   if (cached && cached.expires > Date.now()) return cached.papers;
   const url = new URL("https://api.openalex.org/works");
   // Natural-language questions use semantic retrieval; concise queries use works search.
   url.searchParams.set(researchSearchMode(query), query);
-  url.searchParams.set("per-page", "25");
-  url.searchParams.set("filter", "is_retracted:false");
+  url.searchParams.set("per-page", "15");
+  url.searchParams.set("filter", "is_retracted:false,has_abstract:true");
   if (process.env.OPENALEX_API_KEY) url.searchParams.set("api_key", process.env.OPENALEX_API_KEY);
   if (process.env.OPENALEX_MAILTO) url.searchParams.set("mailto", process.env.OPENALEX_MAILTO);
   let response: Response;
@@ -106,4 +115,24 @@ export async function searchOpenAlex(question: string, provider?: "openai" | "ge
   if (cache.size >= 50) cache.delete(cache.keys().next().value!);
   cache.set(query, { expires: Date.now() + 5 * 60 * 1000, papers });
   return papers;
+}
+
+// Coalesce both conversion and retrieval, including concurrent requests for equivalent queries.
+const pendingQuestions = new Map<string, Promise<ResearchPaper[]>>();
+const pendingQueries = new Map<string, Promise<ResearchPaper[]>>();
+export async function searchOpenAlex(question: string, provider?: "openai" | "gemini" | "deepseek", projectContext = ""): Promise<ResearchPaper[]> {
+  const key = `${provider ?? "openai"}:${question.trim()}:${projectContext.slice(0, 1500)}`;
+  const existing = pendingQuestions.get(key);
+  if (existing) return existing;
+  const operation = (async () => {
+    const query = await academicSearchQuery(question, provider, projectContext);
+    let request = pendingQueries.get(query);
+    if (!request) {
+      request = fetchPapers(query).finally(() => pendingQueries.delete(query));
+      pendingQueries.set(query, request);
+    }
+    return request;
+  })().finally(() => pendingQuestions.delete(key));
+  pendingQuestions.set(key, operation);
+  return operation;
 }

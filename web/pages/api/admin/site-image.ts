@@ -1,3 +1,5 @@
+import { prepareStorageUpload, readStorageUpload } from "../../../lib/storage-upload-server";
+import { validProjectId } from "../../../lib/membership/server";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { randomUUID } from "crypto";
 import {
@@ -6,9 +8,6 @@ import {
   buildDownloadUrl,
   verifyAdminRequest,
 } from "../../../lib/firebaseAdmin";
-
-const stripDataPrefix = (data: string) =>
-  data.includes(",") ? data.split(",")[1] : data;
 
 export const config = {
   api: {
@@ -37,37 +36,16 @@ export default async function handler(
     const decoded = await verifyAdminRequest(authToken);
     const downloadToken = randomUUID();
 
-    const { projectId, name, type, size, lastModified, data } = req.body as {
-      projectId?: string;
-      name?: string;
-      type?: string;
-      size?: number;
-      lastModified?: number;
-      data?: string;
-    };
-
-    if (!name || !data || !size || !lastModified) {
-      res.status(400).json({ error: "Invalid payload." });
-      return;
+    if (req.body?.action === "prepare") {
+      if (!/^image\/(png|jpeg|webp)$/.test(req.body.type ?? "")) throw new Error("PNG, JPG, WebP 이미지를 선택해주세요.");
+      res.status(200).json(await prepareStorageUpload(req, decoded.uid, "ppss-site-image")); return;
     }
-
-    const scopedProjectId = projectId || "project-1";
-    const imageId = "current";
+    const scopedProjectId = validProjectId(req.body.projectId);
+    const { storagePath, type } = await readStorageUpload(req.body, scopedProjectId, decoded.uid, "ppss-site-image");
+    if (!/^image\/(png|jpeg|webp)$/.test(type)) throw new Error("PNG, JPG, WebP 이미지를 선택해주세요.");
+    const imageId = storagePath.split("/").pop()!;
     const db = adminDb();
-    const storagePath = `ppss-site-image/${scopedProjectId}/current`;
-    const token = randomUUID();
-    const bucket = adminBucket();
-    await bucket.file(storagePath).save(
-      Buffer.from(stripDataPrefix(data), "base64"),
-      {
-        metadata: {
-          contentType: type || "application/octet-stream",
-          metadata: {
-            firebaseStorageDownloadTokens: downloadToken,
-          },
-        },
-      }
-    );
+    await adminBucket().file(storagePath).setMetadata({ metadata: { firebaseStorageDownloadTokens: downloadToken } });
     const downloadUrl = buildDownloadUrl(storagePath, downloadToken);
     
     await db.doc(`ppssSiteImages_${scopedProjectId}/current`).set(

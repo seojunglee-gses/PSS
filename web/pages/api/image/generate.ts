@@ -1,5 +1,7 @@
+import { AccessError } from "../../../lib/membership/server";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { loadCurrentSiteImage, loadGeneratedImage } from "../../../lib/firebase";
+import { adminDb } from "../../../lib/firebaseAdmin";
+import { loadProjectContext } from "../../../lib/project-context-server";
 import { generateImage } from "../../../lib/images";
 
 type ImageRequest = {
@@ -35,9 +37,10 @@ export default async function handler(
         : "openai";
 
   try {
-    const baseImage = baseImageId
-      ? await loadGeneratedImage(baseImageId)
-      : await loadCurrentSiteImage();
+    const context = await loadProjectContext(req, "alternatives");
+    const baseImage = (await adminDb().doc(baseImageId
+      ? `ppssGeneratedImages_${context.projectId}/${baseImageId}`
+      : `ppssSiteImages_${context.projectId}/current`).get()).data();
     const baseImageUrl = baseImage?.downloadUrl;
     if (!baseImageUrl) {
       res.status(400).json({
@@ -79,7 +82,7 @@ export default async function handler(
       base64,
     });
   } catch (error) {
-    res.status(500).json({
+    res.status(error instanceof AccessError ? error.status : 500).json({
       error: error instanceof Error ? error.message : "Unexpected error.",
     });
   }

@@ -1,7 +1,8 @@
+import { AccessError } from "../../lib/membership/server";
 import { MODELS } from "../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { callLLM } from "../../lib/llm";
-import { loadBackgroundKnowledge } from "../../lib/firebase";
+import { loadProjectContext } from "../../lib/project-context-server";
 
 const systemText = `
 Rewrite a new image-generation prompt based on user feedback.
@@ -47,8 +48,8 @@ export default async function handler(
   }
 
   try {
-    const background = await loadBackgroundKnowledge();
-    const backgroundText = background?.curatedText?.trim() ?? "None";
+    const context = await loadProjectContext(req, "alternatives");
+    const backgroundText = context.currentMaterial || "None";
     const userText = [
       `Previous prompt: ${previousPrompt ?? "None"}`,
       `User feedback: ${feedback}`,
@@ -82,7 +83,7 @@ export default async function handler(
       rationale: parsed.rationale,
     });
   } catch (error) {
-    res.status(500).json({
+    res.status(error instanceof AccessError ? error.status : 500).json({
       error: error instanceof Error ? error.message : "Unexpected error.",
     });
   }
