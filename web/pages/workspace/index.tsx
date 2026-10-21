@@ -7,6 +7,8 @@ const SpatialAnalysis = dynamic(() => import("../../components/spatial/SpatialAn
 
 import ProjectAccessGate from "../../components/projects/ProjectAccessGate";
 import AppShell from "../../components/AppShell";
+import WorkspacePanels from "../../components/WorkspacePanels";
+import { DEFAULT_PANEL_RATIO, type WorkspacePanelView } from "../../lib/workspace-layout";
 import StageChatEmptyState from "../../components/chat/StageChatEmptyState";
 import { resolveSources } from "../../lib/research/routing";
 import { stageChatGuide } from "../../lib/stage-chat-guides";
@@ -267,6 +269,8 @@ function AuthorizedWorkspace() {
   const providerStorageKey = `${providerStorageKeyBase}-${projectId}`;
   const activeStepStorageKey = `ppss-active-step-${projectId}`;
   const [activeStep, setActiveStep] = useState(steps[0]);
+  const [panelRatio, setPanelRatio] = useState(DEFAULT_PANEL_RATIO);
+  const [panelView, setPanelView] = useState<WorkspacePanelView>("information");
   const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
@@ -384,6 +388,10 @@ function AuthorizedWorkspace() {
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const followLatestRef = useRef(true);
+  const messageHeightRef = useRef(0);
+  const messageScrollRef = useRef(0);
   const [generatedImages, setGeneratedImages] = useState<DesignImage[]>([]);
   const [siteImageConfigured, setSiteImageConfigured] = useState(false);
   const [siteImageId, setSiteImageId] = useState<string | null>(null);
@@ -1032,6 +1040,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     return;
   }
   sendingRef.current = true;
+  followLatestRef.current = true;
   const generation = chatGenerationRef.current;
   const isCurrentConversation = () => generation === chatGenerationRef.current;
   setErrorMessage(null);
@@ -1341,10 +1350,27 @@ const handleSend = async (suggestedQuestion?: string) => {
   };
 
   useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [chatLogs, activeStep.id, isSending]);
+    followLatestRef.current = true;
+    messageScrollRef.current = 0;
+  }, [chatScope]);
+
+  useEffect(() => {
+    const list = messageListRef.current;
+    if (!list) return;
+    const resize = new ResizeObserver(() => {
+      if (!list.clientHeight) return;
+      messageHeightRef.current = list.clientHeight;
+      // A keyboard resize follows the latest message only if the reader was already at the end.
+      list.scrollTop = followLatestRef.current ? list.scrollHeight : messageScrollRef.current;
+    });
+    resize.observe(list);
+    return () => resize.disconnect();
+  }, [activeStep.id, loading, user]);
+
+  useEffect(() => {
+    const list = messageListRef.current;
+    if (list && list.clientHeight && followLatestRef.current) list.scrollTop = list.scrollHeight;
+  }, [chatLogs, activeStep.id, isSending, hasLoadedChatLogs]);
 
   const aggregatedResults = useMemo(() => {
     if (!evaluationResults.length) {
@@ -1580,15 +1606,15 @@ const handleSend = async (suggestedQuestion?: string) => {
       });
     const isStageLocked = Boolean(lockedStages[activeStep.id]);
     return (
-    <div className="relative flex h-full min-h-[460px] flex-col rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm xl:min-h-0 xl:p-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="workspace-chat relative rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm xl:p-6">
+      <div className="workspace-chat-header flex items-center justify-between">
+        <div className="workspace-chat-title">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-400">
             {activeProvider}
           </p>
           <h3 className="mt-2 text-lg font-semibold">{activeStep.id === "data" ? analysisLabels.analysisChat : t("workspace.apiConversation")}</h3>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="workspace-chat-controls flex flex-wrap items-center gap-2">
           {canEditContent && (
             <>
               <button
@@ -1642,7 +1668,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         </div>
       </div>
       {isStageLocked && (
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+        <div className="workspace-chat-lock mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
           <p className="font-semibold text-slate-700">{t("workspace.stageCompleted")}</p>
           <p className="mt-1">
             🔒 {t("workspace.stageCompletedDesc")}
@@ -1654,7 +1680,14 @@ const handleSend = async (suggestedQuestion?: string) => {
           )}
         </div>
       )}
-      <div className="mt-4 max-h-[46vh] flex-1 space-y-4 overflow-auto pb-24 text-sm text-slate-600 xl:max-h-[420px] xl:pb-0">
+      <div ref={messageListRef} className="workspace-chat-messages mt-4 space-y-4 text-sm text-slate-600"
+        onScroll={(event) => {
+          const list = event.currentTarget;
+          if (!list.clientHeight || list.clientHeight !== messageHeightRef.current) return;
+          messageScrollRef.current = list.scrollTop;
+          followLatestRef.current = list.scrollHeight - list.clientHeight - list.scrollTop < 80;
+        }}
+        onWheel={(event) => { if (event.deltaY < 0) followLatestRef.current = false; }}>
         {hasLoadedChatLogs && displayedMessages.length === 0 && guide && (
           <StageChatEmptyState guide={guide}
             disabled={isSending || isLoadingAlternatives || isStageLocked}
@@ -1679,6 +1712,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                 setInspectedResearchFindings(message.analysis!.answer.researchFindings);
                 setInspectedSpatial(message.analysis!.spatialContext ?? null);
                 setAnalysisView("answer");
+                setPanelView("information");
                 setHighlightedEvidence(sourceId ?? null);
                 if (sourceId) window.setTimeout(() => {
                   const target = document.getElementById(`evidence-${sourceId}`);
@@ -1713,7 +1747,8 @@ const handleSend = async (suggestedQuestion?: string) => {
         )}
         <div ref={chatEndRef} />
       </div>
-      <div className="workspace-composer fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] xl:static xl:mt-4 xl:border-0 xl:bg-transparent xl:px-0 xl:py-0 xl:shadow-none">
+      <div className="workspace-chat-footer">
+      <div className="workspace-composer mt-4 bg-white">
         {activeStep.id === "data" && <div className="mb-2 flex flex-wrap items-center gap-2">
           {selectedSources.map((source) => <button key={source} type="button" disabled={isSending || isStageLocked}
             onClick={() => setSelectedSources((prev) => prev.filter((item) => item !== source))}
@@ -1775,24 +1810,23 @@ const handleSend = async (suggestedQuestion?: string) => {
       </div>
       )}
       <button
-        className="mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50 lg:mt-4"
+        className="workspace-chat-finish mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50 lg:mt-4"
         type="button"
         onClick={handleCompleteStep}
         disabled={isSummarizing}
       >
         {isSummarizing ? t("workspace.updating") : t("workspace.finishStage")}
       </button>
+      </div>
     </div>
   );
   };
 
-  const responsiveWorkspaceSection = "grid gap-4 xl:gap-6 xl:grid-cols-[1.1fr_0.9fr]";
-
   return (
-    <AppShell>
+    <AppShell workspaceLayout>
       {projectError && <p role="alert" className="mb-4 text-sm text-rose-600">{projectError}</p>}
-      <div className="workspace-content space-y-6 pb-44 xl:space-y-0 xl:pb-0">
-      <section className="flex flex-col gap-2">
+      <div className="workspace-content">
+      <section className="workspace-intro flex flex-col gap-2">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
           {t("workspace.badge")}
         </p>
@@ -1805,7 +1839,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-[var(--border)] bg-white px-4 py-4 shadow-sm lg:px-6 lg:py-6">
+      <section className="workspace-stage-nav rounded-3xl border border-[var(--border)] bg-white px-4 py-4 shadow-sm lg:px-6 lg:py-6">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 lg:gap-3">
           {steps.map((step) => {
             const isActive = step.id === activeStep.id;
@@ -1854,7 +1888,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       </section>
 
       {activeStep.id === "problem" && (
-        <section className={responsiveWorkspaceSection}>
+        <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">{t("step.problem")}</h3>
             <p className="mt-1 text-sm text-slate-500">{t("workspace.problemIntro")}</p>
@@ -1923,11 +1957,11 @@ const handleSend = async (suggestedQuestion?: string) => {
             </p>
           </div>
           {renderChatPanel()}
-        </section>
+        </WorkspacePanels>
       )}
 
       {activeStep.id === "data" && (
-        <section className={responsiveWorkspaceSection}>
+        <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div role="tablist" aria-label={`${analysisLabels.cases} / 공간 분석 / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
               {(["cases", "spatial", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
@@ -2078,11 +2112,11 @@ const handleSend = async (suggestedQuestion?: string) => {
             </div>
           </div>
           {renderChatPanel()}
-        </section>
+        </WorkspacePanels>
       )}
 
       {activeStep.id === "alternatives" && (
-        <section className={responsiveWorkspaceSection}>
+        <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("workspace.imageGallery")}</h3>
             <p className="mt-2 text-sm text-slate-500">
@@ -2163,11 +2197,11 @@ const handleSend = async (suggestedQuestion?: string) => {
             </div>
           </div>
           {renderChatPanel()}
-        </section>
+        </WorkspacePanels>
       )}
 
       {activeStep.id === "evaluation" && (
-        <section className={responsiveWorkspaceSection}>
+        <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("step.evaluation")}</h3>
             <p className="mt-2 text-sm text-slate-500">
@@ -2248,11 +2282,11 @@ const handleSend = async (suggestedQuestion?: string) => {
             </button>
           </div>
           {renderChatPanel()}
-        </section>
+        </WorkspacePanels>
       )}
 
       {activeStep.id === "report" && (
-        <section className={responsiveWorkspaceSection}>
+        <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("workspace.reportTitle")}</h3>
             <p className="mt-2 text-sm text-slate-500">
@@ -2519,8 +2553,8 @@ const handleSend = async (suggestedQuestion?: string) => {
               </div>
             </div>
           </div>
-          <div className="min-w-0 xl:col-span-2">{renderChatPanel()}</div>
-        </section>
+          <div className="h-full min-w-0">{renderChatPanel()}</div>
+        </WorkspacePanels>
       )}
       </div>
       {selectedImage && (
