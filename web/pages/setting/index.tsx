@@ -28,7 +28,7 @@ export default function Setting() {
   const { activeProjectId, setActiveProjectId, activeProject } = useProject();
   const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
   const projectId = queryProjectId ?? activeProjectId ?? "project-1";
-  const { t } = useI18n();
+  const { t, localize } = useI18n();
   const providerStorageKey = `${providerStorageKeyBase}-${projectId}`;
   useEffect(() => {
     if (queryProjectId && queryProjectId !== activeProjectId) setActiveProjectId(queryProjectId);
@@ -96,7 +96,7 @@ export default function Setting() {
       .catch(() => {
         if (isMounted) {
           setBackgroundLoadMessage(
-            "Unable to load background knowledge from storage."
+            "setting.backgroundLoadFailed"
           );
         }
       });
@@ -108,7 +108,7 @@ export default function Setting() {
       })
       .catch(() => {
         if (isMounted) {
-          setSiteLoadMessage("Unable to load current site image from storage.");
+          setSiteLoadMessage("setting.siteLoadFailed");
         }
       });
     return () => {
@@ -167,7 +167,7 @@ export default function Setting() {
     if (!user) {
       setExecutiveSummaryMessage((prev) => ({
         ...prev,
-        [stageId]: "Authentication required.",
+        [stageId]: t("common.authRequired"),
       }));
       return;
     }
@@ -191,11 +191,11 @@ export default function Setting() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Executive summary failed.");
+        throw new Error(payload?.error ?? t("setting.executiveFailed"));
       }
       setExecutiveSummaryMessage((prev) => ({
         ...prev,
-        [stageId]: "Executive summary generated.",
+        [stageId]: t("setting.executiveSaved"),
       }));
     } catch (error) {
       setExecutiveSummaryMessage((prev) => ({
@@ -203,7 +203,7 @@ export default function Setting() {
         [stageId]:
           error instanceof Error
             ? error.message
-            : "Unable to generate executive summary.",
+            : t("setting.executiveGenerateFailed"),
       }));
     } finally {
       setIsGeneratingExecutiveSummary((prev) => ({
@@ -227,12 +227,12 @@ export default function Setting() {
 
   const handleProjectReset = async () => {
     if (!user) {
-      setResetProjectMessage("Authentication required.");
+      setResetProjectMessage(t("common.authRequired"));
       setResetProjectTone("error");
       return;
     }
     const confirmed = window.confirm(
-      "This will reset chat logs, generated images, workspace summaries, and evaluation data. Continue?"
+      t("setting.resetConfirm")
     );
     if (!confirmed) {
       return;
@@ -252,13 +252,13 @@ export default function Setting() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Reset failed.");
+        throw new Error(payload?.error ?? t("setting.resetFailed"));
       }
-      setResetProjectMessage("Project data reset completed.");
+      setResetProjectMessage(t("setting.resetSaved"));
       setResetProjectTone("success");
     } catch (error) {
       setResetProjectMessage(
-        error instanceof Error ? error.message : "Unable to reset project data."
+        error instanceof Error ? error.message : t("setting.resetError")
       );
       setResetProjectTone("error");
     } finally {
@@ -310,10 +310,10 @@ export default function Setting() {
 
     try {
       if (!user) {
-        throw new Error("Not logged in");
+        throw new Error(t("common.authRequired"));
       }
       if (!backgroundFiles.length) {
-        throw new Error("Please upload background knowledge files.");
+        throw new Error(t("setting.backgroundRequired"));
       }
 
       const token = await user.getIdToken();
@@ -333,7 +333,7 @@ export default function Setting() {
       const text = await res.text();
 
       if (!res.ok) {
-        throw new Error(text || "Save failed");
+        throw new Error(text || t("common.saveFailed"));
       }
 
       const payload = text ? JSON.parse(text) : {};
@@ -342,11 +342,11 @@ export default function Setting() {
       }
 
       setBackgroundFiles([]);
-      setBackgroundSaveMessage("Background knowledge saved.");
+      setBackgroundSaveMessage(t("setting.backgroundSaved"));
       setBackgroundSaveTone("success");
     } catch (error) {
       setBackgroundSaveMessage(
-        error instanceof Error ? error.message : "Save failed"
+        error instanceof Error ? error.message : t("common.saveFailed")
       );
       setBackgroundSaveTone("error");
     } finally {
@@ -356,12 +356,12 @@ export default function Setting() {
 
   const handleSiteImageSave = async () => {
     if (!siteImageFiles.length) {
-      setSiteSaveMessage("Please select a site image to upload.");
+      setSiteSaveMessage(t("setting.siteRequired"));
       return;
     }
     try {
       if (!user) {
-        throw new Error("Authentication required.");
+        throw new Error(t("common.authRequired"));
       }
       const token = await user.getIdToken();
       const file = siteImageFiles[0];
@@ -376,15 +376,15 @@ export default function Setting() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Save failed.");
+        throw new Error(payload?.error ?? t("common.saveFailed"));
       }
       const payload = (await response.json()) as { downloadUrl?: string };
-      setSiteSaveMessage("Current site image saved to Firebase Storage.");
+      setSiteSaveMessage(t("setting.siteSaved"));
       if (payload.downloadUrl) {
         setSiteImagePreview(payload.downloadUrl);
       }
     } catch (error) {
-      setSiteSaveMessage(error instanceof Error ? error.message : "대상지 이미지를 저장하지 못했습니다. 연결 상태를 확인해주세요.");
+      setSiteSaveMessage(error instanceof Error ? error.message : t("image.siteSaveFailed"));
     }
   };
 
@@ -466,15 +466,12 @@ export default function Setting() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h4 className="text-sm font-semibold text-slate-700">
-                    Workspace progress & controls
-                  </h4>
+                    {t("setting.progress")}</h4>
                   <p className="mt-2 text-xs text-slate-500">
-                    Track stage completion, lock stages, and trigger executive
-                    summaries from one panel.
-                  </p>
+                    {t("setting.progressHint")}</p>
                 </div>
                 <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-                  Total participants: {participantCount}
+                  {t("setting.participants")}{participantCount}
                 </div>
               </div>
               <div className="mt-4 grid gap-3 text-xs">
@@ -494,13 +491,12 @@ export default function Setting() {
                         {stage.label}
                       </p>
                       <p className="mt-1 text-[11px] text-slate-500">
-                        Completed: {stageCompletionCounts[stage.id] ?? 0}
+                        {t("setting.completed")}{stageCompletionCounts[stage.id] ?? 0}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-slate-500">
-                        Stage lock
-                      </span>
+                        {t("setting.stageLock")}</span>
                       <button
                         className={`relative h-6 w-11 rounded-full transition ${
                           lockedStages[stage.id]
@@ -523,13 +519,13 @@ export default function Setting() {
                         />
                       </button>
                       <span className="text-[11px] text-slate-500">
-                        {lockedStages[stage.id] ? "Locked" : "Open"}
+                        {lockedStages[stage.id] ? t("setting.locked") : t("setting.open")}
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {executiveSummaryMessage[stage.id] && (
                         <span className="text-[11px] text-slate-500">
-                          {executiveSummaryMessage[stage.id]}
+                          {localize(executiveSummaryMessage[stage.id], "common.requestFailed")}
                         </span>
                       )}
                       <button
@@ -541,8 +537,8 @@ export default function Setting() {
                         disabled={isGeneratingExecutiveSummary[stage.id]}
                       >
                         {isGeneratingExecutiveSummary[stage.id]
-                          ? "Generating..."
-                          : "Generate executive summary"}
+                          ? t("setting.generating")
+                          : t("setting.generateExecutive")}
                       </button>
                     </div>
                   </div>
@@ -552,8 +548,7 @@ export default function Setting() {
             <div className="border-t border-slate-200" />
             <div>
               <label className="text-xs font-semibold uppercase text-slate-500">
-                Background knowledge
-              </label>
+                {t("setting.background")}</label>
               <div className="mt-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
                 <input
                   className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-full file:border-0 file:bg-[var(--primary)] file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white file:hover:bg-[var(--primary-dark)]"
@@ -565,9 +560,7 @@ export default function Setting() {
                   }
                 />
                 <p className="mt-3 text-xs text-slate-500">
-                  Upload Word, PDF, or image files to archive the original
-                  background knowledge for admins.
-                </p>
+                  {t("setting.backgroundUploadHint")}</p>
                 {backgroundFiles.length > 0 && (
                   <ul className="mt-3 space-y-1 text-xs text-slate-600">
                     {backgroundFiles.map((file) => (
@@ -578,19 +571,15 @@ export default function Setting() {
               </div>
               <div className="mt-4">
                 <label className="text-xs font-semibold uppercase text-slate-500">
-                  Curated background knowledge (auto-generated)
-                </label>
+                  {t("setting.backgroundSummary")}</label>
                 <textarea
                   className="mt-2 h-40 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 focus:border-[var(--primary)] focus:outline-none"
-                  placeholder="Auto-generated from uploaded files."
+                  placeholder={t("setting.backgroundPlaceholder")}
                   value={backgroundText}
                   readOnly
                 />
                 <p className="mt-2 text-xs text-slate-500">
-                  The API generates this curated text from uploaded materials,
-                  then stores it in Firestore for stable LLM context across
-                  planning and summary workflows for every workspace user.
-                </p>
+                  {t("setting.backgroundSummaryHint")}</p>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button
@@ -600,12 +589,12 @@ export default function Setting() {
                   disabled={isBackgroundSaving}
                 >
                   {isBackgroundSaving
-                    ? "Saving..."
-                    : "Generate and save summary"}
+                    ? t("common.saving")
+                    : t("setting.generateSave")}
                 </button>
                 {backgroundLoadMessage && (
                   <span className="text-xs text-rose-500">
-                    {backgroundLoadMessage}
+                    {localize(backgroundLoadMessage, "common.requestFailed")}
                   </span>
                 )}
                 {backgroundSaveMessage && (
@@ -616,18 +605,16 @@ export default function Setting() {
                         : "text-emerald-600"
                     }`}
                   >
-                    {backgroundSaveMessage}
+                    {localize(backgroundSaveMessage, "common.requestFailed")}
                   </span>
                 )}
               </div>
             </div>
           
             <div className="border-t border-slate-200 pt-6">
-              <h4 className="text-sm font-semibold">Current site image</h4>
+              <h4 className="text-sm font-semibold">{t("setting.siteImage")}</h4>
               <p className="mt-2 text-sm text-slate-500">
-                Upload the base site imagery used to generate design
-                alternatives in the workspace.
-              </p>
+                {t("setting.siteImageHint")}</p>
               <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
                 <div className="flex flex-wrap items-start gap-4">
                   <div className="min-w-[220px] flex-1">
@@ -640,8 +627,7 @@ export default function Setting() {
                       }
                     />
                     <p className="mt-3 text-xs text-slate-500">
-                      Upload a site image to enable workspace generation.
-                    </p>
+                      {t("setting.siteUploadHint")}</p>
                     {siteImageFiles.length > 0 && (
                       <p className="mt-3 text-xs text-slate-600">
                         {siteImageFiles[0].name}
@@ -652,7 +638,7 @@ export default function Setting() {
                     <div className="flex items-center">
                       <img
                         src={siteImagePreview}
-                        alt="Site preview"
+                        alt={t("setting.sitePreview")}
                         className="h-24 w-24 rounded-lg border border-slate-200 bg-white object-contain"
                       />
                     </div>
@@ -665,16 +651,15 @@ export default function Setting() {
                   type="button"
                   onClick={handleSiteImageSave}
                 >
-                  Save site images
-                </button>
+                  {t("setting.saveSite")}</button>
                 {siteLoadMessage && (
                   <span className="text-xs text-rose-500">
-                    {siteLoadMessage}
+                    {localize(siteLoadMessage, "common.requestFailed")}
                   </span>
                 )}
                 {siteSaveMessage && (
                   <span className="text-xs text-emerald-600">
-                    {siteSaveMessage}
+                    {localize(siteSaveMessage, "common.requestFailed")}
                   </span>
                 )}
               </div>
@@ -682,13 +667,9 @@ export default function Setting() {
             
             <div className="border-t border-rose-200 bg-rose-50/40 pt-6 rounded-xl">
               <h4 className="text-sm font-semibold text-slate-700">
-                Reset project (soft)
-              </h4>
+                {t("setting.reset")}</h4>
               <p className="mt-2 text-sm text-slate-500">
-                Clears chat logs, generated alternatives, workspace summaries,
-                and evaluation/voting data without touching background
-                knowledge or the site image.
-              </p>
+                {t("setting.resetHint")}</p>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <button
                   className="rounded-full border border-rose-200 px-4 py-2 text-xs font-semibold text-rose-600 hover:border-rose-300 hover:text-rose-700"
@@ -696,7 +677,7 @@ export default function Setting() {
                   onClick={handleProjectReset}
                   disabled={isResettingProject}
                 >
-                  {isResettingProject ? "Resetting..." : "Reset project data"}
+                  {isResettingProject ? t("setting.resetting") : t("setting.resetAction")}
                 </button>
                 {resetProjectMessage && (
                   <span
@@ -706,7 +687,7 @@ export default function Setting() {
                         : "text-emerald-600"
                     }`}
                   >
-                    {resetProjectMessage}
+                    {localize(resetProjectMessage, "common.requestFailed")}
                   </span>
                 )}
               </div>

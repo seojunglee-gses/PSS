@@ -1,3 +1,4 @@
+import { useI18n } from "../../lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
@@ -19,6 +20,7 @@ export default function SpatialMap({
     index: number,
   ) => void;
 }) {
+  const { t, locale, localize } = useI18n();
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const selectRef = useRef(onSelect);
@@ -31,6 +33,25 @@ export default function SpatialMap({
   overlayRef.current = overlay;
   const [error, setError] = useState("");
   const [basemapError, setBasemapError] = useState("");
+  useEffect(() => {
+    const labels: Record<string, string> = {
+      ".maplibregl-ctrl-zoom-in": "map.zoomIn",
+      ".maplibregl-ctrl-zoom-out": "map.zoomOut",
+      ".maplibregl-ctrl-compass": "map.resetBearing",
+      ".maplibregl-ctrl-attrib-button": "map.toggleAttribution",
+      ".maplibregl-canvas": "map.title",
+    };
+    // Keep the current map view when the interface language changes.
+    const apply = () => Object.entries(labels).forEach(([selector, key]) => {
+      container.current?.querySelectorAll(selector).forEach((node) => {
+        node.setAttribute("aria-label", t(key)); node.setAttribute("title", t(key));
+      });
+    });
+    const observer = new MutationObserver(apply);
+    if (container.current) observer.observe(container.current, { childList: true, subtree: true });
+    apply();
+    return () => observer.disconnect();
+  }, [locale, t]);
   useEffect(() => {
     if (!container.current) return;
     setError("");
@@ -63,11 +84,11 @@ export default function SpatialMap({
       map.on("error", (event) => {
         console.error("Spatial map:", event.error.message);
         if ((event as { sourceId?: string }).sourceId?.startsWith(BASEMAP_PREFIX)) {
-          setBasemapError("배경 지도를 불러오지 못했어요. 업로드한 레이어와 공간 분석은 계속 사용할 수 있습니다.");
+          setBasemapError("spatial.basemapFailed");
           return;
         }
         setError(
-          "지도를 표시하는 중 오류가 발생했어요. 새로고침 후 다시 시도해주세요.",
+          "spatial.mapFailed",
         );
       });
       // Add project data as soon as the style is ready, even when map tiles fail.
@@ -165,7 +186,7 @@ export default function SpatialMap({
           if (!controller.signal.aborted) map.setStyle(basemapStyle(style), { diff: false });
         })
         .catch(() => {
-          if (mapRef.current === map) setBasemapError("배경 지도를 불러오지 못했어요. 업로드한 레이어와 공간 분석은 계속 사용할 수 있습니다.");
+          if (mapRef.current === map) setBasemapError("spatial.basemapFailed");
         })
         .finally(() => clearTimeout(timeout));
       return () => {
@@ -178,7 +199,7 @@ export default function SpatialMap({
     } catch {
       controller.abort();
       setError(
-        "지도를 표시하지 못했어요. 브라우저의 WebGL 지원을 확인해주세요.",
+        "spatial.webglFailed",
       );
     }
     // A dataset load builds its map once; visibility and results update independently.
@@ -203,15 +224,15 @@ export default function SpatialMap({
     <div className="spatial-map">
       <div
         ref={container}
-        aria-label="사업 공간 데이터 지도"
+        aria-label={t("spatial.mapLabel")}
         className="h-[360px] w-full rounded-xl border border-slate-200 sm:h-[420px]"
       />
       {basemapError && (
-        <p role="status" className="mt-2 text-sm text-amber-700">{basemapError}</p>
+        <p role="status" className="mt-2 text-sm text-amber-700">{localize(basemapError, "spatial.basemapFailed")}</p>
       )}
       {error && (
         <p role="alert" className="mt-2 text-sm text-amber-700">
-          {error}
+          {localize(error, "spatial.mapFailed")}
         </p>
       )}
     </div>

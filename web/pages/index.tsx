@@ -113,7 +113,7 @@ const roles: RoleItem[] = [
 export default function Home() {
   const router = useRouter();
   const { signIn, signInWithGoogle, isConfigured, user, loading: authLoading } = useAuth();
-  const { t } = useI18n();
+  const { t, locale, localize } = useI18n();
   const { projects, createProject, setActiveProjectId, updateProject, deleteProject, loadingProjects, projectError, joinedProjectIds, lastProjectId, refreshProjects } = useProject();
   const [projectName, setProjectName] = useState("");
   const [projectAdminInput, setProjectAdminInput] = useState("test@snu.ac.kr");
@@ -179,7 +179,7 @@ export default function Home() {
 
   const handleDeleteProject = async (projectId: string) => {
     if (!userIsSystemAdmin) return;
-    const ok = window.confirm("이 프로젝트를 삭제할까요?");
+    const ok = window.confirm(t("home.deleteConfirm"));
     if (!ok) return;
     try { await deleteProject(projectId); } catch { /* The provider displays the save error. */ }
   };
@@ -248,7 +248,7 @@ export default function Home() {
     if (!editingProjectId) return;
     if (!/^\d{4}$/.test(projectAccessCodeInput)) return;
     try { await updateProject(editingProjectId, {
-      projectName: projectName.trim() || "Untitled Project",
+      projectName: projectName.trim() || t("home.untitled"),
       projectAdmin: projectAdminInput,
       accessCode: projectAccessCodeInput,
     });
@@ -262,21 +262,21 @@ export default function Home() {
   };
   return (
     <AppShell>
-      {authLoading ? <p role="status" className="text-sm text-slate-500">로그인 상태를 확인하고 있습니다.</p> : user ? (
+      {authLoading ? <p role="status" className="text-sm text-slate-500">{t("home.checkingAuth")}</p> : user ? (
         <>
           <section className="flex flex-col gap-3">
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">내 프로젝트</p>
-            <h2 className="text-3xl font-semibold text-slate-900">참여할 프로젝트를 선택하세요</h2>
-            <p className="max-w-3xl text-sm text-slate-500">참여한 프로젝트는 코드 없이 바로 들어갈 수 있어요.</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">{t("home.myProjects")}</p>
+            <h2 className="text-3xl font-semibold text-slate-900">{t("home.chooseProject")}</h2>
+            <p className="max-w-3xl text-sm text-slate-500">{t("home.joinedHint")}</p>
           </section>
 
-          {loadingProjects && <p role="status" className="text-sm text-slate-500">프로젝트를 불러오는 중입니다.</p>}
-          {projectError && <p role="alert" className="text-sm text-rose-600">{projectError}</p>}
-          {lastProjectId && joinedProjectIds.includes(lastProjectId) && <button type="button" className="text-left text-sm font-semibold text-blue-700" onClick={() => handleOpenProject(lastProjectId)}>최근 프로젝트 이어가기</button>}
+          {loadingProjects && <p role="status" className="text-sm text-slate-500">{t("home.loadingProjects")}</p>}
+          {projectError && <p role="alert" className="text-sm text-rose-600">{localize(projectError, "common.requestFailed")}</p>}
+          {lastProjectId && joinedProjectIds.includes(lastProjectId) && <button type="button" className="text-left text-sm font-semibold text-blue-700" onClick={() => handleOpenProject(lastProjectId)}>{t("home.continueProject")}</button>}
           <section className="grid grid-cols-1 gap-5 md:grid-cols-3 xl:grid-cols-4">
             {visibleProjects.map((project,index) => (
               <Fragment key={project.projectId}>
-              {(index === 0 || joinedProjectIds.includes(project.projectId) !== joinedProjectIds.includes(visibleProjects[index-1].projectId)) && <h3 className="col-span-full text-lg font-semibold">{joinedProjectIds.includes(project.projectId) ? "내 프로젝트" : "새 프로젝트 참여"}</h3>}
+              {(index === 0 || joinedProjectIds.includes(project.projectId) !== joinedProjectIds.includes(visibleProjects[index-1].projectId)) && <h3 className="col-span-full text-lg font-semibold">{joinedProjectIds.includes(project.projectId) ? t("home.myProjects") : t("home.joinNew")}</h3>}
               <button
                 key={project.projectId}
                 type="button"
@@ -287,12 +287,12 @@ export default function Home() {
                   {projectThumbnails[project.projectId] ? (
                     <img
                       src={projectThumbnails[project.projectId]}
-                      alt={`${project.projectName} 미리보기`}
+                      alt={t("home.preview", { project: project.projectName })}
                       className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400">
-                      <span className="text-sm font-semibold">미리보기 없음</span>
+                      <span className="text-sm font-semibold">{t("home.noPreview")}</span>
                     </div>
                   )}
                 </div>
@@ -300,14 +300,14 @@ export default function Home() {
                   <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="text-base font-semibold text-slate-900">{project.projectName}</h3>
-                    <p className="mt-1 text-xs text-slate-500">최근 수정: {new Date(project.lastModifiedAt).toLocaleString()}</p>
-                    <p className="text-xs text-slate-400">담당자: {project.projectAdmin}</p>
+                    <p className="mt-1 text-xs text-slate-500">{t("home.lastModified")}{" "}{new Date(project.lastModifiedAt).toLocaleString(locale)}</p>
+                    <p className="text-xs text-slate-400">{t("home.owner")}{" "}{project.projectAdmin}</p>
                   </div>
                   {canManageProject(userEmail, project) && (
                     <div className="flex gap-1">
-                      <button type="button" className="rounded-md border border-slate-200 px-2 py-1 text-[10px]" onClick={(e) => { e.stopPropagation(); handleManageProject(project.projectId); }}>관리</button>
+                      <button type="button" className="rounded-md border border-slate-200 px-2 py-1 text-[10px]" onClick={(e) => { e.stopPropagation(); handleManageProject(project.projectId); }}>{t("home.manage")}</button>
                       {userIsSystemAdmin && project.projectId !== "project-1" && (
-                        <button type="button" className="rounded-md border border-rose-200 px-2 py-1 text-[10px] text-rose-600" onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.projectId); }}>삭제</button>
+                        <button type="button" className="rounded-md border border-rose-200 px-2 py-1 text-[10px] text-rose-600" onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.projectId); }}>{t("common.delete")}</button>
                       )}
                     </div>
                   )}
@@ -324,7 +324,7 @@ export default function Home() {
               className="flex aspect-[4/3] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white text-slate-500 shadow-sm transition hover:-translate-y-1 hover:border-[var(--primary)] hover:text-[var(--primary)] hover:shadow-lg"
             >
               <span className="text-5xl leading-none">+</span>
-              <span className="mt-2 text-sm font-semibold">프로젝트 만들기</span>
+              <span className="mt-2 text-sm font-semibold">{t("home.createProject")}</span>
             </button>
           )}
           </section>
@@ -333,22 +333,21 @@ export default function Home() {
             <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 px-4">
               <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-semibold text-slate-900">프로젝트 관리</h3>
-                  <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs" onClick={() => setShowProjectModal(false)}>닫기</button>
+                  <h3 className="text-xl font-semibold text-slate-900">{t("home.manageProject")}</h3>
+                  <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs" onClick={() => setShowProjectModal(false)}>{t("common.close")}</button>
                 </div>
                 <div className="mt-4 space-y-3">
-                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="프로젝트 이름" value={projectName} onChange={(event) => setProjectName(event.target.value)} />
-                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="담당자 이메일" value={projectAdminInput} onChange={(event) => setProjectAdminInput(event.target.value)} />
-                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder="참여 코드 (숫자 4자리)" value={projectAccessCodeInput} onChange={(event) => setProjectAccessCodeInput(event.target.value.replace(/\D/g, "").slice(0, 4))} />
+                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder={t("home.projectName")} value={projectName} onChange={(event) => setProjectName(event.target.value)} />
+                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder={t("home.adminEmail")} value={projectAdminInput} onChange={(event) => setProjectAdminInput(event.target.value)} />
+                  <input className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" placeholder={t("home.projectCode")} value={projectAccessCodeInput} onChange={(event) => setProjectAccessCodeInput(event.target.value.replace(/\D/g, "").slice(0, 4))} />
 
                 </div>
                 <button className="mt-4 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-semibold text-white" type="button" onClick={editingProjectId ? handleSaveProject : handleCreateProject}>
-                  {editingProjectId ? "저장" : "프로젝트 만들기"}
+                  {editingProjectId ? t("workspace.save") : t("home.createProject")}
                 </button>
                 {editingProjectId && editingProjectId !== "project-1" && (
                   <button className="mt-2 w-full rounded-xl border border-rose-200 px-4 py-3 text-sm font-semibold text-rose-600" type="button" onClick={() => { handleDeleteProject(editingProjectId); setShowProjectModal(false); }}>
-                    프로젝트 삭제
-                  </button>
+                    {t("home.deleteProject")}</button>
                 )}
               </div>
             </div>
@@ -449,7 +448,7 @@ export default function Home() {
               </div>
               {errorMessage && (
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-600">
-                  {errorMessage}
+                  {localize(errorMessage, "common.requestFailed")}
                 </div>
               )}
               <button

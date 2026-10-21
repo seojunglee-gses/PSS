@@ -101,7 +101,7 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
   const router = useRouter();
   const isWorkspace = workspaceLayout && router.pathname === "/workspace";
   const { user, signOutUser } = useAuth();
-  const { locale, setLocale, t } = useI18n();
+  const { locale, setLocale, t, localize } = useI18n();
   const [role, setRole] = useState<string>("Guest");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showMobileAccount, setShowMobileAccount] = useState(false);
@@ -155,7 +155,7 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
   };
 
   const normalizedRole = normalizeRoleId(role);
-  const displayRole = normalizedRole ? t(roleLabelKeys[normalizedRole]) : role;
+  const displayRole = normalizedRole ? t(roleLabelKeys[normalizedRole]) : localize(role);
 
   const sidebarContent = (isMobile = false) => (
     <>
@@ -263,7 +263,7 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
         <main className="shell-main min-w-0 flex-1 px-4 py-6 lg:px-10 lg:py-10">
           <div className="shell-content mx-auto flex w-full max-w-[1200px] flex-col gap-6">
             {isWorkspace ? (
-              <header className="workspace-account-row">
+              <header className="workspace-account-row" data-drawer-open={mobileNavOpen}>
                 <button ref={mobileToggleRef} type="button" className="workspace-menu-toggle sidebar-toggle" aria-label={t(mobileNavOpen ? "shell.sidebarCollapse" : "shell.sidebarExpand")}
                   aria-expanded={mobileNavOpen} aria-controls="workspace-sidebar-drawer" onClick={() => setMobileNavOpen((open) => !open)}>☰</button>
                 <span className="shrink-0 font-semibold text-slate-700">{displayRole}</span>
@@ -280,8 +280,7 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
                 onClick={() => setMobileNavOpen(true)}
               >
                 <span className="text-base leading-none">☰</span>
-                Menu
-              </button>
+                {t("shell.menu")}</button>
               <button
                 type="button"
                 className="rounded-xl border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white"

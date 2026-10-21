@@ -23,10 +23,10 @@ type Labels = typeof en;
 const ko: Labels = {
   answerEvidence: "답변 근거", caseIntro: "선정된 도시재생 사례를 살펴보고, 적용한 전략과 결과, 시사점을 비교해보세요.",
   answerIntro: "이 답변에 사용한 자료", noAnswer: "답변에서 ‘근거 보기’를 누르면 참고한 자료를 확인할 수 있습니다.",
-  backCases: "← 사례로 돌아가기", fullCase: "사례 전체 보기", editCases: "사례 수정", paperDetails: "논문 상세 정보",
+  backCases: "← 사례로 돌아가기", fullCase: "사례 전체 보기", editCases: "수정", paperDetails: "논문 상세 정보",
   sourcesUsed: "참고 자료", caseCount: "건의 사례", paperCount: "편의 논문",
-  evidence: "근거 자료", analysisChat: "AI 대화", auto: "자동 선택", project: "프로젝트 자료", spatial: "공간 분석", cases: "사례", research: "학술 논문",
-  choose: "답변에 참고할 자료 선택", remove: "선택 해제", defaults: "자동 선택 · 질문에 필요한 자료를 참고합니다.",
+  evidence: "근거 자료", analysisChat: "분석 대화", auto: "자동 선택", project: "프로젝트 자료", spatial: "공간 분석", cases: "사례", research: "학술 논문",
+  choose: "답변에 참고할 자료 선택", remove: "선택 해제", defaults: "질문에 맞는 자료를 자동으로 선택합니다.",
   caseEvidence: "참고한 사례", researchEvidence: "참고한 논문", browse: "사례 자료 보기",
   empty: "질문을 보내면 참고 자료가 여기에 표시됩니다.", loading: "자료를 찾고 답변을 준비하고 있습니다…",
   scope: "근거 범위: 초록 기준", scopeDetail: "논문 전문이 아닌 공개된 초록을 참고합니다. 초록에 없는 연구 방법, 표본 수, 통계 수치는 추정할 수 없습니다.",

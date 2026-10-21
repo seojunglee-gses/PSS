@@ -6,14 +6,14 @@ export default function StageChatEmptyState({ guide, disabled, onSubmit }: {
   disabled: boolean;
   onSubmit: (question: string) => void;
 }) {
-  const { locale } = useI18n();
+  const { t } = useI18n();
   return (
     <div className="space-y-4 py-2" data-testid="stage-chat-guide">
       <div>
         <h4 className="text-base font-semibold leading-relaxed text-slate-700">{guide.title}</h4>
         <p className="mt-2 text-sm leading-relaxed text-slate-500">{guide.description}</p>
       </div>
-      <p className="text-sm font-semibold text-slate-700">{locale === "ko" ? "이런 질문을 해보세요" : locale === "zh" ? "可以这样提问" : "Try asking"}</p>
+      <p className="text-sm font-semibold text-slate-700">{t("workspace.tryQuestions")}</p>
       <div className="grid gap-2">
         {guide.suggestedQuestions.map((question) => (
           <button key={question} type="button" disabled={disabled} onClick={() => onSubmit(question)}
