@@ -64,8 +64,39 @@ html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overs
 .workspace-shell .shell-content { flex: 1; min-height: 0; gap: 16px; }
 .workspace-shell .shell-route-content { flex: 1; min-height: 0; gap: 8px; }
 .workspace-shell .shell-mobile-bar, .workspace-shell .shell-account-bar { flex-shrink: 0; }
+.workspace-account-row { position: relative; z-index: 50; display: flex; flex-shrink: 0; align-items: center; gap: 12px; min-height: 44px; background: var(--background); font-size: 13px; }
+.workspace-menu-toggle { display: none; flex-shrink: 0; border-color: var(--border); color: var(--primary); background: white; }
+.workspace-sidebar-drawer { padding-top: 76px; }
+.workspace-sidebar-overlay { overscroll-behavior: contain; }
+@media (min-width: 1280px) { .workspace-sidebar-overlay { display: none; } }
+@media (max-width: 1279px) {
+  .workspace-shell .desktop-sidebar { display: none; }
+  .workspace-menu-toggle { display: block; }
+}
 .workspace-content { display: flex; flex: 1; flex-direction: column; gap: 16px; min-height: 0; }
 .workspace-intro, .workspace-stage-nav { flex-shrink: 0; }
+.workspace-intro { position: sticky; top: 0; z-index: 20; background: var(--background); gap: 0; }
+.workspace-intro h2 { transition: font-size 220ms ease, line-height 220ms ease; }
+.workspace-intro-badge { max-height: 24px; overflow: hidden; transition: max-height 220ms ease, opacity 220ms ease; }
+.workspace-intro-details { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows 220ms ease, opacity 220ms ease; }
+.workspace-intro-details > div { min-height: 0; overflow: hidden; }
+.workspace-intro-details p { margin-top: 4px; }
+.workspace-intro-details > div > div { margin-top: 4px; }
+.workspace-compact-stage { display: none; }
+.workspace-content[data-header-compact="true"] .workspace-intro-badge,
+.workspace-shell[data-chat-view="true"] .workspace-intro-badge { max-height: 0; opacity: 0; }
+.workspace-content[data-header-compact="true"] .workspace-intro-details,
+.workspace-shell[data-chat-view="true"] .workspace-intro-details { grid-template-rows: 0fr; opacity: 0; visibility: hidden; }
+.workspace-content[data-header-compact="true"] .workspace-intro h2,
+.workspace-shell[data-chat-view="true"] .workspace-intro h2 { font-size: 16px; line-height: 24px; }
+.workspace-content[data-header-compact="true"] .workspace-compact-stage,
+.workspace-shell[data-chat-view="true"] .workspace-compact-stage { display: inline; }
+.workspace-stage-nav { padding: 8px 10px; border-radius: 16px; }
+.workspace-stage-list { display: flex; flex-wrap: nowrap; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.workspace-stage-list button { flex: 1 0 auto; min-height: 44px; gap: 6px; padding: 6px 10px; border-radius: 12px; white-space: nowrap; }
+.workspace-stage-list button[aria-current="step"] { flex-grow: 1.15; padding-inline: 14px; }
+.workspace-stage-list button > span:first-child { width: 24px; height: 24px; flex-shrink: 0; }
+.workspace-stage-nav > div:last-child { margin-top: 6px; height: 3px; }
 .workspace-panels { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .workspace-panel-body { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 1; min-width: 0; min-height: 0; }
 .workspace-information { min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; container: workspace-information / inline-size; overflow-wrap: anywhere; }
@@ -102,10 +133,7 @@ html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overs
 .workspace-composer { position: static; min-width: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .workspace-composer input { width: 0; }
 .workspace-chat #analysis-source-options { max-width: min(256px, calc(100cqw - 32px)); max-height: min(360px, calc(100cqh - 110px)); overflow-y: auto; overscroll-behavior: contain; }
-/* Chat mode frees the portrait viewport before the keyboard opens, without unmounting panels. */
-.workspace-shell[data-chat-view="true"] .workspace-intro,
-.workspace-shell[data-chat-view="true"] .workspace-stage-nav,
-.workspace-shell[data-chat-view="true"] .shell-account-bar { display: none; }
+/* Portrait chat keeps compact navigation visible without unmounting panels. */
 .workspace-shell[data-keyboard-open="true"] .workspace-chat-finish { display: none; }
 .workspace-shell[data-keyboard-open="true"] .workspace-chat-footer { display: flex; flex-direction: column; }
 .workspace-shell[data-keyboard-open="true"] .workspace-composer { order: 1; }
@@ -132,16 +160,9 @@ html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overs
   .workspace-shell .shell-account-bar button { min-height: 44px; }
   .workspace-intro { gap: 2px; }
   .workspace-intro h2 { font-size: 24px; line-height: 32px; }
-  .workspace-intro > p:first-child { display: none; }
-  .workspace-stage-nav { padding: 10px 12px; }
-  .workspace-stage-nav > div:last-child { margin-top: 8px; }
+  .workspace-stage-nav { padding: 8px 10px; }
+  .workspace-stage-nav > div:last-child { margin-top: 6px; }
   .workspace-stage-nav button { min-height: 44px; }
-}
-@media (max-height: 800px) and (orientation: landscape) {
-  .workspace-intro > p, .workspace-intro > div { display: none; }
-}
-@media (min-width: 960px) {
-  .workspace-stage-nav > div:first-child { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 @media (pointer: coarse) {
   .workspace-chat-controls button { min-height: 44px; }
@@ -156,6 +177,9 @@ html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overs
 .workspace-shell[data-keyboard-open="true"] .shell-account-bar button { min-height: 44px; }
 .workspace-shell[data-keyboard-open="true"] .workspace-stage-nav { padding: 8px 12px; }
 .workspace-shell[data-keyboard-open="true"] .workspace-stage-nav > div:last-child { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .workspace-intro h2, .workspace-intro-badge, .workspace-intro-details { transition: none; }
+}
 
 .content-editor select, .content-editor button { min-height: 44px; border-radius: 8px; padding: 6px 10px; font-size: 14px; }
 .content-editor select { max-width: 100%; border: 1px solid #e2e8f0; background: white; }
