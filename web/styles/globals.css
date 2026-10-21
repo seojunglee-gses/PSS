@@ -156,3 +156,7 @@ html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overs
 .workspace-shell[data-keyboard-open="true"] .shell-account-bar button { min-height: 44px; }
 .workspace-shell[data-keyboard-open="true"] .workspace-stage-nav { padding: 8px 12px; }
 .workspace-shell[data-keyboard-open="true"] .workspace-stage-nav > div:last-child { margin-top: 8px; }
+
+.content-editor select, .content-editor button { min-height: 44px; border-radius: 8px; padding: 6px 10px; font-size: 14px; }
+.content-editor select { max-width: 100%; border: 1px solid #e2e8f0; background: white; }
+.content-editor button:hover { background: #e2e8f0; }
