@@ -1,3 +1,6 @@
+import { featureNames } from '../../lib/spatial/geo-query';
+import NaturalLanguageGIS from "./NaturalLanguageGIS";
+import type { GeoWorkspace } from "../../lib/spatial/use-geo";
 import { useI18n } from "../../lib/i18n";
 import { useEffect, useMemo, useState } from "react";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
@@ -23,12 +26,14 @@ import { spatialGoals } from "../../lib/spatial/goals";
 import { useAuth } from "../../lib/auth";
 export default function SpatialAnalysis({
   projectId,
+  geo,
   result,
   onResult,
   included,
   onInclude,
 }: {
   projectId: string;
+  geo?: GeoWorkspace;
   result: SpatialResult | null;
   onResult: (r: SpatialResult | null) => void;
   included: boolean;
@@ -132,15 +137,21 @@ export default function SpatialAnalysis({
     index: number,
   ) => {
     setSelected({ layer, feature, index });
+    geo?.setContext(prev => ({ mapCenter: prev.mapCenter, selected: { layerId: layer.config.id, featureId: featureKey(feature, index) } }));
     setError("");
     setOverlay(
-      isArea(feature) ? featureCollection([feature]) : featureCollection([]),
+      featureCollection([feature]),
     );
   };
   const activeLayers = layers.filter((l) => visible.includes(l.config.id));
   return (
     <div className="spatial-analysis space-y-4 p-4 sm:p-6">
       <h3 className="text-lg font-semibold">{t("workspace.goal.spatial")}</h3>
+      {geo && <NaturalLanguageGIS geo={geo} names={layers.flatMap(layer => layer.data.features.flatMap(featureNames))} />}
+      {!loading && <SpatialMap layers={layers} visible={visible} overlay={overlay} onSelect={choose}
+        onPoint={(coordinate) => { setSelected(null); setOverlay(featureCollection([{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: coordinate } }])); geo?.setContext(prev => ({ mapCenter: prev.mapCenter, point: coordinate })); }}
+        onCenter={(mapCenter) => geo?.setContext(prev => ({ ...prev, mapCenter }))}
+        geoResult={geo?.result} highlightedPlaceId={geo?.highlighted} onPlace={(place) => geo?.setHighlighted(place.id)} />}
       {loading ? (
         <p role="status" className="text-sm text-slate-500">
           {t("spatial.loading")}</p>
@@ -185,12 +196,6 @@ export default function SpatialAnalysis({
             {t("spatial.mapHint")}<span className="mt-1 block">
               {t("spatial.touchHint")}</span>
           </p>
-          <SpatialMap
-            layers={layers}
-            visible={visible}
-            overlay={overlay}
-            onSelect={choose}
-          />
           {selected && (
             <section className="rounded-xl bg-slate-50 p-3 text-sm">
               <h4 className="font-semibold">

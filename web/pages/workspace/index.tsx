@@ -1,3 +1,5 @@
+import { useGeoWorkspace } from "../../lib/spatial/use-geo";
+import { isGeoQuestion } from "../../lib/spatial/geo-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import SpatialSummary from "../../components/spatial/SpatialSummary";
@@ -270,6 +272,8 @@ function AuthorizedWorkspace() {
   const userKey = user?.uid;
   const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
   const projectId = queryProjectId ?? activeProjectId ?? "project-1";
+  const geo = useGeoWorkspace(projectId);
+  const [geoChat, setGeoChat] = useState<{time: string; question: string} | null>(null);
   const providerStorageKey = `${providerStorageKeyBase}-${projectId}`;
   const activeStepStorageKey = `ppss-active-step-${projectId}`;
   const [activeStep, setActiveStep] = useState(steps[0]);
@@ -1107,6 +1111,19 @@ const handleSend = async (suggestedQuestion?: string) => {
     await persistChatLogs(stepId, nextUserLogs);
     if (!isCurrentConversation()) return;
     if (stepId === "data") {
+      if (effectiveSources.includes("spatial") && !effectiveSources.some(source => source === "cases" || source === "research") && isGeoQuestion(userMessage)) {
+        setAnalysisView("spatial"); setPanelView("information");
+        const result = await geo.run(userMessage);
+        if (!isCurrentConversation()) return;
+        if (result) {
+          const createdAt = new Date().toISOString();
+          setGeoChat({ time: createdAt, question: userMessage });
+          const nextLogs: ChatLog[] = [...nextUserLogs, { stepId, provider: activeProvider, sender: "assistant", text: t("gis.chatNotice"), label: activeProvider, createdAt }];
+          setChatLogsByStep(prev => ({ ...prev, [stepId]: nextLogs }));
+          await persistChatLogs(stepId, sanitizeLogs(nextLogs));
+        }
+        return;
+      }
       setInspectedEvidence(null);
       setInspectedResearchFindings([]);
       setInspectedSpatial(null);
@@ -1777,7 +1794,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               }} />}
               {message.text && !message.analysis && (
                 <p className="mt-2 whitespace-pre-line">
-                  {formatMessage(isAssistant && message.imageUrl ? localize(message.text) : message.text)}
+                  {formatMessage(geoChat?.time === message.createdAt && geo.result?.question === geoChat.question ? geo.result.reply : isAssistant && message.imageUrl ? localize(message.text) : message.text)}
                 </p>
               )}
               {message.imageUrl && (
@@ -2018,7 +2035,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               </button>)}
             </div>
             {analysisView === "spatial" && <div role="tabpanel" id="analysis-spatial-panel" aria-labelledby="analysis-spatial-tab">
-              <SpatialAnalysis key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={updateSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
+              <SpatialAnalysis geo={geo} key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={updateSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
             </div>}
             {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
               <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>
