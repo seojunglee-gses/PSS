@@ -28,7 +28,7 @@ export function validateConfig(
       !l ||
       !/^[a-zA-Z0-9_-]+$/.test(l.id) ||
       ids.has(l.id) ||
-      (["background", "__selection"].includes(l.id) || l.id.startsWith("__basemap_")) ||
+      (["background", "__selection"].includes(l.id) || l.id.startsWith("__basemap_") || l.id.startsWith("__selection-")) ||
       typeof l.label !== "string" ||
       !["polygon", "point", "line"].includes(l.type) ||
       typeof l.source !== "string" ||
