@@ -41,7 +41,7 @@ export default async function handler(
   }
 
   try {
-    const context = await loadProjectContext(req, req.body.currentStage ?? "report");
+    const context = await loadProjectContext(req, req.body.currentStage ?? "report", false);
     const curatedBackground = context.currentMaterial;
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",

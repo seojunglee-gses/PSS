@@ -1,3 +1,4 @@
+import {deriveBoundary,boundaryGeoJSON,boundaryScope,spatialSettings,type ProjectBoundary,type SpatialSettings,filterBoundaryPlaces} from "./boundary";
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createHmac, timingSafeEqual, createHash } from 'node:crypto';
@@ -5,12 +6,12 @@ import { adminDb, adminBucket } from '../firebaseAdmin';
 import { listDatasets, readDataset } from './dataset-server';
 import { datasetLayer } from './datasets';
 import { validateConfig, validateGeoJSON } from './loader';
-import { featureKey, featureCollection } from './engine';
+import { featureKey, featureCollection, resultFor, isArea } from './engine';
 import { bbox } from '@turf/turf';
 import type { Identity } from '../membership/server';
 import type { LoadedLayer } from './types';
-import { coordinate, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, isMapReference, type Place, type GeoContext, type GeoResult } from './geo-query';
-import { searchPlaces, searchNearbyPlaces, findNearestPlaces, getWalkingRoute } from './kakao-server';
+import { coordinate, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, isMapReference, featureNames, type Place, type GeoContext, type GeoResult } from './geo-query';
+import { searchPlaces, searchNearbyPlaces, findNearestPlaces, getWalkingRoute, searchBoundaryPlaces } from './kakao-server';
 import { translate, type Locale } from '../i18n';
 const geometryCache = new Map<string, {
     data: LoadedLayer['data'];
@@ -76,7 +77,11 @@ export async function projectLayers(user: Identity, projectId: string, signal?: 
         }).code !== 'ENOENT')
             warnings.push('gis.layerUnavailable');
     }
-    return { layers, warnings };
+    const settings=spatialSettings(listed.spatialSettings);
+    const active=layers.find(l=>l.config.id===`uploaded-${settings.activeBoundaryDatasetId}`);
+    let boundary:ProjectBoundary|undefined;
+    if(active){try{boundary=deriveBoundary(boundaryGeoJSON(active.data));}catch{warnings.push('boundary.invalid');}}
+    return { layers, warnings, boundary, settings };
 }
 function selectedPlace(context: GeoContext, layers: LoadedLayer[]): Place | undefined {
     if (context.selected) {
@@ -149,11 +154,15 @@ export async function executeGeoQuery(input: {
     context?: unknown;
     choices?: Record<string, string>;
     locale?: Locale;
-}, user: Identity, projectId: string, layers: LoadedLayer[], layerWarnings: string[] = [], signal?: AbortSignal): Promise<GeoResult> {
+}, user: Identity, projectId: string, layers: LoadedLayer[], layerWarnings: string[] = [], signal?: AbortSignal, options?:{boundary?:ProjectBoundary;settings?:SpatialSettings}): Promise<GeoResult> {
     const plan = parseGeoPlan(input.question), context = parseGeoContext(input.context), locale = input.locale === 'en' ? 'en' : 'ko';
     const t = (key: string, values?: Record<string, string | number>) => translate(locale, key, values);
-    let origin = plan.origin ? undefined : defaultOrigin(context, layers);
+    const boundary=options?.boundary,settings=spatialSettings(options?.settings);
+    const scopeMeters=context.scopeMeters??settings.defaultNearbyMeters;
+    let origin = plan.origin ? undefined : defaultOrigin(context, options ? layers.filter(l=>l.config.role!=='boundary') : layers);
+    if(!plan.origin&&!context.selected&&!context.point&&boundary)origin={id:'project-center',name:'gis.projectCenter',source:'project',coordinate:boundary.center,approximate:true};
     const warnings = layerWarnings.map(w => t(w));
+    if(options&&!boundary)warnings.push(t('boundary.noActive'));
     const result: GeoResult = { question: input.question, intent: plan.intent, reply: '', places: [], warnings };
     const resolve = async (name: string, role: 'origin' | 'destination') => {
         const binding = scope(user.uid, projectId, input.question, name);
@@ -167,7 +176,10 @@ export async function executeGeoQuery(input: {
             return selected;
         if (token)
             throw new Error('gis.choiceExpired');
-        const options = await resolvePlaceReference(name, context, layers, origin, signal);
+        let options = await resolvePlaceReference(name, context, layers, origin, signal);
+        if(boundary&&!internalPlaces(name,layers,featureKey).length&&role==='destination'){
+          const local=filterBoundaryPlaces(options,boundaryScope(boundary,scopeMeters));if(local.length)options=local;
+        }
         const ambiguousGeneric = /^(경로당|주민센터|건강생활지원센터)$/.test(name.trim());
         if (options.length === 1 && !ambiguousGeneric)
             return options[0];
@@ -181,7 +193,23 @@ export async function executeGeoQuery(input: {
         return;
     };
     if (plan.intent === 'EXISTING_GIS_QUERY') {
-        result.reply = t('gis.existingTools');
+        const named=layers.flatMap(l=>l.data.features.flatMap((f,i)=>featureNames(f).some(name=>name.length>1&&input.question.includes(name))?[{layer:l,feature:f,index:i}]:[]));
+        if(/시설|타워|전파기지|facilit|tower|station/i.test(input.question)){
+          const locations=named.length?named:layers.filter(l=>l.config.role==='facilities').flatMap(l=>l.data.features.map((f,i)=>({layer:l,feature:f,index:i})));
+          result.places=locations.slice(0,20).map(({layer,feature,index})=>({id:layer.config.id+':'+featureKey(feature,index),name:featureNames(feature)[0]??layer.config.label,source:'project',layerId:layer.config.id,featureId:featureKey(feature,index),...representativePoint(feature)}));
+          result.reply=result.places.length?t('boundary.facilitySummary',{count:result.places.length}):t('boundary.noFacilities');return result;
+        }
+        const selected=context.selected?layers.find(l=>l.config.id===context.selected!.layerId):undefined;
+        const feature=selected?.data.features.find((f,i)=>featureKey(f,i)===context.selected!.featureId);
+        const shape=feature&&isArea(feature)?feature:boundary?.geometry;
+        const layer=feature?selected:layers.find(l=>l.config.id===`uploaded-${settings.activeBoundaryDatasetId}`);
+        if(shape){
+          result.computedResult=resultFor(projectId,'area',layers,shape,{selectedLayerId:layer?.config.id??'',selectedFeatureId:feature?context.selected!.featureId:'__boundary__'});
+          const metrics=result.computedResult.metrics;
+          result.reply=t('boundary.area',{area:Math.round(metrics.areaSqm??0).toLocaleString()});
+          if(metrics.buildingCount!==undefined)result.reply+=' '+t('boundary.buildingCount',{count:metrics.buildingCount});
+          result.reply+=' '+t('boundary.dataLimit');
+        }else result.reply=t('boundary.noGeometry');
         return result;
     }
     if (plan.minutes && !plan.destination) {
@@ -235,6 +263,21 @@ export async function executeGeoQuery(input: {
     const internal = internalPlaces(plan.query, layers, featureKey);
     if (internal.length && !plan.nearby)
         result.places = internal;
+    else if(boundary&&(!origin||filterBoundaryPlaces([origin],boundaryScope(boundary,scopeMeters)).length>0)&&(!plan.origin||isMapReference(plan.origin)||origin?.source==='project')){
+        let candidates=(await searchBoundaryPlaces(plan.query,boundaryScope(boundary,scopeMeters),signal)).places;
+        const explicitRadius=/\d+(?:\.\d+)?\s*(?:m|km|미터|킬로미터)/i.test(input.question);
+        if(explicitRadius&&origin)candidates=candidates.filter(p=>calculateStraightLineDistance(origin!.coordinate,p.coordinate)<=plan.radius);
+        candidates=candidates.map(p=>({...p,distanceMeters:origin?calculateStraightLineDistance(origin.coordinate,p.coordinate):undefined})).sort((a,b)=>(a.distanceMeters??0)-(b.distanceMeters??0));
+        result.scopeMeters=scopeMeters;warnings.push(t('boundary.partialSearch'));
+        if(plan.intent==='NEAREST_PLACE'&&plan.walking){
+          const checked=await Promise.allSettled(candidates.slice(0,3).map(async place=>({place,route:await getWalkingRoute(origin!.coordinate,place.coordinate,signal)})));
+          warnings.push(...[...new Set(checked.flatMap(r=>r.status==='rejected'?[r.reason instanceof Error&&r.reason.message.startsWith('gis.')?r.reason.message:'gis.noRoute']:[]))].map(key=>t(key)));
+          const routes=checked.flatMap(r=>r.status==='fulfilled'?[r.value]:[]).sort((a,b)=>a.route.distanceMeters-b.route.distanceMeters);
+          if(routes.length){result.places=routes.slice(0,plan.limit).map(r=>({...r.place,distanceMeters:r.route.distanceMeters}));result.route=routes[0].route;result.destination=result.places[0];result.ranking='walking';warnings.push(t('gis.limitedRanking'));}
+          else{result.places=candidates.slice(0,plan.limit);result.ranking='straight';warnings.push(t('gis.noRoute'));}
+        }else{result.places=candidates.slice(0,plan.limit);if(plan.intent==='NEAREST_PLACE')result.ranking='straight';}
+        if(explicitRadius)result.radiusMeters=plan.radius;
+    }
     else if (plan.intent === 'NEAREST_PLACE') {
         const nearest = await findNearestPlaces(plan.query, origin!, plan.radius, plan.limit, plan.walking, signal);
         result.places = nearest.places;

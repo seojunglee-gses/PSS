@@ -14,6 +14,8 @@ export type SpatialDataset = {
   storagePath: string; revisionId: string; size: number;
   format: "geojson" | "json" | "csv";
   geometryType: LayerConfig["type"] | null;
+  sourceCrs?: "EPSG:4326" | "EPSG:3857";
+  boundaryMetadata?: {bbox:number[];center:number[];areaSqm:number};
   normalizedStoragePath?: string;
   normalizedId?: string;
   buildingUseVersion?: string;
@@ -23,9 +25,11 @@ export function datasetLayer(dataset: SpatialDataset): LayerConfig | null {
   if (!dataset.geometryType) return null;
   const roles: Partial<Record<DatasetType, LayerConfig["role"]>> = { project_boundary: "boundary", buildings: "buildings", roads: "roads", public_facilities: "facilities" };
   return {
+    datasetType:dataset.type,
     id: `uploaded-${dataset.datasetId}`, label: dataset.name, type: dataset.geometryType,
     source: `/api/projects/spatial-datasets?${new URLSearchParams({projectId: dataset.projectId, datasetId: dataset.datasetId, revisionId: dataset.revisionId})}`,
-    defaultVisible: true,
+    defaultVisible: !["buildings", "parcels"].includes(dataset.type),
+    ...(dataset.type === "project_boundary" ? {color:"#2563eb"} : {}),
     ...(roles[dataset.type] ? { role: roles[dataset.type] } : {}),
   };
 }

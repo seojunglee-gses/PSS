@@ -6,6 +6,8 @@ import { featureNames, representativePoint, type Coordinate, type GeoResult, typ
 import { loadKakaoMaps, kakaoFeatureOverlays, latLng, type KakaoMap, type KakaoSDK, type KakaoOverlay } from '../../lib/spatial/kakao-map';
 import { useI18n } from '../../lib/i18n';
 export type SpatialMapProps = {
+    extent?: [number,number,number,number];
+    resetVersion?: number;
     layers: LoadedLayer[];
     visible: string[];
     overlay: FeatureCollection;
@@ -28,6 +30,7 @@ export default function KakaoSpatialMap(props: SpatialMapProps & {
     const [ready, setReady] = useState(false);
     const [error, setError] = useState('');
     const fitted = useRef(false);
+    useEffect(()=>{fitted.current=false;},[props.resetVersion,props.extent]);
     useEffect(() => {
         let alive = true;
         let resize: ResizeObserver | undefined;
@@ -62,8 +65,8 @@ export default function KakaoSpatialMap(props: SpatialMapProps & {
         if (!ready || !api || !instance)
             return;
         const all = featureCollection(props.layers.flatMap(l => l.data.features));
-        if (all.features.length && !fitted.current) {
-            const b = bbox(all), bounds = new api.LatLngBounds();
+        if ((props.extent||all.features.length) && !fitted.current) {
+            const b = props.extent??bbox(all), bounds = new api.LatLngBounds();
             bounds.extend(latLng(api, [b[0], b[1]]));
             bounds.extend(latLng(api, [b[2], b[3]]));
             instance.setBounds(bounds);
@@ -104,7 +107,7 @@ export default function KakaoSpatialMap(props: SpatialMapProps & {
         };
         batch();
         return () => { cancelled = true; cancelAnimationFrame(frame); created.forEach(o => o.setMap(null)); };
-    }, [ready, props.layers, props.visible]);
+    }, [ready, props.layers, props.visible, props.extent, props.resetVersion]);
     useEffect(() => {
         const api = sdk.current, instance = map.current;
         if (!ready || !api || !instance)

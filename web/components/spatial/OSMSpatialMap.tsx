@@ -10,8 +10,10 @@ export default function SpatialMap({
   visible,
   overlay,
   onSelect,
-  onPoint, onCenter,
+  onPoint, onCenter, extent, resetVersion,
 }: {
+  extent?: [number,number,number,number];
+  resetVersion?: number;
   onPoint?: (coordinate: [number, number]) => void;
   onCenter?: (coordinate: [number, number]) => void;
   layers: LoadedLayer[];
@@ -26,6 +28,8 @@ export default function SpatialMap({
   const { t, locale, localize } = useI18n();
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const extentRef = useRef(extent);
+  useEffect(()=>{extentRef.current=extent;},[extent]);
   const pointRef = useRef(onPoint); const centerRef = useRef(onCenter);
   useEffect(() => { pointRef.current = onPoint; centerRef.current = onCenter; }, [onPoint, onCenter]);
   const selectRef = useRef(onSelect);
@@ -116,7 +120,7 @@ export default function SpatialMap({
                   source: layer.config.id,
                   paint: {
                     "fill-color": color,
-                    "fill-opacity": 0.4,
+                    "fill-opacity": layer.config.role === "boundary" ? 0.08 : 0.4,
                     "fill-outline-color": color,
                   },
                 }
@@ -155,8 +159,8 @@ export default function SpatialMap({
         map.addLayer({id:"__selection-line",type:"line",source:"__selection",filter:["==",["geometry-type"],"LineString"],paint:{"line-color":"#2563eb","line-width":5}});
         const center=map.getCenter();centerRef.current?.([center.lng,center.lat]);
         const data = featureCollection(layers.flatMap((l) => l.data.features));
-        if (data.features.length && !fitted) {
-          const bounds = bbox(data);
+        if ((extentRef.current || data.features.length) && !fitted) {
+          const bounds = extentRef.current??bbox(data);
           map.fitBounds(
             [
               [bounds[0], bounds[1]],
@@ -214,6 +218,7 @@ export default function SpatialMap({
     }
     // A dataset load builds its map once; visibility and results update independently.
   }, [layers]);
+  useEffect(()=>{const map=mapRef.current;if(map&&extent)map.fitBounds([[extent[0],extent[1]],[extent[2],extent[3]]],{padding:35,maxZoom:17,duration:0});},[extent,resetVersion]);
   useEffect(() => {
     const map = mapRef.current;
     for (const l of layers)

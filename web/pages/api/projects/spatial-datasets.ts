@@ -29,5 +29,5 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         res.status(200).json(await readDataset(db, adminBucket(), user, projectId, req.query.datasetId, req.query.revisionId));
       } else res.status(200).json(await listDatasets(db, user, projectId));
     }
-  } catch (error) { res.status(error instanceof AccessError ? error.status : 503).json({ error: error instanceof AccessError ? error.message : "공간정보를 처리하지 못했어요. 잠시 후 다시 시도해주세요." }); }
+  } catch (error) { res.status(error instanceof AccessError ? error.status : error instanceof Error&&error.message.startsWith("boundary.")?400:503).json({ error: error instanceof AccessError||error instanceof Error&&error.message.startsWith("boundary.") ? error.message : "공간정보를 처리하지 못했어요. 잠시 후 다시 시도해주세요." }); }
 }

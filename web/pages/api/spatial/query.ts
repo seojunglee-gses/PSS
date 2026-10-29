@@ -50,14 +50,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             res.status(429).json({ error: translate(locale, 'gis.quota') });
             return;
         }
-        const { layers, warnings } = await projectLayers(context.user, context.projectId, abort.signal);
+        const { layers, warnings, boundary, settings } = await projectLayers(context.user, context.projectId, abort.signal);
         abort.signal.throwIfAborted();
-        const result = await executeGeoQuery(req.body, context.user, context.projectId, layers, warnings, abort.signal);
+        const result = await executeGeoQuery(req.body, context.user, context.projectId, layers, warnings, abort.signal,{boundary,settings});
         abort.signal.throwIfAborted();
         res.status(200).json({ result });
     }
     catch (error) {
-        const key = error instanceof Error && error.message.startsWith('gis.') ? error.message : 'gis.failed';
+        const key = error instanceof Error && /^(gis|boundary)\./.test(error.message) ? error.message : 'gis.failed';
         if (abort.signal.aborted)
             return;
         res.status(error instanceof AccessError ? error.status : error instanceof KakaoError ? error.status : key === 'gis.failed' ? 503 : 400).json({ error: error instanceof AccessError ? localizeMessage(locale,error.message,'access.checkFailed') : translate(locale, key) });
