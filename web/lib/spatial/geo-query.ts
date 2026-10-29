@@ -65,6 +65,7 @@ export type GeoResult = {
     ranking?: 'straight' | 'walking';
     partial?: boolean;
     scopeMeters?: number;
+    facilitationQuestion?:string;
     computedResult?: import("./types").SpatialResult;
 };
 export function coordinate(value: unknown): Coordinate {

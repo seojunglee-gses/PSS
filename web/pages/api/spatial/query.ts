@@ -1,3 +1,5 @@
+import {gisReflection,policyHistory} from "../../../lib/facilitation";
+import {conversationHistory} from "../../../lib/chat-history";
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { loadProjectContext } from '../../../lib/project-context-server';
 import { AccessError } from '../../../lib/membership/server';
@@ -5,7 +7,7 @@ import { projectLayers, executeGeoQuery } from '../../../lib/spatial/geo-server'
 import { KakaoError } from '../../../lib/spatial/kakao-server';
 import { parseGeoContext, parseGeoPlan } from '../../../lib/spatial/geo-query';
 import { translate, localizeMessage } from '../../../lib/i18n';
-export const config = { api: { bodyParser: { sizeLimit: '24kb' } } };
+export const config = { api: { bodyParser: { sizeLimit: '40kb' } } };
 export const maxDuration = 60;
 const requests = new Map<string, {
     time: number;
@@ -40,7 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     req.once?.('aborted', cancel);
     res.once?.('close', close);
     try {
-        const context = await loadProjectContext(req, 'data');
+        const context = await loadProjectContext(req, 'data', true, true);
         parseGeoPlan(req.body.question);
         parseGeoContext(req.body.context);
         const choices = req.body.choices;
@@ -54,6 +56,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         abort.signal.throwIfAborted();
         const result = await executeGeoQuery(req.body, context.user, context.projectId, layers, warnings, abort.signal,{boundary,settings});
         abort.signal.throwIfAborted();
+        const reflection=gisReflection(req.body.question,policyHistory(context.stageHistory,conversationHistory(req.body.history)),!!(result.route||result.computedResult)&&!result.clarify,locale);
+        if(reflection){result.facilitationQuestion=reflection;result.reply+='\n\n'+reflection;}
         res.status(200).json({ result });
     }
     catch (error) {

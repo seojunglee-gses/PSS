@@ -11,13 +11,13 @@ export function useGeoWorkspace(projectId: string) {
     const [error, setError] = useState('');
     const [highlighted, setHighlighted] = useState<string | null>(null);
     const abort = useRef<AbortController | null>(null);
-    const current = useRef({ question: '', choices: {} as Record<string, string> });
-    useEffect(() => { abort.current?.abort(); setContext({}); setResult(null); setLoading(false); setError(''); setHighlighted(null); current.current = { question: '', choices: {} }; return () => abort.current?.abort(); }, [projectId, user?.uid]);
-    const clear = useCallback(() => { abort.current?.abort(); setResult(null); setLoading(false); setError(''); setHighlighted(null); current.current = { question: '', choices: {} }; }, []);
+    const current = useRef({question:'',choices:{} as Record<string,string>,history:[] as import('../chat-history').ConversationMessage[]});
+    useEffect(() => { abort.current?.abort(); setContext({}); setResult(null); setLoading(false); setError(''); setHighlighted(null); current.current = { question: '', choices: {},history:[] }; return () => abort.current?.abort(); }, [projectId, user?.uid]);
+    const clear = useCallback(() => { abort.current?.abort(); setResult(null); setLoading(false); setError(''); setHighlighted(null); current.current = { question: '', choices: {},history:[] }; }, []);
     const run = useCallback(async (question: string, choice?: {
         reference: string;
         token: string;
-    }) => {
+    }, history?: import('../chat-history').ConversationMessage[]) => {
         abort.current?.abort();
         const controller = new AbortController();
         abort.current = controller;
@@ -28,14 +28,14 @@ export function useGeoWorkspace(projectId: string) {
         const choices = current.current.question === question ? { ...current.current.choices } : {};
         if (choice)
             choices[choice.reference] = choice.token;
-        current.current = { question, choices };
+        current.current = { question, choices,history:history??(current.current.question===question?current.current.history:[]) };
         try {
             if (!user)
                 throw new Error('common.authRequired');
             const token = await user.getIdToken();
             if (controller.signal.aborted)
                 return;
-            const response = await fetch('/api/spatial/query', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, signal: controller.signal, body: JSON.stringify({ projectId, question, context, choices, locale }) });
+            const response = await fetch('/api/spatial/query', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, signal: controller.signal, body: JSON.stringify({ projectId, question, context, choices, locale,history:current.current.history }) });
             const payload = await response.json();
             if (controller.signal.aborted)
                 return;

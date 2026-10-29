@@ -1,3 +1,5 @@
+import {summaryAttributionRules,summaryDialogue} from "../../lib/facilitation";
+import {adminDb} from "../../lib/firebaseAdmin";
 import { AccessError } from "../../lib/membership/server";
 import { MODELS } from "../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -17,7 +19,7 @@ const buildSystemPrompt = (backgroundKnowledge?: string) =>
     : systemPromptBase;
 
 const buildPrompt = (payload: unknown) =>
-  `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"workspaceSummary\": {\n    \"stageSummaries\": {\n      \"problem\": \"...\",\n      \"data\": \"...\",\n      \"alternatives\": \"...\",\n      \"evaluation\": \"...\",\n      \"report\": \"...\"\n    },\n    \"overallSummary\": \"...\"\n  }\n}\n\nRules:\n- Workspace summary is ONLY the current user's dialogues grouped by stage.\n- Provide stage-specific conclusions and a concise overall conclusion.\n- Each stage summary must be written as a conclusion-only statement (no other sections).\n- Use abstract insights, not raw quotes.`;
+  `Input JSON: ${JSON.stringify(payload)}\n\nReturn JSON with this schema:\n{\n  \"workspaceSummary\": {\n    \"stageSummaries\": {\n      \"problem\": \"...\",\n      \"data\": \"...\",\n      \"alternatives\": \"...\",\n      \"evaluation\": \"...\",\n      \"report\": \"...\"\n    },\n    \"overallSummary\": \"...\"\n  }\n}\n\nRules:\n- Workspace summary is ONLY the current user's dialogues grouped by stage.\n- Provide stage-specific conclusions and a concise overall conclusion.\n- Each stage summary is a concise participant-reviewable draft, with five short labeled sections; no forced consensus.\n- Use abstract insights, not raw quotes.`;
 
 export default async function handler(
   req: NextApiRequest,
@@ -41,8 +43,12 @@ export default async function handler(
   }
 
   try {
-    const context = await loadProjectContext(req, req.body.currentStage ?? "report", false);
+    const context = await loadProjectContext(req, req.body.currentStage ?? "report");
     const curatedBackground = context.currentMaterial;
+    const stage=req.body.currentStage??"report";
+    const saved=(await adminDb().doc(`users_${context.projectId}/${context.user.uid}/steps/${stage}`).get()).data()?.logs;
+    const dialogue=summaryDialogue(Array.isArray(saved)&&saved.length?saved:req.body.historyByStage?.[stage]);
+    const input={currentStage:stage,dialogue:dialogue.messages,dialogueTruncated:dialogue.truncated,previousStageSummaries:context.previousSummaries};
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -51,7 +57,7 @@ export default async function handler(
       },
       body: JSON.stringify({
         model: MODELS.chat,
-        input: `${buildSystemPrompt(curatedBackground)}\n\n${buildPrompt(req.body)}`,
+        input: `${buildSystemPrompt(curatedBackground)}\n${summaryAttributionRules} If dialogueTruncated is true, disclose the incomplete dialogue scope and never imply all opinions were considered.\n\n${buildPrompt(input)}`,
         text: {
           format: { type: "json_object" }, 
         },

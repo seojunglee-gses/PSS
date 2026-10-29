@@ -1,3 +1,4 @@
+import {facilitationInstructions,isPlanningConcern} from "../facilitation";
 import { MODELS } from "../llm/openai";
 import { callLLM } from "../llm";
 import type { AnalysisRequest } from "./evidence";
@@ -43,7 +44,7 @@ export function parseAnswer(text: string, evidence: EvidenceBundle): AnalysisAns
 }
 
 export async function answerFromEvidence(request: AnalysisRequest, evidence: EvidenceBundle): Promise<AnalysisAnswer> {
-  if (!evidenceCitations(evidence).length && !request.spatialContext && !evidence.projectContext && !request.history?.length) {
+  if (!evidenceCitations(evidence).length && !request.spatialContext && !evidence.projectContext && !request.history?.length && !isPlanningConcern(request.question)) {
     return { summary: /[가-힣]/.test(request.question) ? "답변에 필요한 자료가 부족합니다. 다른 자료를 선택하거나 필요한 분석을 먼저 실행해주세요." : "There is not enough available evidence to answer this question. Refine the question or try another evidence source.", caseFindings: [], researchFindings: [], agreement: "", differences: "", integratedInterpretation: "", projectImplications: [], limitations: evidence.warnings.map((w) => w.message).join(" "), sources: [] };
   }
   const systemText = `You support the Data Analysis stage of a participatory urban regeneration project. Explicitly distinguish measured spatial facts, participant observations, planning interpretations, and unverified hypotheses. Incomplete GIS or POI retrieval never establishes unsafe conditions, unmet needs, inaccessibility, redevelopment necessity, or community consensus.
@@ -63,7 +64,7 @@ Return JSON only, with exactly this structure:
   const response = await callLLM({
     provider: request.provider,
     model: request.provider === "gemini" ? "gemini-2.5-flash" : request.provider === "deepseek" ? "deepseek-chat" : MODELS.chat,
-    systemText,
+    systemText:systemText+"\n\n"+facilitationInstructions("data",request.question,[...(request.facilitationHistory??[]),...(request.history??[])])+" Put any optional follow-up only at the end of integratedInterpretation; preserve the JSON schema and all evidence/citation constraints.",
     userText: JSON.stringify({ question: request.question, history: request.history ?? [], projectMaterial: evidence.projectContext, spatialContext: request.spatialContext, projectContext: request.projectContext, previousStageSummaries: request.previousSummaries ?? {}, cases: evidence.cases, papers: evidence.papers.filter((p) => p.usedInAnswer), retrievalWarnings: evidence.warnings }),
   });
   return parseAnswer(response, evidence);

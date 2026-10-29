@@ -165,3 +165,11 @@ test('saved calculations are recomputed from authorized layers instead of trusti
  const response=await reviewRoute(participant,{action:'add',kind:'calculation',result:source});assert.equal(response.status,200);assert.equal(response.body.review.findings[0].kind,'calculation');assert.ok(!response.body.review.findings[0].text.includes('9,999,999,999'));assert.deepEqual(response.body.review.findings[0].sources,source.layerIds);
  const forged=await reviewRoute(participant,{action:'add',kind:'location',selection:{layerId:'uploaded-another-project',featureId:'0'}});assert.equal(forged.status,400);
 });
+test('confirmed stage summaries remain owner-private and override only that user’s later-stage context',async()=>{
+ await db.doc('ppssWorkspaceSummaries_p1/reader').set({stageSummaries:{problem:'공유를 선택한 이전 요약'},completedStages:['problem']});
+ await db.doc('users_p1/reader').set({confirmedStageSummaries:{problem:{text:'본인만 확인한 관심: 쉼터',confirmedAt:new Date().toISOString()}}});
+ const own=env.authenticatedContext(participant.uid,{email:participant.email}).firestore(),manager=env.authenticatedContext(owner.uid,{email:owner.email}).firestore();await assertSucceeds(getDoc(doc(own,'users_p1','reader')));await assertSucceeds(setDoc(doc(own,'users_p1','reader'),{confirmedStageSummaries:{data:{text:'본인만 확인한 자료 분석',confirmedAt:new Date().toISOString()}}},{merge:true}));assert.ok((await db.doc('users_p1/reader').get()).data().confirmedStageSummaries.problem);await assertFails(getDoc(doc(manager,'users_p1','reader')));
+ const context=require(build+'/lib/project-context-server.js'),oldVerify=adminModule.verifyUserRequest,oldDb=adminModule.adminDb;adminModule.adminDb=()=>db;
+ try{adminModule.verifyUserRequest=async()=>participant;const req={body:{projectId:'p1'},headers:{authorization:'Bearer fixture'}};assert.match((await context.loadProjectContext(req,'alternatives')).previousSummaries.problem,/본인만/);adminModule.verifyUserRequest=async()=>owner;assert.ok(!(await context.loadProjectContext(req,'alternatives')).previousSummaries.problem);}finally{adminModule.verifyUserRequest=oldVerify;adminModule.adminDb=oldDb}
+ assert.equal((await db.doc('ppssWorkspaceSummaries_p1/reader').get()).data().stageSummaries.problem,'공유를 선택한 이전 요약');
+});

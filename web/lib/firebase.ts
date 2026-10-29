@@ -678,3 +678,14 @@ export const loadEvaluationImages = async (projectId?: string): Promise<Evaluati
     .map((docSnap) => docSnap.data() as EvaluationImage)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 };
+
+// Participant-reviewed summaries remain in the existing owner-only project namespace.
+export async function saveConfirmedStageSummary(userId:string,stage:string,text:string,projectId?:string){
+  const app=getFirebaseApp();if(!app)return;
+  await setDoc(doc(getFirestore(app),scopedCollection("users",projectId),userId),{confirmedStageSummaries:{[stage]:{text,confirmedAt:new Date().toISOString()}}},{merge:true});
+}
+export async function loadConfirmedStageSummaries(userId:string,projectId?:string):Promise<Record<string,string>>{
+  const app=getFirebaseApp();if(!app)return {};
+  const value=(await getDoc(doc(getFirestore(app),scopedCollection("users",projectId),userId))).data()?.confirmedStageSummaries??{};
+  return Object.fromEntries(Object.entries(value).filter(([stage,v])=>["problem","data","alternatives","evaluation","report"].includes(stage)&&typeof (v as {text?:unknown})?.text==="string").map(([stage,v])=>[stage,(v as {text:string}).text]));
+}

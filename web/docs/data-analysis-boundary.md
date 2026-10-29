@@ -73,7 +73,7 @@ Kakao 검색에 지오메트리를 직접 보내지 않습니다. 선택한 사�
 
 저장한 기록으로 빈 요약 초안을 만들거나 ‘지역 현황·주요 문제·개선 가능성’을 직접 검토/수정할 수 있습니다. 단계 완료 확인창에서 검토로 돌아갈 수 있습니다. 기존 단계 완료·요약 보고서·관리자 잠금은 교체하지 않았으며, 완료/잠긴 단계의 새 기록 수정도 서버에서 거절합니다.
 
-3단계 이후의 기존 `loadProjectContext`에서 해당 로그인 사용자의 검토 기록만 읽습니다. 저장 당시의 개인 기록임을 밝히며 최신 데이터의 사실이나 주민 전체의 합의로 취급하지 않습니다. 공동 보고용 기존 요약 생성에는 개인 검토 문서를 자동으로 덧붙이지 않습니다. 새 Firestore 컬렉션·Storage 경로·보안 규칙은 만들지 않았습니다. 기존 대화 문서에는 merge로 기록하여 대화 로그를 덮어쓰지 않습니다.
+3단계 이후의 기존 `loadProjectContext`에서 해당 로그인 사용자의 검토 기록만 읽습니다. 저장 당시의 개인 기록임을 밝히며 최신 데이터의 사실이나 주민 전체의 합의로 취급하지 않습니다. 단계 요약은 비공개 초안으로 생성해 참여자가 검토하며, 공동 보고서에는 사용자가 공유를 선택한 검토 문장만 전달합니다. 개인 검토 문서 자체를 공개하지 않습니다. 새 Firestore 컬렉션·Storage 경로·보안 규칙은 만들지 않았습니다. 기존 대화 문서에는 merge로 기록하여 대화 로그를 덮어쓰지 않습니다.
 
 ## 검증과 운영
 
@@ -94,3 +94,5 @@ Kakao SDK는 브라우저 테스트용 대체 구현, 외부 검색/도보 응�
 - 대화/맥락: `lib/project-context-server.ts`, `lib/research/answer.ts`, `pages/api/workspace-summary.ts`
 - API: `pages/api/projects/{spatial-datasets,analysis-review}.ts`, `pages/api/spatial/query.ts`
 - 설정/검증: `next.config.js`, `tests/{boundary,spatial-datasets,localization}.test.mjs`, `tests/run-research-tests.sh`, `tests/run-spatial-dataset-tests.sh`, 본 문서
+
+대화 진행·단계 요약 검토·명시적 공유의 추가 정책과 전체 최종 검증 결과는 [conversational-facilitation.md](conversational-facilitation.md)에 정리했습니다.

@@ -43,6 +43,13 @@ const STORAGE_KEY = "ppss-locale";
 
 export const messagesByLocale: Record<Locale, Messages> = {
   en: {
+    "facilitation.mySummary": "My reviewed stage summary",
+    "facilitation.reviewTitle": "Review your stage summary",
+    "facilitation.reviewHint": "Correct any wording that does not reflect your views. This summary is private by default and is used as your context in later stages. The stage is completed only after you confirm.",
+    "facilitation.summary": "Editable stage summary",
+    "facilitation.shareSummary": "Also share this reviewed summary with project participants and project reports (optional)",
+    "facilitation.confirmSummary": "Confirm summary and complete stage",
+
     "boundary.deleteActive": "Delete this spatial file and remove its active boundary assignment? Deleted files cannot be restored. Other datasets are retained.",
     "review.makeDraft": "Draft an empty summary from saved records",
     "boundary.dataTitle": "Data Analysis",
@@ -657,6 +664,13 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "setting.admin.desc": "Manage background knowledge and upload the current site image for workspace generation.",
   },
   ko: {
+    "facilitation.mySummary": "내가 확인한 단계 요약",
+    "facilitation.reviewTitle": "단계 요약을 검토해주세요",
+    "facilitation.reviewHint": "내 생각과 다르게 정리된 부분을 수정해주세요. 요약은 기본적으로 비공개이며 다음 단계의 개인 맥락으로 사용합니다. 확인한 뒤에 단계가 완료됩니다.",
+    "facilitation.summary": "수정할 단계 요약",
+    "facilitation.shareSummary": "검토한 이 요약을 프로젝트 참여자와 공동 보고서에도 공유합니다 (선택)",
+    "facilitation.confirmSummary": "요약 확인 후 단계 완료",
+
     "boundary.deleteActive": "이 공간정보 파일을 삭제하고 활성 경계도 해제할까요? 삭제한 파일은 되돌릴 수 없으며 다른 자료는 유지됩니다.",
     "review.makeDraft": "저장한 기록으로 빈 요약 채우기",
     "boundary.dataTitle": "자료 분석",
