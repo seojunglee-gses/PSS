@@ -1,3 +1,4 @@
+import { boundaryGeoJSON, deriveBoundary, sourceCrs, spatialSettings } from "./boundary";
 import type { Firestore } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
 import type { Bucket } from "@google-cloud/storage";
@@ -26,7 +27,8 @@ export async function listDatasets(db: Firestore, user: Identity, projectId: str
   validProjectId(projectId);
   const canManage = await authorize(db, user, projectId, false);
   const snapshot = await db.collection(datasetCollection(projectId)).get();
-  return { canManage, datasets: snapshot.docs.map((d) => {
+  const settings=spatialSettings((await db.doc(`ppssProjects/${projectId}`).get()).data()?.spatialSettings);
+  return { canManage, spatialSettings:settings, datasets: snapshot.docs.map((d) => {
     const data = d.data();
     return { ...data, datasetId: d.id, uploadedAt: data.uploadedAt.toDate().toISOString() } as SpatialDataset;
   }).sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt)) };
@@ -52,6 +54,7 @@ const normalizedOptions = { resumable: false, metadata: { contentType: "applicat
 export async function mutateDataset(db: Firestore, bucket: Bucket, user: Identity, body: Record<string, unknown>) {
   const projectId = validProjectId(body.projectId);
   await authorize(db, user, projectId, true);
+  if (body.action === "boundary-settings") return configureBoundary(db,bucket,user,projectId,body);
   if (!["upload", "replace", "delete"].includes(String(body.action))) throw new AccessError(400, "공간정보 요청을 확인해주세요.");
   const creating = body.action === "upload";
   const datasetId = creating ? randomUUID() : validId(body.datasetId);
@@ -68,15 +71,24 @@ export async function mutateDataset(db: Firestore, bucket: Bucket, user: Identit
     if (!bytes.length || bytes.length > MAX_DATASET_BYTES) throw new AccessError(400, "비어 있지 않은 3MB 이하 파일을 준비해주세요.");
     let geometryType: SpatialDataset["geometryType"];
     let normalized: Buffer | undefined;
+    let boundaryMetadata: {bbox:number[];center:number[];areaSqm:number}|undefined;
+    let crs: SpatialDataset["sourceCrs"];
     try {
-      const parsed = parseDataset(new TextDecoder("utf-8", { fatal: true }).decode(bytes), format, body.type as SpatialDataset["type"]);
+      if(body.type === "project_boundary"){
+        if(format === "csv")throw new Error("boundary.geojsonOnly");
+        const raw=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
+        crs=sourceCrs(raw,body.sourceCrs,true);
+        const d=deriveBoundary(boundaryGeoJSON(raw,crs,true));boundaryMetadata={bbox:d.bbox,center:d.center,areaSqm:d.areaSqm};
+      }
+      const parsed = body.type === "project_boundary" ? {geometryType:"polygon" as const,data:boundaryGeoJSON(JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes)),crs,true)} : parseDataset(new TextDecoder("utf-8", { fatal: true }).decode(bytes), format, body.type as SpatialDataset["type"]);
       geometryType = parsed.geometryType;
       if (body.type === "buildings" && parsed.data) normalized = normalizedBytes(normalizeBuildingData(parsed.data));
     }
-    catch (error) { throw new AccessError(400, error instanceof TypeError ? "UTF-8 파일로 저장해주세요." : error instanceof Error ? error.message : "파일 형식을 확인해주세요."); }
+    catch (error) { throw new AccessError(400, error instanceof SyntaxError ? "boundary.invalid" : error instanceof TypeError ? "UTF-8 파일로 저장해주세요." : error instanceof Error ? error.message : "파일 형식을 확인해주세요."); }
     const revisionId = randomUUID();
     uploadedPath = `ppss-spatial-datasets/${projectId}/${datasetId}/${revisionId}/original.${format}`;
     payload = { projectId, datasetId, name: body.name.trim(), type: body.type, fileName: body.fileName, format, storagePath: uploadedPath, revisionId, size: bytes.length, geometryType, uploadedAt: Timestamp.now(), uploadedBy: user.uid };
+    if(boundaryMetadata)Object.assign(payload,{boundaryMetadata,sourceCrs:crs});
     if (normalized) {
       const normalizedId = randomUUID();
       uploadedNormalizedPath = normalizedPath(projectId, datasetId, revisionId, BUILDING_USE_VERSION, normalizedId);
@@ -99,6 +111,12 @@ export async function mutateDataset(db: Firestore, bucket: Bucket, user: Identit
       if (creating && count >= 20) throw new AccessError(400, "사업당 공간정보는 최대 20개까지 등록할 수 있습니다.");
       if (!creating && previous.data()?.revisionId !== body.expectedRevisionId) throw new AccessError(409, "다른 관리자가 이 자료를 변경했습니다. 목록을 새로고침해주세요.");
       if (!creating && previous.data()?.storagePath !== `ppss-spatial-datasets/${projectId}/${datasetId}/${previous.data()?.revisionId}/original.${previous.data()?.format}`) throw new AccessError(400, "공간정보 경로를 확인해주세요.");
+      const settings=spatialSettings(project.data()?.spatialSettings);
+      if(!creating&&settings.activeBoundaryDatasetId===datasetId){
+        if(body.confirmBoundaryChange!==true)throw new AccessError(409,"boundary.confirmChange");
+        if(body.action === "delete")tx.update(db.doc(`ppssProjects/${projectId}`),{spatialSettings:{...settings,activeBoundaryDatasetId:null}});
+        else if(payload?.type!=="project_boundary")throw new AccessError(400,"boundary.invalid");
+      }
       const oldNormalized = previous.exists ? existingNormalizedPath(previous.data() as SpatialDataset, projectId, datasetId) : undefined;
       if (body.action === "delete") tx.delete(ref); else tx.set(ref, payload!);
       return [previous.data()?.storagePath, oldNormalized].filter((path): path is string => typeof path === "string");
@@ -126,7 +144,7 @@ export async function readDataset(db: Firestore, bucket: Bucket, user: Identity,
   }
   const [bytes] = await bucket.file(expected).download();
   if (bytes.length > MAX_DATASET_BYTES) throw new AccessError(400, "공간정보 파일이 지원 크기를 벗어났습니다.");
-  const data = parseDataset(new TextDecoder("utf-8", { fatal: true }).decode(bytes), dataset.format, dataset.type).data;
+  const data = dataset.type === "project_boundary" ? boundaryGeoJSON(JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes)),dataset.sourceCrs) : parseDataset(new TextDecoder("utf-8", { fatal: true }).decode(bytes), dataset.format, dataset.type).data;
   if (!data || dataset.type !== "buildings") return { data };
   // Legacy uploads / updated reference: create one derived version and reuse it thereafter.
   const normalized = normalizeBuildingData(data), bytesToSave = normalizedBytes(normalized), normalizedId = randomUUID();
@@ -150,4 +168,27 @@ export async function readDataset(db: Firestore, bucket: Bucket, user: Identity,
   if (!committed) await removeFile(bucket, newPath);
   else if (replacedPath) await removeFile(bucket, replacedPath);
   return { data: normalized };
+}
+
+async function configureBoundary(db:Firestore,bucket:Bucket,user:Identity,projectId:string,body:Record<string,unknown>){
+  const id=body.activeBoundaryDatasetId===null?null:validId(body.activeBoundaryDatasetId);
+  if(![0,500,1000].includes(body.defaultNearbyMeters as number))throw new AccessError(400,"boundary.invalidScope");
+  let revision:string|undefined;
+  if(id){const snap=await db.collection(datasetCollection(projectId)).doc(id).get(),d=snap.data() as SpatialDataset;
+    if(!snap.exists||d.type!=="project_boundary"||d.projectId!==projectId)throw new AccessError(400,"boundary.invalid");
+    if(body.expectedBoundaryRevisionId!==undefined&&body.expectedBoundaryRevisionId!==d.revisionId)throw new AccessError(409,"boundary.changed");
+    if(!d.sourceCrs&&body.sourceCrs!=="EPSG:4326")throw new AccessError(400,"boundary.confirmCrs");
+    revision=d.revisionId;deriveBoundary((await readDataset(db,bucket,user,projectId,id,revision)).data as import('geojson').FeatureCollection<import('geojson').Polygon|import('geojson').MultiPolygon>);
+  }
+  await db.runTransaction(async tx=>{
+    const ref=db.doc(`ppssProjects/${projectId}`),p=await tx.get(ref),d=id?await tx.get(db.collection(datasetCollection(projectId)).doc(id)):undefined;
+    if(!p.exists||!canManageProject(user.email,p.data() as ProjectMeta))throw new AccessError(403,"boundary.forbidden");
+    const previous=spatialSettings(p.data()?.spatialSettings);
+    if(previous.activeBoundaryDatasetId!==(body.expectedBoundaryId??null))throw new AccessError(409,"boundary.changed");
+    if(previous.activeBoundaryDatasetId!==id&&previous.activeBoundaryDatasetId&&body.confirmBoundaryChange!==true)throw new AccessError(409,"boundary.confirmChange");
+    if(id&&(!d?.exists||d.data()?.revisionId!==revision))throw new AccessError(409,"boundary.changed");
+    tx.update(ref,{spatialSettings:{activeBoundaryDatasetId:id,defaultNearbyMeters:body.defaultNearbyMeters}});
+    if(id&&!d?.data()?.sourceCrs)tx.update(d!.ref,{sourceCrs:"EPSG:4326"});
+  });
+  return {spatialSettings:{activeBoundaryDatasetId:id,defaultNearbyMeters:body.defaultNearbyMeters}};
 }

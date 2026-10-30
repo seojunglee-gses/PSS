@@ -171,7 +171,7 @@ export async function loadSpatialConfig(
   if (!token) return config;
   const r = await fetch(`/api/projects/spatial-datasets?${new URLSearchParams({ projectId })}`, { signal, headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
   if (!r.ok) throw new Error("업로드한 공간정보를 불러오지 못했어요. 참여 권한과 로그인 상태를 확인해주세요.");
-  const { datasets } = await r.json() as { datasets: import("./datasets").SpatialDataset[] };
+  const { datasets, spatialSettings } = await r.json() as { spatialSettings?: import("./boundary").SpatialSettings; datasets: import("./datasets").SpatialDataset[] };
   if (!Array.isArray(datasets) || datasets.length > 20) throw new Error("공간정보 목록을 확인해주세요.");
   const { datasetLayer } = await import("./datasets");
   const warnings: string[] = [];
@@ -182,7 +182,7 @@ export async function loadSpatialConfig(
     else warnings.push(`${dataset.name}: 좌표가 없는 CSV입니다. 파일은 보관되지만 지도와 공간 계산에는 사용할 수 없습니다.`);
   }
   if (new Set(config.layers.map((l) => l.id)).size !== config.layers.length) throw new Error("공간정보 레이어 ID가 중복됩니다.");
-  return { ...config, ...(warnings.length ? { datasetWarnings: warnings } : {}) };
+  return { ...config, spatialSettings, ...(warnings.length ? { datasetWarnings: warnings } : {}) };
 }
 export async function loadLayer(config: LayerConfig, token?: string): Promise<LoadedLayer> {
   if (config.source.startsWith("/api/projects/spatial-datasets?")) {

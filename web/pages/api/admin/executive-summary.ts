@@ -1,3 +1,4 @@
+import {evidenceAttributionRules} from "../../../lib/facilitation";
 import { MODELS } from "../../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
@@ -42,8 +43,8 @@ const systemPromptBase =
 
 const buildSystemPrompt = (backgroundKnowledge?: string) =>
   backgroundKnowledge
-    ? `${systemPromptBase}\n\nBackground knowledge (stable system context for all planning stages):\n${backgroundKnowledge}`
-    : systemPromptBase;
+    ? `${systemPromptBase}\n${evidenceAttributionRules}\n\nBackground knowledge (stable system context for all planning stages):\n${backgroundKnowledge}`
+    : systemPromptBase+"\n"+evidenceAttributionRules;
 
 const buildPrompt = (payload: {
   stageId: string;

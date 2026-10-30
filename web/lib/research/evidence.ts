@@ -9,6 +9,7 @@ import type { ConversationMessage } from "../chat-history";
 import type { CaseEvidence, CaseMaterial, EvidenceBundle, EvidenceSource } from "./types";
 
 export type AnalysisRequest = {
+  facilitationHistory?: ConversationMessage[];
   question: string;
   history?: ConversationMessage[];
   searchQuestion?: string;

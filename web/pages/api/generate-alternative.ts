@@ -113,6 +113,7 @@ export default async function handler(
       FOCUS:
       - Describe specific, clearly visible design elements to the OVERPASS ITSELF.
       - Base ideas on the workspace summary.
+      - Preserve participant-stated design preferences. AI options are not participant decisions. Do not invent agreement, overwrite stated choices or silently resolve stakeholder conflicts.
     `.trim();
 
     const promptInput = buildPromptInput({

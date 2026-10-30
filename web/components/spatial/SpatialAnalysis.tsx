@@ -1,4 +1,4 @@
-import { featureNames } from '../../lib/spatial/geo-query';
+import { deriveBoundary, boundaryGeoJSON } from '../../lib/spatial/boundary';
 import NaturalLanguageGIS from "./NaturalLanguageGIS";
 import type { GeoWorkspace } from "../../lib/spatial/use-geo";
 import { useI18n } from "../../lib/i18n";
@@ -31,7 +31,9 @@ export default function SpatialAnalysis({
   onResult,
   included,
   onInclude,
+  onAsk,
 }: {
+  onAsk?: (question:string)=>void;
   projectId: string;
   geo?: GeoWorkspace;
   result: SpatialResult | null;
@@ -58,6 +60,9 @@ export default function SpatialAnalysis({
     featureCollection([]),
   );
   const [tool, setTool] = useState<SpatialResult["type"] | null>(null);
+  const [category,setCategory]=useState(0);
+  const [resetVersion,setResetVersion]=useState(0);
+  const [showResults,setShowResults]=useState(true);
   const [distance, setDistance] = useState(300);
   const [overlayA, setOverlayA] = useState("");
   const [overlayB, setOverlayB] = useState("");
@@ -88,7 +93,7 @@ export default function SpatialAnalysis({
         setLayers(available);
         setVisible(
           available
-            .filter((l) => l.config.defaultVisible !== false)
+            .filter((l) => l.config.role === "facilities" || l.config.id === `uploaded-${c.spatialSettings?.activeBoundaryDatasetId}`)
             .map((l) => l.config.id),
         );
         setWarnings(failed);
@@ -123,7 +128,9 @@ export default function SpatialAnalysis({
     }
     return "";
   }, [config.priority, priorityLayer]);
+  useEffect(()=>{if(geo?.result)setShowResults(true);},[geo?.result]);
   const execute = (fn: () => void) => {
+    setShowResults(true);
     setError("");
     try {
       fn();
@@ -136,22 +143,37 @@ export default function SpatialAnalysis({
     feature: Feature<Geometry>,
     index: number,
   ) => {
+    setShowResults(true);
     setSelected({ layer, feature, index });
-    geo?.setContext(prev => ({ mapCenter: prev.mapCenter, selected: { layerId: layer.config.id, featureId: featureKey(feature, index) } }));
+    geo?.setContext(prev => ({ scopeMeters:prev.scopeMeters, mapCenter: prev.mapCenter, selected: { layerId: layer.config.id, featureId: featureKey(feature, index) } }));
     setError("");
     setOverlay(
       featureCollection([feature]),
     );
   };
-  const activeLayers = layers.filter((l) => visible.includes(l.config.id));
+  const boundary=useMemo(()=>{const layer=layers.find(l=>l.config.id===`uploaded-${config.spatialSettings?.activeBoundaryDatasetId}`);if(!layer)return;try{return deriveBoundary(boundaryGeoJSON(layer.data));}catch{return;}},[layers,config.spatialSettings]);
+  const activeLayers = layers;
   return (
-    <div className="spatial-analysis space-y-4 p-4 sm:p-6">
-      <h3 className="text-lg font-semibold">{t("workspace.goal.spatial")}</h3>
-      {geo && <NaturalLanguageGIS geo={geo} names={layers.flatMap(layer => layer.data.features.flatMap(featureNames))} />}
-      {!loading && <SpatialMap layers={layers} visible={visible} overlay={overlay} onSelect={choose}
-        onPoint={(coordinate) => { setSelected(null); setOverlay(featureCollection([{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: coordinate } }])); geo?.setContext(prev => ({ mapCenter: prev.mapCenter, point: coordinate })); }}
-        onCenter={(mapCenter) => geo?.setContext(prev => ({ ...prev, mapCenter }))}
-        geoResult={geo?.result} highlightedPlaceId={geo?.highlighted} onPlace={(place) => geo?.setHighlighted(place.id)} />}
+    <div className="spatial-analysis space-y-3 p-4 sm:p-6">
+      <h3 className="text-lg font-semibold">{t("boundary.explore")}</h3>
+      <div className="flex gap-1" role="group" aria-label={t("boundary.categories")}>
+        {[0,1,2].map(i=><button key={i} type="button" aria-pressed={category===i} className={`flex-1 min-w-0 break-keep rounded-lg border px-2 py-2 text-xs font-semibold ${category===i?'border-blue-500 bg-blue-50 text-blue-800':'border-slate-200'}`} onClick={()=>setCategory(i)}>{t(`boundary.category.${i}`)}</button>)}
+      </div>
+      {!loading&&<>
+        {!boundary&&<p role="status" className="text-xs text-amber-800">{t("boundary.noActive")}</p>}
+        <SpatialMap layers={layers} visible={visible} overlay={showResults?overlay:featureCollection([])} extent={boundary?.bbox} resetVersion={resetVersion} onSelect={choose}
+          onPoint={(coordinate)=>{setSelected(null);setOverlay(featureCollection([{type:"Feature",properties:{},geometry:{type:"Point",coordinates:coordinate}}]));geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter,point:coordinate}));}}
+          onCenter={(mapCenter)=>geo?.setContext(prev=>({...prev,mapCenter}))} geoResult={showResults?geo?.result:null} highlightedPlaceId={geo?.highlighted} onPlace={place=>geo?.setHighlighted(place.id)}/>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label className="text-xs">{t("boundary.scope")} <select aria-label={t("boundary.scope")} className="rounded border px-2" value={geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500} onChange={e=>geo?.setContext(prev=>({...prev,scopeMeters:Number(e.target.value) as 0|500|1000}))}>{[0,500,1000].map(n=><option key={n} value={n}>{t(`boundary.scope.${n}`)}</option>)}</select></label>
+          <button type="button" className="spatial-button text-xs" onClick={()=>{setSelected(null);setOverlay(featureCollection([]));if(geo?.loading)geo.clear();setShowResults(false);geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter}));setResetVersion(v=>v+1);}}>{t("boundary.return")}</button>
+        </div>
+        {boundary&&<p className="text-xs text-slate-500">{t("boundary.area",{area:Math.round(boundary.areaSqm).toLocaleString()})}</p>}
+      <p className="text-sm text-slate-600">{t("boundary.exploreHint")}</p>
+      <p className="text-xs text-slate-600">{t(`boundary.categoryHint.${category}`)}</p>
+        {geo&&<NaturalLanguageGIS geo={geo}/>}
+        <div className="space-y-1"><p className="text-xs font-semibold">{t("workspace.tryQuestions")}</p>{[0,1,2].map(i=><button key={i} type="button" className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 text-left text-xs text-blue-800 hover:bg-blue-50" disabled={geo?.loading||!onAsk} onClick={()=>onAsk?.(t(`boundary.question.${category}.${i}`))}><span aria-hidden="true">◌</span><span className="flex-1">{t(`boundary.question.${category}.${i}`)}</span><span aria-hidden="true">›</span></button>)}</div>
+      </>}
       {loading ? (
         <p role="status" className="text-sm text-slate-500">
           {t("spatial.loading")}</p>
@@ -163,9 +185,8 @@ export default function SpatialAnalysis({
         </div>
       ) : (
         <>
-          <fieldset className="rounded-xl border border-slate-200 p-3">
-            <legend className="px-1 text-sm font-semibold">
-              {t("spatial.layers")}</legend>
+          <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.layers")}</summary><fieldset>
+
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               {config.layers.map((l) => (
                 <label key={l.id} className="flex items-center gap-2 text-sm">
@@ -186,12 +207,12 @@ export default function SpatialAnalysis({
                     className="h-3 w-3 rounded-sm"
                     style={{ backgroundColor: l.color ?? "#64748b" }}
                   />
-                  {l.label}
+                  {l.id===`uploaded-${config.spatialSettings?.activeBoundaryDatasetId}`?t("boundary.layer.boundary"):l.role==="facilities"?t("boundary.layer.facilities"):l.role==="buildings"?t("boundary.layer.buildings"):l.datasetType==='parcels'?t("boundary.layer.parcels"):l.label}
                   {!layers.some((a) => a.config.id === l.id) && t("spatial.unavailable")}
                 </label>
               ))}
             </div>
-          </fieldset>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={showResults} onChange={e=>setShowResults(e.target.checked)}/>{t("boundary.layer.results")}</label></fieldset></details>
           <p className="text-xs text-slate-500">
             {t("spatial.mapHint")}<span className="mt-1 block">
               {t("spatial.touchHint")}</span>
@@ -222,12 +243,7 @@ export default function SpatialAnalysis({
               </dl>
             </section>
           )}
-          <section aria-label={t("spatial.purpose")} className="space-y-3">
-            <div>
-              <h4 className="font-semibold">{t("spatial.chooseGoal")}</h4>
-              <p className="mt-1 text-sm text-slate-500">
-                {t("spatial.goalHint")}</p>
-            </div>
+          <details className="space-y-3"><summary className="cursor-pointer text-sm font-semibold">{t("boundary.tools")}</summary><section aria-label={t("spatial.purpose")} className="space-y-3">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {spatialGoals.map((goal) => (
                 <button
@@ -489,7 +505,7 @@ export default function SpatialAnalysis({
                 )}
               </fieldset>
             )}
-          </section>
+          </section></details>
         </>
       )}
       {warnings.length > 0 && (

@@ -17,7 +17,7 @@ const handler=require(build+'/pages/api/projects/spatial-datasets.js').default;
 const owner={uid:'owner',email:'owner@example.com'}, admin={uid:'admin',email:'adm@snu.ac.kr'}, participant={uid:'reader',email:'reader@example.com'}, stranger={uid:'stranger',email:'other-owner@example.com'};
 const collection='ppssSpatialDatasets_p1';
 const polygon={type:'FeatureCollection',features:[{type:'Feature',properties:{name:'한글 경계'},geometry:{type:'Polygon',coordinates:[[[126,37],[126.01,37],[126.01,37.01],[126,37.01],[126,37]]]}}]};
-const upload=(overrides={})=>({action:'upload',projectId:'p1',name:'대상지',type:'project_boundary',fileName:'경계.geojson',data:Buffer.from(JSON.stringify(polygon)).toString('base64'),...overrides});
+const upload=(overrides={})=>({action:'upload',projectId:'p1',name:'대상지',type:'project_boundary',sourceCrs:'EPSG:4326',fileName:'경계.geojson',data:Buffer.from(JSON.stringify(polygon)).toString('base64'),...overrides});
 let env,objects,saves,deletes,downloads,bucket,afterSave;
 before(async()=>{env=await initializeTestEnvironment({projectId:'demo-pss-membership',firestore:{host:'127.0.0.1',port:8080,rules:readFileSync(new URL('../firestore.rules',import.meta.url),'utf8')}})});
 after(async()=>{await env.cleanup();await db.terminate()});
@@ -114,4 +114,62 @@ test('API rejects missing/invalid authentication and validates methods before fi
 test('cross-project storage references and a 21st dataset are rejected with file cleanup',async()=>{
  const d=await saved();await db.doc(collection+'/'+d.datasetId).update({storagePath:'ppss-spatial-datasets/p2/stolen'});await assert.rejects(server.readDataset(db,bucket,owner,'p1',d.datasetId,d.revisionId),e=>e.status===400);await assert.rejects(server.mutateDataset(db,bucket,owner,{action:'delete',projectId:'p1',datasetId:d.datasetId,expectedRevisionId:d.revisionId}),e=>e.status===400);
  for(let i=1;i<20;i++)await db.doc(collection+'/seed'+i).set({projectId:'p1'});const before=objects.size;await assert.rejects(server.mutateDataset(db,bucket,owner,upload()),e=>e.status===400);assert.equal(objects.size,before);assert.equal((await db.collection(collection).get()).size,20);
+});
+
+test('active boundary is one project-owned reference, administrator-only, and removal preserves all files',async()=>{
+ const a=await saved(),b=await saved(owner,{name:'다른 경계'}),building=await saved(owner,{type:'buildings'});
+ const assign={action:'boundary-settings',projectId:'p1',activeBoundaryDatasetId:a.datasetId,defaultNearbyMeters:500,expectedBoundaryId:null};
+ for(const user of [participant,stranger])await assert.rejects(server.mutateDataset(db,bucket,user,assign),e=>e.status===403);
+ await server.mutateDataset(db,bucket,owner,assign);let settings=(await server.listDatasets(db,participant,'p1')).spatialSettings;assert.equal(settings.activeBoundaryDatasetId,a.datasetId);assert.equal(settings.defaultNearbyMeters,500);
+ await assert.rejects(server.mutateDataset(db,bucket,owner,{...assign,activeBoundaryDatasetId:b.datasetId,expectedBoundaryId:a.datasetId}),e=>e.status===409);
+ await server.mutateDataset(db,bucket,owner,{...assign,activeBoundaryDatasetId:b.datasetId,expectedBoundaryId:a.datasetId,confirmBoundaryChange:true,defaultNearbyMeters:1000});
+ await assert.rejects(server.mutateDataset(db,bucket,owner,{...assign,expectedBoundaryId:a.datasetId,confirmBoundaryChange:true}),e=>e.status===409);
+ await assert.rejects(server.mutateDataset(db,bucket,owner,{...assign,activeBoundaryDatasetId:null,expectedBoundaryId:b.datasetId}),e=>e.status===409);
+ await server.mutateDataset(db,bucket,owner,{...assign,activeBoundaryDatasetId:null,expectedBoundaryId:b.datasetId,confirmBoundaryChange:true});
+ settings=(await server.listDatasets(db,owner,'p1')).spatialSettings;assert.equal(settings.activeBoundaryDatasetId,null);assert.equal(objects.has(a.storagePath),true);assert.equal((await db.doc(collection+'/'+building.datasetId).get()).exists,true);
+ await assert.rejects(server.mutateDataset(db,bucket,stranger,{...assign,projectId:'p2'}),e=>e.status===400);
+});
+test('active boundary replacement/deletion require confirmation and invalidate derived metadata',async()=>{
+ const a=await saved(),building=await saved(owner,{type:'buildings'});
+ await server.mutateDataset(db,bucket,owner,{action:'boundary-settings',projectId:'p1',activeBoundaryDatasetId:a.datasetId,expectedBoundaryId:null,defaultNearbyMeters:500});
+ const larger=JSON.parse(JSON.stringify(polygon));larger.features[0].geometry.coordinates[0]=[[126,37],[126.02,37],[126.02,37.02],[126,37.02],[126,37]];
+ const replace=upload({action:'replace',datasetId:a.datasetId,expectedRevisionId:a.revisionId,data:Buffer.from(JSON.stringify(larger)).toString('base64')});
+ await assert.rejects(server.mutateDataset(db,bucket,owner,replace),e=>e.status===409);assert.ok(objects.has(a.storagePath));
+ await server.mutateDataset(db,bucket,owner,{...replace,confirmBoundaryChange:true});const next=(await db.doc(collection+'/'+a.datasetId).get()).data();assert.ok(next.boundaryMetadata.areaSqm>a.boundaryMetadata.areaSqm*3.9);assert.notEqual(next.revisionId,a.revisionId);assert.equal((await server.listDatasets(db,owner,'p1')).spatialSettings.activeBoundaryDatasetId,a.datasetId);
+ const remove={action:'delete',projectId:'p1',datasetId:a.datasetId,expectedRevisionId:next.revisionId};await assert.rejects(server.mutateDataset(db,bucket,owner,remove),e=>e.status===409);await server.mutateDataset(db,bucket,owner,{...remove,confirmBoundaryChange:true});assert.equal((await server.listDatasets(db,owner,'p1')).spatialSettings.activeBoundaryDatasetId,null);assert.equal((await db.doc(collection+'/'+building.datasetId).get()).exists,true);
+});
+test('boundary uploads require reliable/confirmed CRS and preserve projected original bytes',async()=>{
+ await assert.rejects(server.mutateDataset(db,bucket,owner,upload({sourceCrs:undefined})),e=>e.status===400&&/confirmCrs/.test(e.message));
+ const {toMercator}=require('@turf/turf'),mercator=toMercator(polygon),raw=JSON.stringify(mercator);
+ const projected=await saved(owner,{sourceCrs:'EPSG:3857',data:Buffer.from(raw).toString('base64')});assert.equal(objects.get(projected.storagePath).toString(),raw);assert.equal(projected.sourceCrs,'EPSG:3857');const parsed=(await server.readDataset(db,bucket,participant,'p1',projected.datasetId,projected.revisionId)).data;assert.ok(Math.abs(parsed.features[0].geometry.coordinates[0][0][0]-126)<1e-6);
+ const legacy=await saved();await db.doc(collection+'/'+legacy.datasetId).update({sourceCrs:require('firebase-admin/firestore').FieldValue.delete()});const assign={action:'boundary-settings',projectId:'p1',activeBoundaryDatasetId:legacy.datasetId,defaultNearbyMeters:0,expectedBoundaryId:null};await assert.rejects(server.mutateDataset(db,bucket,owner,assign),e=>e.status===400);await server.mutateDataset(db,bucket,owner,{...assign,sourceCrs:'EPSG:4326'});assert.equal((await server.listDatasets(db,owner,'p1')).spatialSettings.activeBoundaryDatasetId,legacy.datasetId);
+});
+async function reviewRoute(user,body,method='POST'){
+ const api=require(build+'/pages/api/projects/analysis-review.js').default,original={verify:adminModule.verifyUserRequest,db:adminModule.adminDb,bucket:adminModule.adminBucket};
+ adminModule.verifyUserRequest=async()=>user;adminModule.adminDb=()=>db;adminModule.adminBucket=()=>bucket;const result={};const res={setHeader(){},status(n){result.status=n;return this},json(value){result.body=value;return this},end(){}};
+ try{await api({method,headers:{authorization:'Bearer fixture'},body:{projectId:'p1',...body},query:{projectId:'p1'}},res);return result}finally{adminModule.verifyUserRequest=original.verify;adminModule.adminDb=original.db;adminModule.adminBucket=original.bucket}
+}
+test('analysis review is private, preserves chat logs, survives reads, and is supplied only to its owner in Step 3',async()=>{
+ await db.doc('users_p1/reader/steps/data').set({logs:[{sender:'user',text:'기존 질문'}]});
+ let response=await reviewRoute(participant,{action:'add',kind:'observation',text:'내가 관찰한 개인 의견',uid:'owner'});assert.equal(response.status,200);assert.equal(response.body.review.findings[0].kind,'observation');
+ response=await reviewRoute(participant,{action:'summary',summary:{conditions:'관찰한 현황',issues:'추가 확인 필요',opportunities:'개인 아이디어'}});assert.equal(response.status,200);
+ const stored=(await db.doc('users_p1/reader/steps/data').get()).data();assert.equal(stored.logs[0].text,'기존 질문');assert.equal(stored.analysisReview.summary.issues,'추가 확인 필요');assert.equal((await db.doc('ppssWorkspaceSummaries_p1/reader').get()).exists,false);
+ response=await reviewRoute(participant,{},'GET');assert.equal(response.body.review.findings.length,1);
+ const own=env.authenticatedContext(participant.uid,{email:participant.email}).firestore(),manager=env.authenticatedContext(owner.uid,{email:owner.email}).firestore();await assertSucceeds(getDoc(doc(own,'users_p1','reader','steps','data')));await assertFails(getDoc(doc(manager,'users_p1','reader','steps','data')));
+ const context=require(build+'/lib/project-context-server.js'),oldVerify=adminModule.verifyUserRequest,oldDb=adminModule.adminDb;adminModule.adminDb=()=>db;
+ try{adminModule.verifyUserRequest=async()=>participant;const req={body:{projectId:'p1'},headers:{authorization:'Bearer fixture'}};const c=await context.loadProjectContext(req,'alternatives');assert.match(c.currentMaterial,/내가 관찰한 개인 의견/);assert.match(c.currentMaterial,/not instructions or community consensus/);assert.doesNotMatch((await context.loadProjectContext(req,'data',false)).currentMaterial,/내가 관찰한 개인 의견/);adminModule.verifyUserRequest=async()=>owner;assert.doesNotMatch((await context.loadProjectContext(req,'alternatives')).currentMaterial,/내가 관찰한 개인 의견/);}finally{adminModule.verifyUserRequest=oldVerify;adminModule.adminDb=oldDb}
+ await db.doc('ppssStageLocks_p1/current').set({lockedStages:{data:true}});assert.equal((await reviewRoute(participant,{action:'add',kind:'issue',text:'추가 내용'})).status,409);await db.doc('ppssStageLocks_p1/current').set({lockedStages:{}});await db.doc('ppssWorkspaceSummaries_p1/reader').set({completedStages:['data']});assert.equal((await reviewRoute(participant,{action:'add',kind:'issue',text:'추가 내용'})).status,409);
+});
+test('saved calculations are recomputed from authorized layers instead of trusting supplied metrics',async()=>{
+ const d=await saved();const source={projectId:'p1',type:'area',timestamp:new Date().toISOString(),layerIds:['uploaded-'+d.datasetId],parameters:{selectedLayerId:'uploaded-'+d.datasetId,selectedFeatureId:'0'},metrics:{areaSqm:9999999999},notes:[]};
+ const response=await reviewRoute(participant,{action:'add',kind:'calculation',result:source});assert.equal(response.status,200);assert.equal(response.body.review.findings[0].kind,'calculation');assert.ok(!response.body.review.findings[0].text.includes('9,999,999,999'));assert.deepEqual(response.body.review.findings[0].sources,source.layerIds);
+ const forged=await reviewRoute(participant,{action:'add',kind:'location',selection:{layerId:'uploaded-another-project',featureId:'0'}});assert.equal(forged.status,400);
+});
+test('confirmed stage summaries remain owner-private and override only that user’s later-stage context',async()=>{
+ await db.doc('ppssWorkspaceSummaries_p1/reader').set({stageSummaries:{problem:'공유를 선택한 이전 요약'},completedStages:['problem']});
+ await db.doc('users_p1/reader').set({confirmedStageSummaries:{problem:{text:'본인만 확인한 관심: 쉼터',confirmedAt:new Date().toISOString()}}});
+ const own=env.authenticatedContext(participant.uid,{email:participant.email}).firestore(),manager=env.authenticatedContext(owner.uid,{email:owner.email}).firestore();await assertSucceeds(getDoc(doc(own,'users_p1','reader')));await assertSucceeds(setDoc(doc(own,'users_p1','reader'),{confirmedStageSummaries:{data:{text:'본인만 확인한 자료 분석',confirmedAt:new Date().toISOString()}}},{merge:true}));assert.ok((await db.doc('users_p1/reader').get()).data().confirmedStageSummaries.problem);await assertFails(getDoc(doc(manager,'users_p1','reader')));
+ const context=require(build+'/lib/project-context-server.js'),oldVerify=adminModule.verifyUserRequest,oldDb=adminModule.adminDb;adminModule.adminDb=()=>db;
+ try{adminModule.verifyUserRequest=async()=>participant;const req={body:{projectId:'p1'},headers:{authorization:'Bearer fixture'}};assert.match((await context.loadProjectContext(req,'alternatives')).previousSummaries.problem,/본인만/);adminModule.verifyUserRequest=async()=>owner;assert.ok(!(await context.loadProjectContext(req,'alternatives')).previousSummaries.problem);}finally{adminModule.verifyUserRequest=oldVerify;adminModule.adminDb=oldDb}
+ assert.equal((await db.doc('ppssWorkspaceSummaries_p1/reader').get()).data().stageSummaries.problem,'공유를 선택한 이전 요약');
 });

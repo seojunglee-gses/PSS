@@ -1,3 +1,5 @@
+import {gisReflection,policyHistory} from "../../../lib/facilitation";
+import {conversationHistory} from "../../../lib/chat-history";
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { loadProjectContext } from '../../../lib/project-context-server';
 import { AccessError } from '../../../lib/membership/server';
@@ -5,7 +7,7 @@ import { projectLayers, executeGeoQuery } from '../../../lib/spatial/geo-server'
 import { KakaoError } from '../../../lib/spatial/kakao-server';
 import { parseGeoContext, parseGeoPlan } from '../../../lib/spatial/geo-query';
 import { translate, localizeMessage } from '../../../lib/i18n';
-export const config = { api: { bodyParser: { sizeLimit: '24kb' } } };
+export const config = { api: { bodyParser: { sizeLimit: '40kb' } } };
 export const maxDuration = 60;
 const requests = new Map<string, {
     time: number;
@@ -40,7 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     req.once?.('aborted', cancel);
     res.once?.('close', close);
     try {
-        const context = await loadProjectContext(req, 'data');
+        const context = await loadProjectContext(req, 'data', true, true);
         parseGeoPlan(req.body.question);
         parseGeoContext(req.body.context);
         const choices = req.body.choices;
@@ -50,14 +52,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             res.status(429).json({ error: translate(locale, 'gis.quota') });
             return;
         }
-        const { layers, warnings } = await projectLayers(context.user, context.projectId, abort.signal);
+        const { layers, warnings, boundary, settings } = await projectLayers(context.user, context.projectId, abort.signal);
         abort.signal.throwIfAborted();
-        const result = await executeGeoQuery(req.body, context.user, context.projectId, layers, warnings, abort.signal);
+        const result = await executeGeoQuery(req.body, context.user, context.projectId, layers, warnings, abort.signal,{boundary,settings});
         abort.signal.throwIfAborted();
+        const reflection=gisReflection(req.body.question,policyHistory(context.stageHistory,conversationHistory(req.body.history)),!!(result.route||result.computedResult)&&!result.clarify,locale);
+        if(reflection){result.facilitationQuestion=reflection;result.reply+='\n\n'+reflection;}
         res.status(200).json({ result });
     }
     catch (error) {
-        const key = error instanceof Error && error.message.startsWith('gis.') ? error.message : 'gis.failed';
+        const key = error instanceof Error && /^(gis|boundary)\./.test(error.message) ? error.message : 'gis.failed';
         if (abort.signal.aborted)
             return;
         res.status(error instanceof AccessError ? error.status : error instanceof KakaoError ? error.status : key === 'gis.failed' ? 503 : 400).json({ error: error instanceof AccessError ? localizeMessage(locale,error.message,'access.checkFailed') : translate(locale, key) });

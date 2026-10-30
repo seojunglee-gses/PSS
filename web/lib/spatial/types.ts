@@ -7,6 +7,7 @@ import type {
 } from "geojson";
 export type AreaFeature = Feature<Polygon | MultiPolygon>;
 export type LayerConfig = {
+  datasetType?: import("./datasets").DatasetType;
   id: string;
   label: string;
   type: "polygon" | "line" | "point";
@@ -26,6 +27,7 @@ export type Criterion = {
   weight: number;
 };
 export type SpatialConfig = {
+  spatialSettings?: import("./boundary").SpatialSettings;
   datasetWarnings?: string[];
   projectId: string;
   layers: LayerConfig[];

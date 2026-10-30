@@ -1,3 +1,5 @@
+import {isDesignGenerationRequest} from "../../lib/facilitation";
+import AnalysisReviewPanel from "../../components/spatial/AnalysisReviewPanel";
 import { useGeoWorkspace } from "../../lib/spatial/use-geo";
 import { isGeoQuestion } from "../../lib/spatial/geo-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,6 +24,8 @@ import {
   loadCurrentSiteImage,
   loadStageLocks,
   loadWorkspaceSummary,
+  loadConfirmedStageSummaries,
+  saveConfirmedStageSummary,
   saveChatLogsToFirestore,
   saveUserDesignSubmission,
   saveWorkspaceSummary,
@@ -69,18 +73,6 @@ const steps = [
   { id: "evaluation", titleKey: "step.evaluation", icon: "4" },
   { id: "report", titleKey: "step.report", icon: "5" },
 ];
-
-const stepSummaries: Record<string, string> = {
-  problem:
-    "Defined scope, machining constraints, and primary safety risks before planning.",
-  data: "Reviewed historical quality metrics, cycle data, and resource inputs.",
-  alternatives:
-    "Compared alternative process plans with tooling and fixturing adjustments.",
-  evaluation:
-    "Validated evidence images and confirmed risk mitigation actions.",
-  report:
-    "Prepared final decision report and supporting evidence for approval.",
-};
 
 const providerStorageKeyBase = "ppss-active-provider";
 const pieColors = [
@@ -551,6 +543,16 @@ function AuthorizedWorkspace() {
     else completionDialog.current?.close();
   }, [completionOpen]);
   useEffect(() => () => completionResolver.current?.(false), []);
+  const [summaryOpen,setSummaryOpen]=useState(false);
+  const [summaryDraft,setSummaryDraft]=useState("");
+  const [summaryShare,setSummaryShare]=useState(false);
+  const summaryDialog=useRef<HTMLDialogElement>(null);
+  const summaryResolver=useRef<((value:{text:string;share:boolean}|null)=>void)|null>(null);
+  const reviewGeneratedSummary=(text:string)=>new Promise<{text:string;share:boolean}|null>(resolve=>{summaryResolver.current=resolve;setSummaryDraft(text);setSummaryShare(false);setSummaryOpen(true);});
+  const closeSummaryReview=(confirmed:boolean)=>{summaryResolver.current?.(confirmed?{text:summaryDraft.trim(),share:summaryShare}:null);summaryResolver.current=null;setSummaryOpen(false);};
+  useEffect(()=>{if(summaryOpen)summaryDialog.current?.showModal();else summaryDialog.current?.close();},[summaryOpen]);
+  useEffect(()=>{summaryResolver.current?.(null);summaryResolver.current=null;setSummaryOpen(false);setSummaryDraft("");setSummaryShare(false);},[projectId,userKey,activeStep.id]);
+  useEffect(()=>()=>summaryResolver.current?.(null),[]);
   const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
   const [revisedAfterLock, setRevisedAfterLock] = useState<
     Record<string, boolean>
@@ -568,11 +570,9 @@ function AuthorizedWorkspace() {
     }
     let cancelled = false;
     const loadSavedSummaries = async () => {
-      const summary = await loadWorkspaceSummary(userKey, projectId);
+      const [summary,confirmed]=await Promise.all([loadWorkspaceSummary(userKey,projectId),loadConfirmedStageSummaries(userKey,projectId)]);
       if (cancelled) return;
-      if (summary?.stageSummaries) {
-        setSavedSummaries(summary.stageSummaries);
-      }
+      setSavedSummaries({...summary?.stageSummaries,...confirmed});
       setCompletedStages(summary?.completedStages ?? []);
     };
     loadSavedSummaries();
@@ -918,16 +918,6 @@ function AuthorizedWorkspace() {
     [roleByUserId, t, localize]
   );
 
-  const buildWorkspaceInput = useCallback(() => {
-    return steps.reduce<Record<string, string[]>>((acc, step) => {
-      acc[step.id] = chatLogs
-        .filter((log) => log.stepId === step.id)
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-        .map((log) => log.text);
-      return acc;
-    }, {});
-  }, [chatLogs]);
-
   const buildEvaluationContext = useCallback(() => {
     const summariesText = Object.entries(savedSummaries)
       .map(([stage, summary]) => {
@@ -1084,7 +1074,7 @@ const handleSend = async (suggestedQuestion?: string) => {
   setErrorMessage(null);
 
   const stepId = activeStep.id;
-  const history = conversationHistory(chatLogsByStep[stepId] ?? [], stepId);
+  const history = conversationHistory((chatLogsByStep[stepId] ?? []).map(log=>stepId==="data"&&geoChat?.time===log.createdAt&&geo.result?.question===geoChat.question?{...log,text:geo.result.reply}:log), stepId);
   const effectiveSources = resolveSources(sourceRoutingQuestion(userMessage, history), selectedSources);
   setSendingChatScope(chatScope);
   setIsSending(true);
@@ -1113,12 +1103,13 @@ const handleSend = async (suggestedQuestion?: string) => {
     if (stepId === "data") {
       if (effectiveSources.includes("spatial") && !effectiveSources.some(source => source === "cases" || source === "research") && isGeoQuestion(userMessage)) {
         setAnalysisView("spatial"); setPanelView("information");
-        const result = await geo.run(userMessage);
+        const result = await geo.run(userMessage,undefined,history);
         if (!isCurrentConversation()) return;
         if (result) {
+          if(result.computedResult)updateSpatialResult(result.computedResult);
           const createdAt = new Date().toISOString();
           setGeoChat({ time: createdAt, question: userMessage });
-          const nextLogs: ChatLog[] = [...nextUserLogs, { stepId, provider: activeProvider, sender: "assistant", text: t("gis.chatNotice"), label: activeProvider, createdAt }];
+          const nextLogs: ChatLog[] = [...nextUserLogs, { stepId, provider: activeProvider, sender: "assistant", text: t("gis.chatNotice")+(result.facilitationQuestion?"\n\n"+result.facilitationQuestion:""), label: activeProvider, createdAt }];
           setChatLogsByStep(prev => ({ ...prev, [stepId]: nextLogs }));
           await persistChatLogs(stepId, sanitizeLogs(nextLogs));
         }
@@ -1138,6 +1129,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           projectId,
           question: userMessage,
           history,
+          spatialSelection:geo.context,
           selectedSources,
           ...(effectiveSources.includes("spatial") && spatialResult?.projectId === projectId ? { spatialContext: spatialResult } : {}),
           provider: activeProvider,
@@ -1158,7 +1150,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       return;
     }
     let finalMessage = userMessage;
-      if (stepId === "alternatives") {
+      if (stepId === "alternatives" && isDesignGenerationRequest(userMessage)) {
 
       setIsLoadingAlternatives(true);
       try {
@@ -1269,10 +1261,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       return;
     }
     if (!confirmed && !await confirmCompletion()) return;
-    setSavedSummaries((prev) => ({
-      ...prev,
-      [activeStep.id]: stepSummaries[activeStep.id],
-    }));
+    const summaryGeneration=chatGenerationRef.current;
     setIsSummarizing(true);
     setFinishNotice({ status: "uploading", message: t("workspace.finishStage") + "..." });
     
@@ -1283,7 +1272,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         body: JSON.stringify({
           projectId,
           currentStage: activeStep.id,
-          workspaceInput: buildWorkspaceInput(),
+          historyByStage:{[activeStep.id]:conversationHistory(chatLogsByStep[activeStep.id]??[],activeStep.id)},
         }),
       });
       if (!response.ok) {
@@ -1296,8 +1285,11 @@ const handleSend = async (suggestedQuestion?: string) => {
           overallSummary: string;
         };
       };
-      const stageSummary =
-        payload.workspaceSummary.stageSummaries?.[activeStep.id]?.trim() ?? "";
+      if(summaryGeneration!==chatGenerationRef.current)return;
+      const generated=(payload.workspaceSummary.stageSummaries?.[activeStep.id]?.trim()??"").slice(0,12000);
+      const reviewed=await reviewGeneratedSummary(generated);
+      if(!reviewed||summaryGeneration!==chatGenerationRef.current)return;
+      const stageSummary=reviewed.text;
       const mergedStageSummaries = {
         ...savedSummaries,
         ...(stageSummary ? { [activeStep.id]: stageSummary } : {}),
@@ -1305,9 +1297,13 @@ const handleSend = async (suggestedQuestion?: string) => {
       const nextCompletedStages = Array.from(
         new Set([...completedStages, activeStep.id])
       );
+      await saveConfirmedStageSummary(userKey,activeStep.id,stageSummary,projectId);
+      const previousPublic=await loadWorkspaceSummary(userKey,projectId);
+      const shared={...previousPublic?.stageSummaries};
+      if(reviewed.share)shared[activeStep.id]=stageSummary;
       await saveWorkspaceSummary(userKey, {
-        stageSummaries: mergedStageSummaries,
-        overallSummary: payload.workspaceSummary.overallSummary ?? "",
+        stageSummaries: shared,
+        overallSummary: reviewed.share?Object.values(shared).join("\n\n"):(previousPublic?.overallSummary??""),
         role,
         completedStages: nextCompletedStages,
       }, projectId);
@@ -1743,6 +1739,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           <p className="mt-1">
             🔒 {t("workspace.stageCompletedDesc")}
           </p>
+          {savedSummaries[activeStep.id]&&<details className="mt-2"><summary className="cursor-pointer font-semibold">{t("facilitation.mySummary")}</summary><p className="mt-2 max-h-48 overflow-y-auto whitespace-pre-line break-words">{savedSummaries[activeStep.id]}</p></details>}
           {revisedAfterLock[activeStep.id] && (
             <p className="mt-2 text-[11px] text-slate-500">
               {t("workspace.revisedAfterLock")}
@@ -2012,9 +2009,11 @@ const handleSend = async (suggestedQuestion?: string) => {
         <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
-              <p className="text-sm leading-relaxed text-slate-600">{t("workspace.dataPurpose")}</p>
-              <ul className="mt-3 flex flex-wrap gap-2 text-xs text-blue-700">{[t("workspace.goal.site"), t("workspace.goal.spatial"), t("workspace.goal.cases"), t("workspace.goal.research")].map((goal) => <li key={goal} className="rounded-full bg-blue-50 px-3 py-1">{goal}</li>)}</ul>
+              <h3 className="text-lg font-semibold text-slate-900">{t("boundary.dataTitle")}</h3>
+              <p className="mt-1 text-sm text-slate-500">{t("boundary.dataIntro")}</p>
 
+
+              <AnalysisReviewPanel key={`${projectId}-${userKey}`} projectId={projectId} selection={geo.context.selected} point={geo.context.point} result={spatialResult?.projectId===projectId?spatialResult:null} locked={completedStages.includes("data")||!!lockedStages.data}/>
             </div>
             <div role="tablist" aria-label={`${t("cases.heading")} / ${t("workspace.goal.spatial")} / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
               {(["cases", "spatial", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
@@ -2035,7 +2034,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               </button>)}
             </div>
             {analysisView === "spatial" && <div role="tabpanel" id="analysis-spatial-panel" aria-labelledby="analysis-spatial-tab">
-              <SpatialAnalysis geo={geo} key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={updateSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
+              <SpatialAnalysis onAsk={(question)=>{void handleSend(question);}} geo={geo} key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={updateSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
             </div>}
             {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
               <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>
@@ -2575,10 +2574,18 @@ const handleSend = async (suggestedQuestion?: string) => {
         onCancel={(event) => { event.preventDefault(); closeCompletion(false); }}>
         <h3 id="completion-title" className="text-lg font-semibold">{t("workspace.completeTitle")}</h3>
         <p id="completion-description" className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600">{t("workspace.completeBody")}</p>
+        {activeStep.id==="data"&&<button type="button" className="mt-3 text-sm text-blue-700 underline" onClick={()=>{closeCompletion(false);setPanelView("information");const panel=document.getElementById("analysis-review") as HTMLDetailsElement|null;if(panel)panel.open=true;}}>{t("review.beforeComplete")}</button>}
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" className="min-h-11 rounded-full border px-5 py-2 text-sm" onClick={() => closeCompletion(false)}>{t("workspace.cancel")}</button>
           <button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-5 py-2 text-sm font-semibold text-white" onClick={() => closeCompletion(true)}>{t("workspace.finishStage")}</button>
         </div>
+      </dialog>
+      <dialog ref={summaryDialog} aria-labelledby="summary-review-title" className="m-auto w-[calc(100%_-_32px)] max-w-xl rounded-3xl border border-slate-200 bg-white p-5 shadow-xl backdrop:bg-slate-900/40" onCancel={event=>{event.preventDefault();closeSummaryReview(false);}}>
+        <h3 id="summary-review-title" className="text-lg font-semibold">{t("facilitation.reviewTitle")}</h3>
+        <p className="mt-2 text-sm text-slate-600">{t("facilitation.reviewHint")}</p>
+        <textarea aria-label={t("facilitation.summary")} value={summaryDraft} onChange={event=>setSummaryDraft(event.target.value)} maxLength={12000} className="mt-3 h-[min(45dvh,360px)] min-h-36 w-full rounded-xl border p-3 text-sm"/>
+        <label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" checked={summaryShare} onChange={event=>setSummaryShare(event.target.checked)}/><span>{t("facilitation.shareSummary")}</span></label>
+        <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" className="min-h-11 rounded-full border px-4" onClick={()=>closeSummaryReview(false)}>{t("workspace.cancel")}</button><button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-4 text-white disabled:opacity-50" disabled={!summaryDraft.trim()} onClick={()=>closeSummaryReview(true)}>{t("facilitation.confirmSummary")}</button></div>
       </dialog>
       {selectedImage && (
         <div

@@ -1,3 +1,4 @@
+import {facilitationInstructions,policyHistory} from "../../lib/facilitation";
 import { selectOpenAIChatModel } from "../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { loadProjectContext } from "../../lib/project-context-server";
@@ -36,8 +37,10 @@ export default async function handler(
   }
 
   try {
-    const context = await loadProjectContext(req, stepId ?? "problem");
-    const systemText = buildSystemText();
+    const context = await loadProjectContext(req, stepId ?? "problem", true, true);
+    const marker="\n\nUser question:\n";
+    const originalQuestion=stepId==="evaluation"&&message.includes(marker)?message.slice(message.lastIndexOf(marker)+marker.length):message;
+    const systemText = buildSystemText()+"\n\n"+facilitationInstructions(stepId??"problem",originalQuestion,policyHistory(context.stageHistory,history));
     const normalizedProvider =
     provider?.toLowerCase() === "gemini"
       ? "gemini"

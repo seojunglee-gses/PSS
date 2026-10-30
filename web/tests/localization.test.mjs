@@ -33,7 +33,7 @@ test('legacy notices and spatial summaries change language without modifying sto
 test('frontend JSX keeps fixed interface copy in the locale catalogs', () => {
   const files = [...readdirSync('components', { recursive: true }).filter(f => f.endsWith('.tsx')).map(f => `components/${f}`),
     'pages/index.tsx', 'pages/workspace/index.tsx', 'pages/setting/index.tsx', 'pages/report/index.tsx'];
-  const allowed = new Set(['PPSS', 'DOI', 'OpenAlex', 'Kakao Maps', 'OpenStreetMap', 'Kakao Walking Route', 'px', 'm']);
+  const allowed = new Set(['PPSS', 'DOI', 'OpenAlex', 'Kakao Maps', 'OpenStreetMap', 'Kakao Walking Route', 'WGS84 · EPSG:4326', 'Web Mercator · EPSG:3857', 'px', 'm']);
   for (const file of files) {
     const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     const visit = node => {

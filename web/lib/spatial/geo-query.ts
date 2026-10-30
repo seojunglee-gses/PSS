@@ -21,6 +21,7 @@ export type Place = {
     choiceToken?: string;
 };
 export type GeoContext = {
+    scopeMeters?: 0 | 500 | 1000;
     selected?: {
         layerId: string;
         featureId: string;
@@ -63,6 +64,9 @@ export type GeoResult = {
     warnings: string[];
     ranking?: 'straight' | 'walking';
     partial?: boolean;
+    scopeMeters?: number;
+    facilitationQuestion?:string;
+    computedResult?: import("./types").SpatialResult;
 };
 export function coordinate(value: unknown): Coordinate {
     if (!Array.isArray(value) || value.length !== 2 || value.some(v => typeof v !== 'number' || !Number.isFinite(v)) || Math.abs(value[0]) > 180 || Math.abs(value[1]) > 90)
@@ -76,6 +80,7 @@ export function parseGeoContext(input: unknown): GeoContext {
         throw new Error('gis.invalidCoordinate');
     const v = input as GeoContext;
     const result: GeoContext = {};
+    if(v.scopeMeters!==undefined){if(![0,500,1000].includes(v.scopeMeters))throw new Error("boundary.invalidScope");result.scopeMeters=v.scopeMeters;}
     if (v.selected) {
         if (typeof v.selected.layerId !== 'string' || !/^[\w-]{1,160}$/.test(v.selected.layerId) || typeof v.selected.featureId !== 'string' || v.selected.featureId.length > 150)
             throw new Error('gis.invalidCoordinate');
@@ -145,10 +150,12 @@ export function parseGeoPlan(question: string): GeoPlan {
         query = '편의시설';
     if (intent === 'CATEGORY_SEARCH' && !genericCategoryCode(query))
         intent = 'PLACE_SEARCH';
+    if(/주요\s*(?:사업)?시설|공간\s*구조|사업구역.*(?:면적|건물)|타워.*전파기지.*어디|key\s*(?:project\s*)?facilit|spatial\s*structure|where.*tower.*station/i.test(q))intent='EXISTING_GIS_QUERY';
+    query=query.replace(/^(?:어떤|어디에|무슨)\s*/,'').replace(/^(?:생활시설|편의시설|시설)(?:이|가|은|는)?$/,'편의시설');
     return { intent, query, ...(origin ? { origin } : {}), ...(destination ? { destination } : {}), radius, limit, walking, ...(minutes ? { minutes: Number(minutes[1]) } : {}), nearby: ['NEAREST_PLACE', 'RADIUS_SEARCH', 'NEARBY_SEARCH', 'CATEGORY_SEARCH'].includes(intent) };
 }
 export function isGeoQuestion(question: string) {
-    return /어디(?:야|인가요|에\s*있)|\b(?:find|search|where is)\b|(?:검색|찾아)(?:해)?(?:줘|주세요)|주변|근처|카페|약국|마트|음식점|식당|편의점|병원|학교|버스\s*정류장|공원|도보|걸어|몇\s*미터|가장\s*가까|지도\s*중심|까지.*거리|에서.*까지|nearby|nearest|walking|\bfrom\b.*\bto\b|\b(cafe|pharmacy|restaurant|supermarket)\b/i.test(question);
+    return /key\s*(?:project\s*)?facilit|spatial\s*structure|주요\s*(?:사업)?시설|공간\s*구조|면적|건물\s*수|어디(?:야|인가요|에\s*있)|\b(?:find|search|where is)\b|(?:검색|찾아)(?:해)?(?:줘|주세요)|주변|근처|카페|약국|마트|음식점|식당|편의점|병원|학교|버스\s*정류장|공원|도보|걸어|몇\s*미터|가장\s*가까|지도\s*중심|까지.*거리|에서.*까지|nearby|nearest|walking|\bfrom\b.*\bto\b|\b(cafe|pharmacy|restaurant|supermarket)\b/i.test(question);
 }
 export function calculateStraightLineDistance(origin: Coordinate, destination: Coordinate) { return distance(point(coordinate(origin)), point(coordinate(destination)), { units: 'meters' }); }
 export function representativePoint(feature: Feature<Geometry>): {
@@ -181,9 +188,9 @@ export function featureNames(feature: Feature<Geometry>): string[] {
                 names.push(name.trim().slice(0, 200));
     }
     if (names.some(n => /회복의\s*숲\s*타워|Recovery Forest Tower/i.test(n)))
-        names.push('타워', '기존 경로당', '경로당');
+        names.push('타워', '기존 경로당', '경로당', 'Recovery Forest Tower');
     if (names.some(n => /회복의\s*숲\s*전파기지|Recovery Forest Transmission Station/i.test(n)))
-        names.push('전파기지', '기존 건강생활지원센터');
+        names.push('전파기지', '기존 건강생활지원센터', 'Recovery Forest Transmission Station', 'Transmission Station', 'the Transmission Station');
     return [...new Set(names)];
 }
 export function internalPlaces(name: string, layers: LoadedLayer[], keyFor: (f: Feature<Geometry>, i: number) => string): Place[] {
