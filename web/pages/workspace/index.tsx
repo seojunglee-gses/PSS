@@ -1,5 +1,4 @@
 import {isDesignGenerationRequest} from "../../lib/facilitation";
-import AnalysisReviewPanel from "../../components/spatial/AnalysisReviewPanel";
 import { useGeoWorkspace } from "../../lib/spatial/use-geo";
 import { isGeoQuestion } from "../../lib/spatial/geo-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -2013,7 +2012,6 @@ const handleSend = async (suggestedQuestion?: string) => {
               <p className="mt-1 text-sm text-slate-500">{t("boundary.dataIntro")}</p>
 
 
-              <AnalysisReviewPanel key={`${projectId}-${userKey}`} projectId={projectId} selection={geo.context.selected} point={geo.context.point} result={spatialResult?.projectId===projectId?spatialResult:null} locked={completedStages.includes("data")||!!lockedStages.data}/>
             </div>
             <div role="tablist" aria-label={`${t("cases.heading")} / ${t("workspace.goal.spatial")} / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
               {(["cases", "spatial", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
@@ -2574,7 +2572,6 @@ const handleSend = async (suggestedQuestion?: string) => {
         onCancel={(event) => { event.preventDefault(); closeCompletion(false); }}>
         <h3 id="completion-title" className="text-lg font-semibold">{t("workspace.completeTitle")}</h3>
         <p id="completion-description" className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600">{t("workspace.completeBody")}</p>
-        {activeStep.id==="data"&&<button type="button" className="mt-3 text-sm text-blue-700 underline" onClick={()=>{closeCompletion(false);setPanelView("information");const panel=document.getElementById("analysis-review") as HTMLDetailsElement|null;if(panel)panel.open=true;}}>{t("review.beforeComplete")}</button>}
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" className="min-h-11 rounded-full border px-5 py-2 text-sm" onClick={() => closeCompletion(false)}>{t("workspace.cancel")}</button>
           <button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-5 py-2 text-sm font-semibold text-white" onClick={() => closeCompletion(true)}>{t("workspace.finishStage")}</button>
