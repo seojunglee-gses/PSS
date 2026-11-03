@@ -254,6 +254,12 @@ export default function Setting() {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload?.error ?? t("setting.resetFailed"));
       }
+      // Clear project-specific browser remnants as well as the server workspace.
+      try {
+        const keys = Object.keys(window.localStorage);
+        keys.filter(key => key === `ppss-active-step-${projectId}` || key.startsWith(`ppss-spatial-${projectId}-`) || key.startsWith(`ppss-chat-logs-${projectId}-`))
+          .forEach(key => window.localStorage.removeItem(key));
+      } catch { /* Browser storage availability must not hide a completed server reset. */ }
       setResetProjectMessage(t("setting.resetSaved"));
       setResetProjectTone("success");
     } catch (error) {

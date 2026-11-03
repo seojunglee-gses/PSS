@@ -27,6 +27,43 @@ beforeEach(async()=>{
  bucket={file:path=>({save:async(bytes,options)=>{objects.set(path,Buffer.from(bytes));saves.push({path,options});if(afterSave)await afterSave()},download:async()=>{downloads.push(path);if(!objects.has(path))throw Object.assign(Error('missing fixture file'),{code:404});return [objects.get(path)]},delete:async()=>{deletes.push(path);objects.delete(path)}})};
 });
 async function saved(user=owner,overrides={}){const {datasetId}=await server.mutateDataset(db,bucket,user,upload(overrides));return (await db.doc(collection+'/'+datasetId).get()).data()}
+test('soft reset clears actual private stage histories, reviewed summaries and both generated-image paths only for the selected project',async()=>{
+ const reset=require(build+'/pages/api/admin/reset-project.js').default;
+ const resetCollections=['ppssChatLogs','ppssGeneratedImages','ppssWorkspaceSummaries','ppssEvaluations','ppssUserDesignSubmissions','ppssEvaluationImages','ppssExecutiveSummaries','ppssStageLocks'];
+ const protectedCollections=['ppssSpatialDatasets','ppssBackgroundKnowledge','ppssSiteImages'];
+ for(const id of ['p1','p2']){
+  await db.doc(`users_${id}/reader`).set({profile:'preserve',confirmedStageSummaries:{problem:{text:'old personal summary'}}});
+  for(const uid of ['reader','parent-missing'])for(const step of ['problem','data','alternatives','evaluation','report'])await db.doc(`users_${id}/${uid}/steps/${step}`).set({logs:[{sender:'user',text:'old dialogue'}],analysisReview:{summary:{issues:'old review'}}});
+  for(const name of [...resetCollections,...protectedCollections])await db.doc(`${name}_${id}/fixture`).set({preserve:name.startsWith('ppssSpatial')});
+ }
+ const files=['ppss-generated-images/p1/old.png','ppss-chat-logs/p1/old.json','projects/p1/generated-images/new.png','projects/p1/case-images/keep.png','projects/p1/background-images/keep.png','ppss-site-image/p1/keep.png','ppss-spatial-datasets/p1/keep.json','projects/p2/generated-images/keep.png'];
+ const removed=[];const original={db:adminModule.adminDb,bucket:adminModule.adminBucket,verify:adminModule.verifyAdminRequest};
+ adminModule.adminDb=()=>db;adminModule.adminBucket=()=>({getFiles:async({prefix})=>[files.filter(path=>path.startsWith(prefix)).map(path=>({delete:async()=>removed.push(path)}))]});
+ adminModule.verifyAdminRequest=async token=>{if(token!=='admin')throw Error('Admin access required');return admin};
+ const invoke=async token=>{const result={};await reset({method:'POST',headers:{authorization:token?'Bearer '+token:undefined},body:{projectId:'p1'}},{status(n){result.status=n;return this},json(v){result.body=v}});return result};
+ try{
+  assert.equal((await invoke()).status,401);assert.equal((await invoke('participant')).status,500);assert.equal(removed.length,0);
+  assert.equal((await db.doc('users_p1/parent-missing/steps/data').get()).exists,true);
+  const result=await invoke('admin');assert.equal(result.status,200);assert.equal(result.body.ok,true);
+  for(const uid of ['reader','parent-missing'])assert.equal((await db.collection(`users_p1/${uid}/steps`).get()).empty,true);
+  assert.deepEqual((await db.doc('users_p1/reader').get()).data(),{profile:'preserve'});
+  for(const name of resetCollections)assert.equal((await db.collection(`${name}_p1`).get()).empty,true);
+  for(const name of protectedCollections)assert.equal((await db.doc(`${name}_p1/fixture`).get()).exists,true);
+  assert.equal((await db.doc('ppssProjects/p1').get()).data().projectAdmin,owner.email);
+  assert.equal((await db.doc('users/reader/projectMemberships/p1').get()).data().role,'participant');
+  assert.equal((await db.doc('users_p2/reader/steps/data').get()).exists,true);assert.ok((await db.doc('users_p2/reader').get()).data().confirmedStageSummaries);
+  for(const name of resetCollections)assert.equal((await db.doc(`${name}_p2/fixture`).get()).exists,true);
+  assert.deepEqual(removed.sort(),files.slice(0,3).sort());
+ }finally{adminModule.adminDb=original.db;adminModule.adminBucket=original.bucket;adminModule.verifyAdminRequest=original.verify}
+});
+test('soft reset reports Storage cleanup failure instead of falsely reporting success',async()=>{
+ const reset=require(build+'/pages/api/admin/reset-project.js').default;
+ const original={db:adminModule.adminDb,bucket:adminModule.adminBucket,verify:adminModule.verifyAdminRequest};
+ adminModule.adminDb=()=>db;adminModule.verifyAdminRequest=async()=>admin;
+ adminModule.adminBucket=()=>({getFiles:async()=>[[{delete:async()=>{throw Error('storage unavailable')}}]]});
+ try{let status,body;await reset({method:'POST',headers:{authorization:'Bearer admin'},body:{projectId:'p1'}},{status(n){status=n;return this},json(v){body=v}});assert.equal(status,500);assert.equal(body.ok,undefined)}
+ finally{adminModule.adminDb=original.db;adminModule.adminBucket=original.bucket;adminModule.verifyAdminRequest=original.verify}
+});
 async function route(method,body={},query={},token='owner'){
  const result={headers:{}};const res={setHeader:(k,v)=>result.headers[k]=v,status(n){result.status=n;return this},json(data){result.body=data;return this}};
  const original={db:adminModule.adminDb,bucket:adminModule.adminBucket,verify:adminModule.verifyUserRequest};adminModule.adminDb=()=>db;adminModule.adminBucket=()=>bucket;adminModule.verifyUserRequest=async t=>{if(t!==token||t==='bad')throw Error('bad token');return owner};
