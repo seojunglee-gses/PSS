@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { adminBucket, adminDb, verifyAdminRequest } from "../../../lib/firebaseAdmin";
+import { FieldValue } from "firebase-admin/firestore";
+import { AccessError, validProjectId } from "../../../lib/membership/server";
 
 const COLLECTIONS_TO_RESET = [
   "ppssChatLogs",
@@ -9,9 +11,10 @@ const COLLECTIONS_TO_RESET = [
   "ppssUserDesignSubmissions",
   "ppssEvaluationImages",
   "ppssExecutiveSummaries",
+  "ppssStageLocks",
 ];
 
-const storagePrefixesToReset = (projectId?: string) => [`ppss-generated-images/${projectId || "project-1"}/`, `ppss-chat-logs/${projectId || "project-1"}/`];
+const storagePrefixesToReset = (projectId: string) => [`ppss-generated-images/${projectId}/`, `ppss-chat-logs/${projectId}/`, `projects/${projectId}/generated-images/`];
 
 const resolveCollection = (base: string, projectId?: string) => `${base}_${projectId || "project-1"}`;
 
@@ -32,7 +35,20 @@ const deleteCollection = async (collectionPath: string) => {
 const deleteStoragePrefix = async (prefix: string) => {
   const bucket = adminBucket();
   const [files] = await bucket.getFiles({ prefix });
-  await Promise.all(files.map((file) => file.delete().catch(() => null)));
+  await Promise.all(files.map((file) => file.delete({ ignoreNotFound: true })));
+};
+
+const deletePrivateWorkspace = async (projectId: string) => {
+  const db = adminDb();
+  // Stage documents can exist without a parent user document.
+  const users = await db.collection(`users_${projectId}`).listDocuments();
+  for (const user of users) {
+    await db.recursiveDelete(user.collection("steps"));
+    const snapshot = await user.get();
+    if (snapshot.exists && snapshot.data()?.confirmedStageSummaries) {
+      await user.update({ confirmedStageSummaries: FieldValue.delete() });
+    }
+  }
 };
 
 export default async function handler(
@@ -53,13 +69,14 @@ export default async function handler(
     const token = authHeader.replace("Bearer ", "");
     await verifyAdminRequest(token);
 
-    const { projectId } = req.body as { projectId?: string };
+    const projectId = validProjectId(req.body?.projectId ?? "project-1");
+    await deletePrivateWorkspace(projectId);
     await Promise.all(COLLECTIONS_TO_RESET.map((name) => deleteCollection(resolveCollection(name, projectId))));
     await Promise.all(storagePrefixesToReset(projectId).map(deleteStoragePrefix));
 
     res.status(200).json({ ok: true });
   } catch (error) {
-    res.status(500).json({
+    res.status(error instanceof AccessError ? error.status : 500).json({
       error: error instanceof Error ? error.message : "Unable to reset project.",
     });
   }

@@ -57,9 +57,17 @@ test('Stage 3 reads the same project-specific current image written by Settings'
  mock(t,admin,'adminBucket',()=>({file:path=>({save:async(bytes,options)=>stored.push({path,bytes,options})})}));
  mock(t,admin,'buildDownloadUrl',()=> 'https://storage.example/generated.png');
  const old=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='fixture';t.after(()=>{if(old===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=old});
- mock(t,llm,'callLLM',async()=> 'Preserve the site image and improve walking space.');let imageInputs=0;
+ mock(t,llm,'callLLM',async input=>{assert.doesNotMatch(input.systemText,/overpass|NO cars/i);assert.match(input.systemText,/camera position, viewpoint, perspective, and spatial layout/);assert.match(input.systemText,/this project's dialogue and workspace summaries/);assert.match(input.userText,/실제 사업/);return 'Preserve the site image and improve walking space.'});let imageInputs=0;
  mock(t,global,'fetch',async(url,options)=>{if(url==='https://storage.example/site.png')return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'image/png'}});assert.equal(url,'https://api.openai.com/v1/images/edits');assert.equal(options.body.get('model'),'gpt-image-2.5-flare');imageInputs++;return Response.json({data:[{b64_json:'fixture-image'}]})});
  const res=response();await load('pages/api/generate-alternative.js').default(request({userID:'member',provider:'openai',workspaceSummary:{},workspaceInput:{}}),res);assert.equal(res.code,200);assert.equal(imageInputs,1);assert.equal(res.body.base64,undefined);assert.equal(res.body.downloadUrl,'https://storage.example/generated.png');assert.equal(stored.length,1);assert.match(stored[0].path,/^projects\/alpha\/generated-images\//);assert.equal(writes[0].v.userId,'member');assert.equal(writes[0].v.storagePath,stored[0].path);
+});
+
+test('image prompt revisions use current-project history and summaries without a hardcoded design subject',async t=>{
+ const records=fixture(t);records['users_alpha/member/steps/alternatives']={logs:[{sender:'user',text:'시장 앞 광장에 그늘을 더해주세요.'},{sender:'assistant',text:'보행 공간을 유지하는 방향으로 검토합니다.'}]};
+ let sent;mock(t,llm,'callLLM',async input=>{sent=input;return JSON.stringify({prompt:'Preserve the plaza viewpoint and add shade in the agreed scope.',rationale:'Reflect the participant request.'})});
+ const res=response();await load('pages/api/generate-revision-prompt.js').default(request({feedback:'나무 그늘을 늘려주세요.',previousPrompt:'Old design'}),res);
+ assert.equal(res.code,200);assert.doesNotMatch(sent.systemText,/overpass/i);assert.match(sent.systemText,/camera position, viewpoint, perspective, and spatial layout/);assert.match(sent.systemText,/unsupported project-specific assumptions/);
+ assert.match(sent.userText,/시장 앞 광장/);assert.match(sent.userText,/이전 단계 결론/);assert.match(sent.userText,/나무 그늘/);assert.doesNotMatch(sent.userText,/미래 단계/);
 });
 
 test('background PDF extraction uses the installed pdf-parse v2 API',async t=>{

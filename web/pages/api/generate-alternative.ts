@@ -60,7 +60,7 @@ export default async function handler(
   let authenticated = false;
   let targetPath = "projects/(pending)/generated-images";
   try {
-    const context = await loadProjectContext(req, "alternatives");
+    const context = await loadProjectContext(req, "alternatives", true, true);
     authenticated = true;
     targetPath = `projects/${context.projectId}/generated-images`;
     const currentSiteImage = (await adminDb().doc(`ppssSiteImages_${context.projectId}/current`).get()).data();
@@ -88,7 +88,7 @@ export default async function handler(
       throw new Error("Authentication required.");
     }
 
-    const history = conversationHistory(req.body.history);
+    const history = conversationHistory(context.stageHistory.length ? context.stageHistory : req.body.history);
     const normalizedProvider =
       provider === "gemini" ? "gemini" : "openai";
 
@@ -97,22 +97,19 @@ export default async function handler(
       You generate a SINGLE image-generation prompt, not the image itself.
       
       IMAGE RULES:
-      - The OVERPASS refers to the elevated roadway structure crossing above streets and rail lines in the image.
-      - The provided site image is the IMMUTABLE base.
-      - The OVERPASS is the PRIMARY and ONLY subject to redesign.
-      - Surrounding buildings, streets, and background must remain unchanged.
-      - Preserve camera angle, layout, and spatial structure.
-      - Do NOT create a new scene.
-      - The overpass is no longer for cars (NO cars).
+      - Use the provided current project's site image as the base for the design.
+      - Preserve the original camera position, viewpoint, perspective, and spatial layout.
+      - Apply the proposed design onto the existing image; do NOT create a new scene or move existing structures.
+      - Keep areas outside the project's intended design scope unchanged.
+      - Determine the design subject and scope only from this project's material, dialogue, summaries, and latest user feedback. Never assume a particular structure, site type, transport restriction, or a different project's design brief.
       
       DESIGN MODE:
       - Generate a NEW design alternative (not an edit).
-      - The overpass MUST show a CLEAR and VISIBLE design change.
-      - Stay close to the original structure.
+      - Show CLEAR and VISIBLE design changes within the project's intended scope while preserving the base image's geometry.
       
       FOCUS:
-      - Describe specific, clearly visible design elements to the OVERPASS ITSELF.
-      - Base ideas on the workspace summary.
+      - Describe specific, clearly visible design elements for the current project's intended design subject.
+      - Base ideas on this project's dialogue and workspace summaries, reflecting the latest user feedback.
       - Preserve participant-stated design preferences. AI options are not participant decisions. Do not invent agreement, overwrite stated choices or silently resolve stakeholder conflicts.
     `.trim();
 
