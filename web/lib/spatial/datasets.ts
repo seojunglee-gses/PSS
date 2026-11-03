@@ -2,19 +2,21 @@ import type { FeatureCollection, Geometry } from "geojson";
 import type { LayerConfig } from "./types";
 import { validateGeoJSON } from "./loader";
 
-export const DATASET_TYPES = ["project_boundary", "buildings", "parcels", "roads", "public_facilities", "other"] as const;
+export const DATASET_TYPES = ["project_boundary", "parcels", "buildings", "roads", "green", "public_facilities", "population", "other"] as const;
 export type DatasetType = typeof DATASET_TYPES[number];
 export const datasetTypeLabels: Record<DatasetType, string> = {
-  project_boundary: "대상지 경계", buildings: "건물", parcels: "필지", roads: "도로", public_facilities: "공공시설", other: "기타",
+  project_boundary: "사업구역 경계", buildings: "건물", parcels: "필지", roads: "도로", green: "공원·녹지", public_facilities: "공공시설", population: "인구·통계", other: "기타",
 };
 export const MAX_DATASET_BYTES = 3 * 1024 * 1024;
 export type SpatialDataset = {
   projectId: string; datasetId: string; name: string; type: DatasetType;
   fileName: string; uploadedAt: string; uploadedBy: string;
   storagePath: string; revisionId: string; size: number;
-  format: "geojson" | "json" | "csv";
+  format: "geojson" | "json" | "csv" | "zip";
   geometryType: LayerConfig["type"] | null;
-  sourceCrs?: "EPSG:4326" | "EPSG:3857";
+  sourceCrs?: string;
+  webCrs?: "EPSG:4326";
+  webStoragePath?: string;
   boundaryMetadata?: {bbox:number[];center:number[];areaSqm:number};
   normalizedStoragePath?: string;
   normalizedId?: string;
@@ -23,7 +25,7 @@ export type SpatialDataset = {
 
 export function datasetLayer(dataset: SpatialDataset): LayerConfig | null {
   if (!dataset.geometryType) return null;
-  const roles: Partial<Record<DatasetType, LayerConfig["role"]>> = { project_boundary: "boundary", buildings: "buildings", roads: "roads", public_facilities: "facilities" };
+  const roles: Partial<Record<DatasetType, LayerConfig["role"]>> = { project_boundary: "boundary", buildings: "buildings", roads: "roads", green: "green", population: "population", public_facilities: "facilities" };
   return {
     datasetType:dataset.type,
     id: `uploaded-${dataset.datasetId}`, label: dataset.name, type: dataset.geometryType,
@@ -84,8 +86,9 @@ export function parseDataset(text: string, format: SpatialDataset["format"], typ
   const geometry = first?.type === "FeatureCollection" ? first.features?.[0]?.geometry?.type : first?.geometry?.type;
   const geometryType = geometry === "Polygon" || geometry === "MultiPolygon" ? "polygon" : geometry === "LineString" || geometry === "MultiLineString" ? "line" : geometry === "Point" || geometry === "MultiPoint" ? "point" : null;
   if (!geometryType) throw new Error("GeoJSON Feature 또는 FeatureCollection을 준비해주세요.");
-  if (["project_boundary", "buildings", "parcels"].includes(type) && geometryType !== "polygon") throw new Error("경계·건물·필지는 면 데이터로 준비해주세요.");
+  if (["project_boundary", "buildings", "parcels", "green"].includes(type) && geometryType !== "polygon") throw new Error("경계·건물·필지·녹지는 면 데이터로 준비해주세요.");
   if (type === "roads" && geometryType !== "line") throw new Error("도로는 선 데이터로 준비해주세요.");
+  if (type === "population" && geometryType === "line") throw new Error("인구·통계는 점 또는 면 데이터로 준비해주세요.");
   const data = validateGeoJSON(input, { id: "validation", label: "공간정보", type: geometryType, source: "" });
   return { geometryType, data };
 }

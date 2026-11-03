@@ -1,4 +1,5 @@
-import { boundaryGeoJSON, deriveBoundary, sourceCrs, spatialSettings } from "./boundary";
+import { boundaryGeoJSON, deriveBoundary, spatialSettings } from "./boundary";
+import { analyzeUpload, uploadBytes } from "./upload-analysis";
 import type { Firestore } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
 import type { Bucket } from "@google-cloud/storage";
@@ -40,6 +41,11 @@ async function removeFile(bucket: Bucket, path: string) {
 function normalizedPath(projectId: string, datasetId: string, revisionId: string, version: string, id: string) {
   return `ppss-spatial-datasets/${projectId}/${datasetId}/${revisionId}/normalized-${version}-${id}.geojson`;
 }
+function existingWebPath(dataset: SpatialDataset, projectId: string, datasetId: string) {
+  if (!dataset.webStoragePath) return undefined;
+  if (dataset.webCrs !== "EPSG:4326" || dataset.webStoragePath !== `ppss-spatial-datasets/${projectId}/${datasetId}/${dataset.revisionId}/web.geojson`) throw new AccessError(400, "공간정보 경로를 확인해주세요.");
+  return dataset.webStoragePath;
+}
 function existingNormalizedPath(dataset: SpatialDataset, projectId: string, datasetId: string): string | undefined {
   if (!dataset.normalizedStoragePath) return undefined;
   if (!dataset.normalizedId || !/^[a-zA-Z0-9_-]{1,128}$/.test(dataset.normalizedId) || !dataset.buildingUseVersion || !/^[a-f0-9]{64}$/.test(dataset.buildingUseVersion) || dataset.normalizedStoragePath !== normalizedPath(projectId, datasetId, dataset.revisionId, dataset.buildingUseVersion, dataset.normalizedId)) throw new AccessError(400, "건물 용도 자료 경로를 확인해주세요.");
@@ -54,6 +60,10 @@ const normalizedOptions = { resumable: false, metadata: { contentType: "applicat
 export async function mutateDataset(db: Firestore, bucket: Bucket, user: Identity, body: Record<string, unknown>) {
   const projectId = validProjectId(body.projectId);
   await authorize(db, user, projectId, true);
+  if (body.action === "inspect") {
+    try { const { bytes, format } = uploadBytes(body); return { analysis: await analyzeUpload(bytes, format, body.sourceCrs) }; }
+    catch (error) { throw new AccessError(400, error instanceof Error && /^(upload\.|dataset\.|boundary\.)/.test(error.message) ? error.message : "upload.invalidFile"); }
+  }
   if (body.action === "boundary-settings") return configureBoundary(db,bucket,user,projectId,body);
   if (!["upload", "replace", "delete"].includes(String(body.action))) throw new AccessError(400, "공간정보 요청을 확인해주세요.");
   const creating = body.action === "upload";
@@ -61,44 +71,47 @@ export async function mutateDataset(db: Firestore, bucket: Bucket, user: Identit
   const ref = db.collection(datasetCollection(projectId)).doc(datasetId);
   let uploadedPath: string | undefined;
   let uploadedNormalizedPath: string | undefined;
+  let uploadedWebPath: string | undefined;
   let payload: Record<string, unknown> | undefined;
   if (body.action !== "delete") {
     if (typeof body.name !== "string" || !body.name.trim() || body.name.length > 100 || !DATASET_TYPES.includes(body.type as SpatialDataset["type"]) || typeof body.fileName !== "string" || body.fileName.length > 255 || /[\\/\u0000]/.test(body.fileName)) throw new AccessError(400, "자료 이름·유형·파일명을 확인해주세요.");
-    const format = body.fileName.split(".").pop()?.toLowerCase() as SpatialDataset["format"];
-    if (!["geojson", "json", "csv"].includes(format)) throw new AccessError(400, "GeoJSON, JSON, CSV 파일만 업로드할 수 있습니다.");
-    if (typeof body.data !== "string" || body.data.length > Math.ceil(MAX_DATASET_BYTES / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(body.data)) throw new AccessError(400, "파일 크기는 3MB 이하로 준비해주세요.");
-    const bytes = Buffer.from(body.data, "base64");
-    if (!bytes.length || bytes.length > MAX_DATASET_BYTES) throw new AccessError(400, "비어 있지 않은 3MB 이하 파일을 준비해주세요.");
+    let bytes: Buffer, format: SpatialDataset["format"];
+    try { ({ bytes, format } = uploadBytes(body)); } catch (error) { throw new AccessError(400, error instanceof Error ? error.message : "upload.invalidFile"); }
     let geometryType: SpatialDataset["geometryType"];
     let normalized: Buffer | undefined;
     let boundaryMetadata: {bbox:number[];center:number[];areaSqm:number}|undefined;
     let crs: SpatialDataset["sourceCrs"];
+    let web: Buffer | undefined;
     try {
+      const analysis = await analyzeUpload(bytes, format, body.sourceCrs, body.type as SpatialDataset["type"]);
+      if (analysis.needsCrs) throw new Error("upload.crsNeeded");
+      crs = analysis.sourceCrs ?? undefined;
       if(body.type === "project_boundary"){
-        if(format === "csv")throw new Error("boundary.geojsonOnly");
-        const raw=JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes));
-        crs=sourceCrs(raw,body.sourceCrs,true);
-        const d=deriveBoundary(boundaryGeoJSON(raw,crs,true));boundaryMetadata={bbox:d.bbox,center:d.center,areaSqm:d.areaSqm};
+        if (!analysis.data) throw new Error("boundary.invalid");
+        const d=deriveBoundary(boundaryGeoJSON(analysis.data,"EPSG:4326",true));boundaryMetadata={bbox:d.bbox,center:d.center,areaSqm:d.areaSqm};
       }
-      const parsed = body.type === "project_boundary" ? {geometryType:"polygon" as const,data:boundaryGeoJSON(JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes)),crs,true)} : parseDataset(new TextDecoder("utf-8", { fatal: true }).decode(bytes), format, body.type as SpatialDataset["type"]);
-      geometryType = parsed.geometryType;
-      if (body.type === "buildings" && parsed.data) normalized = normalizedBytes(normalizeBuildingData(parsed.data));
+      geometryType = analysis.geometryType;
+      if (analysis.data) web = Buffer.from(JSON.stringify(analysis.data));
+      if (body.type === "buildings" && analysis.data) normalized = normalizedBytes(normalizeBuildingData(analysis.data));
     }
     catch (error) { throw new AccessError(400, error instanceof SyntaxError ? "boundary.invalid" : error instanceof TypeError ? "UTF-8 파일로 저장해주세요." : error instanceof Error ? error.message : "파일 형식을 확인해주세요."); }
     const revisionId = randomUUID();
     uploadedPath = `ppss-spatial-datasets/${projectId}/${datasetId}/${revisionId}/original.${format}`;
     payload = { projectId, datasetId, name: body.name.trim(), type: body.type, fileName: body.fileName, format, storagePath: uploadedPath, revisionId, size: bytes.length, geometryType, uploadedAt: Timestamp.now(), uploadedBy: user.uid };
-    if(boundaryMetadata)Object.assign(payload,{boundaryMetadata,sourceCrs:crs});
+    if (crs) Object.assign(payload, { sourceCrs: crs });
+    if(boundaryMetadata)Object.assign(payload,{boundaryMetadata});
+    if (web) { uploadedWebPath = `ppss-spatial-datasets/${projectId}/${datasetId}/${revisionId}/web.geojson`; Object.assign(payload, { webCrs: "EPSG:4326", webStoragePath: uploadedWebPath }); }
     if (normalized) {
       const normalizedId = randomUUID();
       uploadedNormalizedPath = normalizedPath(projectId, datasetId, revisionId, BUILDING_USE_VERSION, normalizedId);
       Object.assign(payload, { normalizedId, normalizedStoragePath: uploadedNormalizedPath, buildingUseVersion: BUILDING_USE_VERSION });
     }
     try {
-      await bucket.file(uploadedPath).save(bytes, { resumable: false, metadata: { contentType: format === "csv" ? "text/csv; charset=utf-8" : format === "geojson" ? "application/geo+json" : "application/json", cacheControl: "private, no-store" } });
+      await bucket.file(uploadedPath).save(bytes, { resumable: false, metadata: { contentType: format === "zip" ? "application/zip" : format === "csv" ? "text/csv; charset=utf-8" : format === "geojson" ? "application/geo+json" : "application/json", cacheControl: "private, no-store" } });
+      if (web && uploadedWebPath) await bucket.file(uploadedWebPath).save(web, normalizedOptions);
       if (normalized && uploadedNormalizedPath) await bucket.file(uploadedNormalizedPath).save(normalized, normalizedOptions);
     }
-    catch (error) { await removeFile(bucket, uploadedPath); if (uploadedNormalizedPath) await removeFile(bucket, uploadedNormalizedPath); throw error; }
+    catch (error) { await removeFile(bucket, uploadedPath); if (uploadedWebPath) await removeFile(bucket, uploadedWebPath); if (uploadedNormalizedPath) await removeFile(bucket, uploadedNormalizedPath); throw error; }
   }
   let previousPaths: string[];
   try {
@@ -112,16 +125,23 @@ export async function mutateDataset(db: Firestore, bucket: Bucket, user: Identit
       if (!creating && previous.data()?.revisionId !== body.expectedRevisionId) throw new AccessError(409, "다른 관리자가 이 자료를 변경했습니다. 목록을 새로고침해주세요.");
       if (!creating && previous.data()?.storagePath !== `ppss-spatial-datasets/${projectId}/${datasetId}/${previous.data()?.revisionId}/original.${previous.data()?.format}`) throw new AccessError(400, "공간정보 경로를 확인해주세요.");
       const settings=spatialSettings(project.data()?.spatialSettings);
+      if (body.activateBoundary === true) {
+        if (payload?.type !== "project_boundary" || !payload?.boundaryMetadata) throw new AccessError(400, "boundary.invalid");
+        if (settings.activeBoundaryDatasetId !== (body.expectedBoundaryId ?? null)) throw new AccessError(409, "boundary.changed");
+        if (settings.activeBoundaryDatasetId && settings.activeBoundaryDatasetId !== datasetId && body.confirmBoundaryChange !== true) throw new AccessError(409, "boundary.confirmChange");
+        tx.update(db.doc(`ppssProjects/${projectId}`), { spatialSettings: { ...settings, activeBoundaryDatasetId: datasetId } });
+      }
       if(!creating&&settings.activeBoundaryDatasetId===datasetId){
         if(body.confirmBoundaryChange!==true)throw new AccessError(409,"boundary.confirmChange");
         if(body.action === "delete")tx.update(db.doc(`ppssProjects/${projectId}`),{spatialSettings:{...settings,activeBoundaryDatasetId:null}});
         else if(payload?.type!=="project_boundary")throw new AccessError(400,"boundary.invalid");
       }
       const oldNormalized = previous.exists ? existingNormalizedPath(previous.data() as SpatialDataset, projectId, datasetId) : undefined;
+      const oldWeb = previous.exists ? existingWebPath(previous.data() as SpatialDataset, projectId, datasetId) : undefined;
       if (body.action === "delete") tx.delete(ref); else tx.set(ref, payload!);
-      return [previous.data()?.storagePath, oldNormalized].filter((path): path is string => typeof path === "string");
+      return [previous.data()?.storagePath, oldNormalized, oldWeb].filter((path): path is string => typeof path === "string");
     });
-  } catch (error) { if (uploadedPath) await removeFile(bucket, uploadedPath); if (uploadedNormalizedPath) await removeFile(bucket, uploadedNormalizedPath); throw error; }
+  } catch (error) { if (uploadedPath) await removeFile(bucket, uploadedPath); if (uploadedWebPath) await removeFile(bucket, uploadedWebPath); if (uploadedNormalizedPath) await removeFile(bucket, uploadedNormalizedPath); throw error; }
   for (const path of previousPaths) await removeFile(bucket, path);
   return { datasetId };
 }
@@ -142,9 +162,10 @@ export async function readDataset(db: Firestore, bucket: Bucket, user: Identity,
       return { data: parseDataset(new TextDecoder("utf-8", { fatal: true }).decode(cached), "geojson", "buildings").data };
     } catch (error) { if ((error as {code?: unknown}).code !== 404) throw error; }
   }
-  const [bytes] = await bucket.file(expected).download();
+  const webPath = existingWebPath(dataset, projectId, datasetId);
+  const [bytes] = await bucket.file(webPath ?? expected).download();
   if (bytes.length > MAX_DATASET_BYTES) throw new AccessError(400, "공간정보 파일이 지원 크기를 벗어났습니다.");
-  const data = dataset.type === "project_boundary" ? boundaryGeoJSON(JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes)),dataset.sourceCrs) : parseDataset(new TextDecoder("utf-8", { fatal: true }).decode(bytes), dataset.format, dataset.type).data;
+  const data = webPath ? parseDataset(new TextDecoder("utf-8", { fatal: true }).decode(bytes), "geojson", dataset.type).data : dataset.type === "project_boundary" ? boundaryGeoJSON(JSON.parse(new TextDecoder("utf-8",{fatal:true}).decode(bytes)),dataset.sourceCrs) : parseDataset(new TextDecoder("utf-8", { fatal: true }).decode(bytes), dataset.format, dataset.type).data;
   if (!data || dataset.type !== "buildings") return { data };
   // Legacy uploads / updated reference: create one derived version and reuse it thereafter.
   const normalized = normalizeBuildingData(data), bytesToSave = normalizedBytes(normalized), normalizedId = randomUUID();

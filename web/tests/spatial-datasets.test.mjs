@@ -27,6 +27,27 @@ beforeEach(async()=>{
  bucket={file:path=>({save:async(bytes,options)=>{objects.set(path,Buffer.from(bytes));saves.push({path,options});if(afterSave)await afterSave()},download:async()=>{downloads.push(path);if(!objects.has(path))throw Object.assign(Error('missing fixture file'),{code:404});return [objects.get(path)]},delete:async()=>{deletes.push(path);objects.delete(path)}})};
 });
 async function saved(user=owner,overrides={}){const {datasetId}=await server.mutateDataset(db,bucket,user,upload(overrides));return (await db.doc(collection+'/'+datasetId).get()).data()}
+async function savedLegacy(overrides={}){
+ const d=await saved(owner,overrides);objects.delete(d.webStoragePath);
+ const {webStoragePath,webCrs,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);return legacy;
+}
+test('inspection is manager-only, creates no storage or metadata, and saving a boundary activates it atomically',async()=>{
+ const body=upload({action:'inspect',sourceCrs:undefined});
+ await assert.rejects(server.mutateDataset(db,bucket,participant,body),e=>e.status===403);
+ const result=await server.mutateDataset(db,bucket,owner,body);assert.equal(result.analysis.sourceCrs,'EPSG:4326');assert.equal(result.analysis.featureCount,1);assert.deepEqual(result.analysis.data,polygon);assert.equal(objects.size,0);assert.equal((await db.collection(collection).get()).empty,true);
+ const first=await saved(owner,{sourceCrs:undefined,activateBoundary:true,expectedBoundaryId:null});assert.equal((await server.listDatasets(db,owner,'p1')).spatialSettings.activeBoundaryDatasetId,first.datasetId);
+ const before=objects.size;await assert.rejects(server.mutateDataset(db,bucket,owner,upload({activateBoundary:true,expectedBoundaryId:null,confirmBoundaryChange:true})),e=>e.status===409);assert.equal(objects.size,before);assert.equal((await db.collection(collection).get()).size,1);
+ const second=await saved(owner,{activateBoundary:true,expectedBoundaryId:first.datasetId,confirmBoundaryChange:true});assert.equal((await server.listDatasets(db,owner,'p1')).spatialSettings.activeBoundaryDatasetId,second.datasetId);assert.equal(objects.has(first.storagePath),true);
+});
+test('projected datasets preserve original CRS and bytes, read persisted WGS84 without re-parsing originals, and retain new type roles',async()=>{
+ const projected={type:'Feature',properties:{name:'공원'},geometry:{type:'Polygon',coordinates:[[[200000,600000],[200100,600000],[200100,600100],[200000,600100],[200000,600000]]]}};
+ const raw=JSON.stringify(projected);const d=await saved(owner,{type:'green',fileName:'공원.json',sourceCrs:'EPSG:5186',data:Buffer.from(raw).toString('base64')});
+ assert.equal(d.sourceCrs,'EPSG:5186');assert.equal(d.webCrs,'EPSG:4326');assert.equal(objects.get(d.storagePath).toString(),raw);assert.match(d.webStoragePath,/\/web.geojson$/);
+ const first=await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);const second=await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);assert.deepEqual(first,second);assert.deepEqual(downloads,[d.webStoragePath,d.webStoragePath]);assert.ok(Math.abs(first.data.features[0].geometry.coordinates[0][0][0]-127)<1e-7);
+ const {datasetLayer}=require(build+'/lib/spatial/datasets.js');assert.equal(datasetLayer(d).role,'green');
+ const population=await saved(owner,{type:'population',fileName:'인구.csv',sourceCrs:undefined,data:Buffer.from('longitude,latitude,population\n127,37,100').toString('base64')});assert.equal(datasetLayer(population).role,'population');
+ await server.mutateDataset(db,bucket,owner,{action:'delete',projectId:'p1',datasetId:d.datasetId,expectedRevisionId:d.revisionId});assert.equal(objects.has(d.storagePath),false);assert.equal(objects.has(d.webStoragePath),false);
+});
 test('soft reset clears actual private stage histories, reviewed summaries and both generated-image paths only for the selected project',async()=>{
  const reset=require(build+'/pages/api/admin/reset-project.js').default;
  const resetCollections=['ppssChatLogs','ppssGeneratedImages','ppssWorkspaceSummaries','ppssEvaluations','ppssUserDesignSubmissions','ppssEvaluationImages','ppssExecutiveSummaries','ppssStageLocks'];
@@ -77,30 +98,30 @@ test('uploaded building GeoJSON stores its normalized result once and reuses it 
  const source={...polygon,features:polygon.features.map(f=>({...f,properties:{use_code:'03000',use_name:'사용자가 넣은 이름'}}))};const original=JSON.stringify(source);
  const d=await saved(owner,{type:'buildings',data:Buffer.from(original).toString('base64')});assert.equal(objects.get(d.storagePath).toString(),original);
  const result=await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);assert.equal(result.data.features[0].properties.use_code,'03000');assert.equal(result.data.features[0].properties.use_name,'제1종근린생활시설');assert.equal(objects.get(d.storagePath).toString(),original);
- await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);assert.equal(saves.length,2);assert.deepEqual(downloads,[d.normalizedStoragePath,d.normalizedStoragePath]);assert.match(d.buildingUseVersion,/^[a-f0-9]{64}$/);
+ await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);assert.equal(saves.length,3);assert.deepEqual(downloads,[d.normalizedStoragePath,d.normalizedStoragePath]);assert.match(d.buildingUseVersion,/^[a-f0-9]{64}$/);
  await server.mutateDataset(db,bucket,owner,{action:'delete',projectId:'p1',datasetId:d.datasetId,expectedRevisionId:d.revisionId});assert.equal(objects.size,0);
 });
 test('legacy building uploads get one persisted normalization and subsequent reads reuse it',async()=>{
- const d=await saved(owner,{type:'buildings'});objects.delete(d.normalizedStoragePath);const {normalizedStoragePath,normalizedId,buildingUseVersion,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);const before=saves.length;
+ const d=await savedLegacy({type:'buildings'});objects.delete(d.normalizedStoragePath);const {normalizedStoragePath,normalizedId,buildingUseVersion,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);const before=saves.length;
  await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);const cached=(await db.doc(collection+'/'+d.datasetId).get()).data();assert.ok(cached.normalizedStoragePath);assert.equal(saves.length,before+1);
  await server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId);assert.equal(saves.length,before+1);assert.deepEqual(downloads,[d.storagePath,cached.normalizedStoragePath]);
 });
 test('changed code-table versions and missing derived files rebuild once and clean the old result',async()=>{
- const d=await saved(owner,{type:'buildings'});const oldVersion='0'.repeat(64),oldPath=d.normalizedStoragePath.replace(d.buildingUseVersion,oldVersion);objects.set(oldPath,objects.get(d.normalizedStoragePath));objects.delete(d.normalizedStoragePath);await db.doc(collection+'/'+d.datasetId).update({buildingUseVersion:oldVersion,normalizedStoragePath:oldPath});
+ const d=await savedLegacy({type:'buildings'});const oldVersion='0'.repeat(64),oldPath=d.normalizedStoragePath.replace(d.buildingUseVersion,oldVersion);objects.set(oldPath,objects.get(d.normalizedStoragePath));objects.delete(d.normalizedStoragePath);await db.doc(collection+'/'+d.datasetId).update({buildingUseVersion:oldVersion,normalizedStoragePath:oldPath});
  await server.readDataset(db,bucket,owner,'p1',d.datasetId,d.revisionId);let current=(await db.doc(collection+'/'+d.datasetId).get()).data();assert.equal(current.buildingUseVersion,d.buildingUseVersion);assert.equal(objects.has(oldPath),false);assert.equal(objects.size,2);
  objects.delete(current.normalizedStoragePath);await server.readDataset(db,bucket,owner,'p1',d.datasetId,d.revisionId);const repaired=(await db.doc(collection+'/'+d.datasetId).get()).data();assert.notEqual(repaired.normalizedId,current.normalizedId);assert.equal(objects.size,2);
 });
 test('first-read caching rechecks membership and cleans a derived result when access is revoked mid-write',async()=>{
- const d=await saved(owner,{type:'buildings'});objects.delete(d.normalizedStoragePath);const {normalizedStoragePath,normalizedId,buildingUseVersion,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);
+ const d=await savedLegacy({type:'buildings'});objects.delete(d.normalizedStoragePath);const {normalizedStoragePath,normalizedId,buildingUseVersion,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);
  afterSave=async()=>await db.doc('users/reader/projectMemberships/p1').update({revoked:true});await assert.rejects(server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId),e=>e.status===403);assert.equal(objects.size,1);assert.equal((await db.doc(collection+'/'+d.datasetId).get()).data().normalizedStoragePath,undefined);
 });
 test('concurrent first reads commit one derived result and clean the losing temporary file',async()=>{
- const d=await saved(owner,{type:'buildings'});objects.delete(d.normalizedStoragePath);const {normalizedStoragePath,normalizedId,buildingUseVersion,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);
+ const d=await savedLegacy({type:'buildings'});objects.delete(d.normalizedStoragePath);const {normalizedStoragePath,normalizedId,buildingUseVersion,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);
  await Promise.all([server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId),server.readDataset(db,bucket,owner,'p1',d.datasetId,d.revisionId)]);const current=(await db.doc(collection+'/'+d.datasetId).get()).data();assert.ok(objects.has(current.normalizedStoragePath));assert.equal(objects.size,2);
 });
 test('only project/platform admins can mutate; local planner flags grant nothing',async()=>{
  for(const user of [participant,stranger])await assert.rejects(server.mutateDataset(db,bucket,user,upload({role:'planners',isAdmin:true})),e=>e.status===403);
- assert.equal(saves.length,0);await saved(admin);assert.equal(saves.length,1);
+ assert.equal(saves.length,0);await saved(admin);assert.equal(saves.length,2);
  const d=await saved();for(const user of [participant,stranger])for(const action of ['replace','delete'])await assert.rejects(server.mutateDataset(db,bucket,user,upload({action,datasetId:d.datasetId,expectedRevisionId:d.revisionId})),e=>e.status===403);
 });
 test('the existing create/enter/update project flow immediately controls spatial uploads without extra permissions',async()=>{
@@ -125,7 +146,7 @@ test('ownership changes during upload reject commit and clean the unreferenced f
 });
 test('replacement keeps the dataset ID, switches versions, removes the old file, and rejects stale revisions',async()=>{
  const first=await saved();const next={...upload({fileName:'수정.json'}),action:'replace',datasetId:first.datasetId,expectedRevisionId:first.revisionId};await server.mutateDataset(db,bucket,owner,next);const d=(await db.doc(collection+'/'+first.datasetId).get()).data();assert.equal(d.datasetId,first.datasetId);assert.notEqual(d.revisionId,first.revisionId);assert.equal(d.fileName,'수정.json');assert.equal(objects.has(first.storagePath),false);assert.equal(objects.has(d.storagePath),true);
- await assert.rejects(server.mutateDataset(db,bucket,owner,next),e=>e.status===409);assert.equal(objects.size,1);await assert.rejects(server.readDataset(db,bucket,participant,'p1',d.datasetId,first.revisionId),e=>e.status===409);
+ await assert.rejects(server.mutateDataset(db,bucket,owner,next),e=>e.status===409);assert.equal(objects.size,2);await assert.rejects(server.readDataset(db,bucket,participant,'p1',d.datasetId,first.revisionId),e=>e.status===409);
 });
 test('delete removes the metadata and original; no other project or revoked reader can read it',async()=>{
  const d=await saved();await assert.rejects(server.readDataset(db,bucket,stranger,'p1',d.datasetId,d.revisionId),e=>e.status===403);await db.doc('users/reader/projectMemberships/p1').update({revoked:true});await assert.rejects(server.readDataset(db,bucket,participant,'p1',d.datasetId,d.revisionId),e=>e.status===403);
@@ -175,8 +196,8 @@ test('active boundary replacement/deletion require confirmation and invalidate d
  await server.mutateDataset(db,bucket,owner,{...replace,confirmBoundaryChange:true});const next=(await db.doc(collection+'/'+a.datasetId).get()).data();assert.ok(next.boundaryMetadata.areaSqm>a.boundaryMetadata.areaSqm*3.9);assert.notEqual(next.revisionId,a.revisionId);assert.equal((await server.listDatasets(db,owner,'p1')).spatialSettings.activeBoundaryDatasetId,a.datasetId);
  const remove={action:'delete',projectId:'p1',datasetId:a.datasetId,expectedRevisionId:next.revisionId};await assert.rejects(server.mutateDataset(db,bucket,owner,remove),e=>e.status===409);await server.mutateDataset(db,bucket,owner,{...remove,confirmBoundaryChange:true});assert.equal((await server.listDatasets(db,owner,'p1')).spatialSettings.activeBoundaryDatasetId,null);assert.equal((await db.doc(collection+'/'+building.datasetId).get()).exists,true);
 });
-test('boundary uploads require reliable/confirmed CRS and preserve projected original bytes',async()=>{
- await assert.rejects(server.mutateDataset(db,bucket,owner,upload({sourceCrs:undefined})),e=>e.status===400&&/confirmCrs/.test(e.message));
+test('boundary uploads automatically detect geographic CRS and preserve projected original bytes',async()=>{
+ const auto=await saved(owner,{sourceCrs:undefined});assert.equal(auto.sourceCrs,'EPSG:4326');assert.equal(auto.webCrs,'EPSG:4326');
  const {toMercator}=require('@turf/turf'),mercator=toMercator(polygon),raw=JSON.stringify(mercator);
  const projected=await saved(owner,{sourceCrs:'EPSG:3857',data:Buffer.from(raw).toString('base64')});assert.equal(objects.get(projected.storagePath).toString(),raw);assert.equal(projected.sourceCrs,'EPSG:3857');const parsed=(await server.readDataset(db,bucket,participant,'p1',projected.datasetId,projected.revisionId)).data;assert.ok(Math.abs(parsed.features[0].geometry.coordinates[0][0][0]-126)<1e-6);
  const legacy=await saved();await db.doc(collection+'/'+legacy.datasetId).update({sourceCrs:require('firebase-admin/firestore').FieldValue.delete()});const assign={action:'boundary-settings',projectId:'p1',activeBoundaryDatasetId:legacy.datasetId,defaultNearbyMeters:0,expectedBoundaryId:null};await assert.rejects(server.mutateDataset(db,bucket,owner,assign),e=>e.status===400);await server.mutateDataset(db,bucket,owner,{...assign,sourceCrs:'EPSG:4326'});assert.equal((await server.listDatasets(db,owner,'p1')).spatialSettings.activeBoundaryDatasetId,legacy.datasetId);

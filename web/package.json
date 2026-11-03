@@ -18,7 +18,10 @@
     "next": "14.2.5",
     "pdf-parse": "^2.4.5",
     "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "react-dom": "18.2.0",
+    "proj4": "^2.22.0",
+    "shapefile": "^0.6.6",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
@@ -29,6 +32,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "@types/shapefile": "^0.6.4"
   }
 }
