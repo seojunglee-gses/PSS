@@ -156,6 +156,10 @@ test('synthesis prompt uses abstract scope, project context and only usable pape
     assert.match(input.systemText, /ABSTRACT-BASED/);
     assert.match(input.systemText, /sample sizes/);
     assert.match(input.systemText, /untrusted/);
+    assert.match(input.systemText, /Return limitations=""/);
+    assert.match(input.systemText, /alongside the affected claim/);
+    assert.match(input.systemText, /one natural, concrete next question OR a short offer of help/);
+    assert.match(input.systemText, /If the policy is NONE, omit both/);
     const payload = JSON.parse(input.userText);
     assert.equal(payload.papers.length, 1);
     assert.equal(payload.projectContext, 'Seoul project');
@@ -341,7 +345,7 @@ test('history-only clarification is allowed but historical citations do not beco
   const request=parseAnalysisRequest({question:'그 답변을 쉽게 풀어서 말해줘',history:[{role:'user',content:'지역 공동체를 우선하자'},{role:'assistant',content:'우선 목표는 지역 공동체입니다.'}],selectedSources:['project']});
   const bundle=await retrieveEvidence(request);
   let historicalCitation=false;
-  mockLLM(t,async input=>{const payload=JSON.parse(input.userText);assert.equal(payload.history.length,2);assert.match(input.systemText,/not verified source evidence/);assert.match(input.systemText,/at most 2 short sentences/);return JSON.stringify({...response(),caseFindings:[],researchFindings:[],...(historicalCitation?{summary:'Unsupported old reference [R:W1]'}:{})})});
+  mockLLM(t,async input=>{const payload=JSON.parse(input.userText);assert.equal(payload.history.length,2);assert.match(input.systemText,/not verified source evidence/);assert.match(input.systemText,/Return limitations=""/);return JSON.stringify({...response(),caseFindings:[],researchFindings:[],...(historicalCitation?{summary:'Unsupported old reference [R:W1]'}:{})})});
   assert.deepEqual((await answerFromEvidence(request,bundle)).sources,[]);
   historicalCitation=true;
   await assert.rejects(()=>answerFromEvidence(request,bundle),/unsupported source/);

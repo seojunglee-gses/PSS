@@ -25,7 +25,7 @@ const ko: Labels = {
   answerIntro: "이 답변에 사용한 자료", noAnswer: "답변에서 ‘근거 보기’를 누르면 참고한 자료를 확인할 수 있습니다.",
   backCases: "← 사례로 돌아가기", fullCase: "사례 전체 보기", editCases: "수정", paperDetails: "논문 상세 정보",
   sourcesUsed: "참고 자료", caseCount: "건의 사례", paperCount: "편의 논문",
-  evidence: "근거 자료", analysisChat: "분석 대화", auto: "자동 선택", project: "프로젝트 자료", spatial: "공간 분석", cases: "사례", research: "학술 논문",
+  evidence: "근거 자료", analysisChat: "AI 대화", auto: "자동 선택", project: "프로젝트 자료", spatial: "공간 분석", cases: "사례", research: "학술 논문",
   choose: "답변에 참고할 자료 선택", remove: "선택 해제", defaults: "질문에 맞는 자료를 자동으로 선택합니다.",
   caseEvidence: "참고한 사례", researchEvidence: "참고한 논문", browse: "사례 자료 보기",
   empty: "질문을 보내면 참고 자료가 여기에 표시됩니다.", loading: "자료를 찾고 답변을 준비하고 있습니다…",
