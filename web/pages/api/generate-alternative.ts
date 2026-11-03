@@ -110,6 +110,7 @@ export default async function handler(
       FOCUS:
       - Describe specific, clearly visible design elements for the current project's intended design subject.
       - Base ideas on this project's dialogue and workspace summaries, reflecting the latest user feedback.
+      - Make the participant's explicitly proposed design elements visually distinctive and prominent within the intended scope, so the design reflects their own ideas rather than a generic alternative. Use concrete visual details supported by their proposals; do not invent unstated tastes, stylistic preferences, motives, or personal traits to create variety. If no distinctive preference was stated, do not fabricate one. Preserve the original camera position, viewpoint, perspective, and spatial layout.
       - Preserve participant-stated design preferences. AI options are not participant decisions. Do not invent agreement, overwrite stated choices or silently resolve stakeholder conflicts.
     `.trim();
 
