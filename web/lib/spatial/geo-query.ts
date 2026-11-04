@@ -19,6 +19,9 @@ export type Place = {
     layerId?: string;
     featureId?: string;
     choiceToken?: string;
+    boundaryTarget?: boolean;
+    insideBoundary?: boolean;
+    boundaryDistanceMeters?: number;
 };
 export type GeoContext = {
     scopeMeters?: 0 | 500 | 1000;
@@ -40,6 +43,7 @@ export type GeoPlan = {
     walking: boolean;
     minutes?: number;
     nearby: boolean;
+    locations?: string[];
 };
 export type GeoResult = {
     question: string;
@@ -58,7 +62,7 @@ export type GeoResult = {
     radiusMeters?: number;
     clarify?: {
         reference: string;
-        role: 'origin' | 'destination';
+        role: 'origin' | 'destination' | 'place';
         options: Place[];
     };
     warnings: string[];
@@ -67,6 +71,7 @@ export type GeoResult = {
     scopeMeters?: number;
     facilitationQuestion?:string;
     computedResult?: import("./types").SpatialResult;
+    resolvedPlaces?: Place[];
 };
 export function coordinate(value: unknown): Coordinate {
     if (!Array.isArray(value) || value.length !== 2 || value.some(v => typeof v !== 'number' || !Number.isFinite(v)) || Math.abs(value[0]) > 180 || Math.abs(value[1]) > 90)
@@ -116,6 +121,11 @@ export function parseGeoPlan(question: string): GeoPlan {
     if (radius < 1 || radius > 20000 || (minutes && (Number(minutes[1]) < 1 || Number(minutes[1]) > 180)))
         throw new Error('gis.invalidRadius');
     const limit = Math.min(10, Math.max(1, Number(q.match(/(\d+)\s*(?:개|곳|곳을|places)/i)?.[1] ?? 5)));
+    if (!route && !englishRoute && !/가장\s*가까|nearest|closest|주변|근처|nearby|near\b|주요\s*(?:사업)?시설|key\s*(?:project\s*)?facilit/i.test(q) && /어디|위치(?:해|하|는|를|가|에)|where (?:is|are)|locations? of/i.test(q)) {
+        const subject = q.replace(/^(?:where (?:is|are)|(?:the )?locations? of)\s+/i, '').split(/어디|(?:의\s*)?위치/)[0].replace(/[?.!]+$/g, '').replace(/(?:은|는|이|가|의)\s*$/, '').trim();
+        const locations = subject.split(/(?:와|과)\s+|\s+및\s+|[,，]|\s+and\s+/i).map(s => clean(s).replace(/^the\s+/i, '')).filter(Boolean);
+        if (locations.length && locations.length <= 4) return { intent: 'PLACE_SEARCH', query: locations[0], locations, radius, limit, walking: false, nearby: false };
+    }
     let intent: GeoIntent = 'PLACE_SEARCH';
     let origin: string | undefined;
     let destination: string | undefined;
@@ -155,7 +165,7 @@ export function parseGeoPlan(question: string): GeoPlan {
     return { intent, query, ...(origin ? { origin } : {}), ...(destination ? { destination } : {}), radius, limit, walking, ...(minutes ? { minutes: Number(minutes[1]) } : {}), nearby: ['NEAREST_PLACE', 'RADIUS_SEARCH', 'NEARBY_SEARCH', 'CATEGORY_SEARCH'].includes(intent) };
 }
 export function isGeoQuestion(question: string) {
-    return /key\s*(?:project\s*)?facilit|spatial\s*structure|주요\s*(?:사업)?시설|공간\s*구조|면적|건물\s*수|어디(?:야|인가요|에\s*있)|\b(?:find|search|where is)\b|(?:검색|찾아)(?:해)?(?:줘|주세요)|주변|근처|카페|약국|마트|음식점|식당|편의점|병원|학교|버스\s*정류장|공원|도보|걸어|몇\s*미터|가장\s*가까|지도\s*중심|까지.*거리|에서.*까지|nearby|nearest|walking|\bfrom\b.*\bto\b|\b(cafe|pharmacy|restaurant|supermarket)\b/i.test(question);
+    return /key\s*(?:project\s*)?facilit|spatial\s*structure|주요\s*(?:사업)?시설|공간\s*구조|면적|건물\s*수|위치|어디(?:야|인가요|에\s*있)|\b(?:find|search|where (?:is|are))\b|(?:검색|찾아)(?:해)?(?:줘|주세요)|주변|근처|카페|약국|마트|음식점|식당|편의점|병원|학교|버스\s*정류장|공원|도보|걸어|몇\s*미터|가장\s*가까|지도\s*중심|까지.*거리|에서.*까지|nearby|nearest|walking|\bfrom\b.*\bto\b|\b(cafe|pharmacy|restaurant|supermarket)\b/i.test(question);
 }
 export function calculateStraightLineDistance(origin: Coordinate, destination: Coordinate) { return distance(point(coordinate(origin)), point(coordinate(destination)), { units: 'meters' }); }
 export function representativePoint(feature: Feature<Geometry>): {
@@ -181,7 +191,11 @@ export function representativePoint(feature: Feature<Geometry>): {
 export function featureNames(feature: Feature<Geometry>): string[] {
     const p = feature.properties ?? {};
     const names: string[] = [];
-    for (const key of ['name', 'title', 'label', '시설명', '건물명', '명칭', 'aliases', 'alias', '별칭']) {
+    const preferred = typeof p.nameField === 'string' ? p.nameField : '';
+    const fields = ['display_name', preferred, 'name', 'title', 'label', 'facility_name', 'building_name', 'parcel_name', '시설명', '건물명', '명칭', 'aliases', 'alias', '별칭'];
+    const actualKeys = Object.keys(p);
+    for (const key of [...fields.map(field => actualKeys.find(key => key.toLowerCase() === field.toLowerCase()) ?? field), ...actualKeys.filter(key => /alias|alternate.?names?|별칭/i.test(key))]) {
+        if (!key) continue;
         const value = p[key];
         for (const name of Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[,;|]/) : [])
             if (typeof name === 'string' && name.trim())

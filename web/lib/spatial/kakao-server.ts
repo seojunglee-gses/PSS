@@ -121,17 +121,17 @@ export async function findNearestPlaces(query: string, origin: Place, radius: nu
 }
 
 // Kakao accepts rectangles, never arbitrary polygons. Always filter actual returned coordinates.
-export async function searchBoundaryPlaces(query:string,geometry:import('./boundary').BoundaryFeature,signal?:AbortSignal){
+export async function searchBoundaryPlaces(query:string,geometry:import('./boundary').BoundaryFeature,signal?:AbortSignal,maxCalls=6){
   const {searchWindows,filterBoundaryPlaces}=await import('./boundary');
   const windows=searchWindows(geometry),found=new Map<string,Place>();
   const queries=/^(?:편의시설|생활시설|시설|amenities)$/i.test(query)?['편의점','약국','병원','카페','주민센터']:[query];
   const pending=queries.flatMap(query=>windows.map(rect=>({rect,page:1,query})));let calls=0;
-  while(pending.length&&calls<6){
+  while(pending.length&&calls<Math.min(6,maxCalls)){
     const {rect,page,query:term}=pending.shift()!;signal?.throwIfAborted();
     const category=genericCategoryCode(term),params:Record<string,string|number>={size:15,page,rect:rect.join(','),x:(rect[0]+rect[2])/2,y:(rect[1]+rect[3])/2,sort:'distance',...(category?{category_group_code:category}:{query:term})};
     const payload=await request(`/v2/local/search/${category?'category':'keyword'}.json`,params,signal);calls++;
     const places=normalizePlaces(payload);for(const p of filterBoundaryPlaces(places,geometry))found.set(p.id,p);
     if(record(record(payload).meta).is_end===false&&page<3)pending.push({rect,page:page+1,query:term});
   }
-  return {places:[...found.values()],partial:true}; // Bounded candidates; never a census.
+  return {places:[...found.values()],partial:true,calls}; // Bounded candidates; never a census.
 }

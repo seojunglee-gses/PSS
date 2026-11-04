@@ -5,15 +5,17 @@ import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { LoadedLayer } from "../../lib/spatial/types";
 import { bbox, featureCollection } from "../../lib/spatial/engine";
 import { BASEMAP_PREFIX, BASEMAP_STYLE_URL, basemapStyle } from "../../lib/spatial/basemap";
+import type { GeoResult, Place } from "../../lib/spatial/geo-query";
 export default function SpatialMap({
   layers,
   visible,
   overlay,
   onSelect,
-  onPoint, onCenter, extent, resetVersion,
+  onPoint, onCenter, extent, resetVersion, geoResult, highlightedPlaceId, selectedPlaceId, onPlace,
 }: {
   extent?: [number,number,number,number];
   resetVersion?: number;
+  geoResult?: GeoResult | null; highlightedPlaceId?: string | null; selectedPlaceId?: string | null; onPlace?: (place: Place) => void;
   onPoint?: (coordinate: [number, number]) => void;
   onCenter?: (coordinate: [number, number]) => void;
   layers: LoadedLayer[];
@@ -42,6 +44,8 @@ export default function SpatialMap({
   overlayRef.current = overlay;
   const [error, setError] = useState("");
   const [basemapError, setBasemapError] = useState("");
+  const [ready,setReady] = useState(false);
+  const fittedResult = useRef('');
   useEffect(() => {
     const labels: Record<string, string> = {
       ".maplibregl-ctrl-zoom-in": "map.zoomIn",
@@ -63,6 +67,7 @@ export default function SpatialMap({
   }, [locale, t]);
   useEffect(() => {
     if (!container.current) return;
+    setReady(false);
     setError("");
     setBasemapError("");
     const controller = new AbortController();
@@ -178,6 +183,7 @@ export default function SpatialMap({
           );
       });
       map.on("moveend", () => { const c = map.getCenter(); centerRef.current?.([c.lng, c.lat]); });
+      map.once('load',()=>setReady(true));
       map.on("click", (event) => {
         const ids = layersRef.current
           .map((l) => l.config.id)
@@ -235,6 +241,22 @@ export default function SpatialMap({
       maplibregl.GeoJSONSource | undefined;
     source?.setData(overlay);
   }, [overlay]);
+  useEffect(()=>{
+    const map=mapRef.current;
+    if(!geoResult)fittedResult.current='';
+    if(!map||!ready||!geoResult)return;
+    // Kakao POIs remain on Kakao Maps only; project-owned geometry works on either basemap.
+    const places=[...geoResult.places,...(geoResult.resolvedPlaces??[])].filter(p=>p.source!=='kakao');
+    const markers=places.map(place=>{
+      const index=geoResult.places.findIndex(p=>p.id===place.id),button=document.createElement('button');button.type='button';button.className='min-h-11 min-w-11 rounded-full border-2 bg-white px-3 text-sm font-semibold shadow';button.textContent=index>=0?String(index+1):place.name;button.setAttribute('aria-label',`${index+1}. ${place.name}`);button.setAttribute('aria-pressed',String(highlightedPlaceId===place.id||selectedPlaceId===place.id));button.style.borderColor=highlightedPlaceId===place.id||selectedPlaceId===place.id?'#f59e0b':'#7c3aed';button.style.opacity=selectedPlaceId&&selectedPlaceId!==place.id?'.3':'1';button.onclick=event=>{event.stopPropagation();onPlace?.(place);};return new maplibregl.Marker({element:button}).setLngLat(place.coordinate).addTo(map);
+    });
+    const geometryExtent=overlay.features.length?bbox(overlay):undefined;
+    const key=JSON.stringify([geoResult.question,places,extent,geometryExtent]);
+    if(places.length&&key!==fittedResult.current){
+      const bounds=new maplibregl.LngLatBounds();places.forEach(p=>bounds.extend(p.coordinate));if(extent){bounds.extend([extent[0],extent[1]]);bounds.extend([extent[2],extent[3]]);}if(geometryExtent){bounds.extend([geometryExtent[0],geometryExtent[1]]);bounds.extend([geometryExtent[2],geometryExtent[3]]);}map.fitBounds(bounds,{padding:40,maxZoom:17,duration:0});fittedResult.current=key;
+    }
+    return()=>markers.forEach(marker=>marker.remove());
+  },[ready,geoResult,highlightedPlaceId,selectedPlaceId,onPlace,extent,overlay]);
   return (
     <div className="spatial-map">
       <div

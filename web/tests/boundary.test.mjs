@@ -35,13 +35,13 @@ test('boundary search sends bounded geographic windows, paginates, deduplicates 
  mock(t,global,'fetch',async url=>{const u=new URL(url);calls.push(u);return Response.json({meta:{is_end:calls.length>1},documents:[{id:'inside',place_name:'임의 상호',x:'127.005',y:'37.505'},{id:'outside',place_name:'다른 지역',x:'128',y:'38'}]})});
  const found=await kakao.searchBoundaryPlaces('미등록 상점',shape.geometry);assert.equal(found.places.length,1);assert.equal(calls.length,2);assert.ok(calls[0].searchParams.has('rect'));assert.equal(calls[0].searchParams.get('query'),'미등록 상점');assert.equal(calls[1].searchParams.get('page'),'2');assert.equal(found.partial,true);
 });
-test('scoped query uses active boundary, 500/1000m options, and explicit external origins bypass it',async t=>{
+test('scoped query searches inside the active boundary first and also bounds explicit external origins',async t=>{
  key(t);const b=boundary.deriveBoundary(fc(square())),calls=[];
  mock(t,global,'fetch',async url=>{const u=new URL(url);calls.push(u);return Response.json({meta:{is_end:true},documents:[{id:'local',place_name:'선택 장소',x:'127.005',y:'37.505'}]})});
  const run=(question,context={})=>geo.executeGeoQuery({question,context},{uid:'u'},'p',[],[],undefined,{boundary:b,settings:{activeBoundaryDatasetId:'b',defaultNearbyMeters:500}});
- const r=await run('근처 카페 찾아줘');assert.equal(r.scopeMeters,500);assert.ok(calls[0].searchParams.has('rect'));assert.ok(r.warnings.length);
- const extended=await run('근처 카페 찾아줘',{scopeMeters:1000});assert.equal(extended.scopeMeters,1000);
- calls.length=0;await run('서울역 근처 카페 찾아줘');assert.ok(calls.length>=2);assert.ok(calls.every(u=>!u.searchParams.has('rect')));
+ const r=await run('근처 카페 찾아줘');assert.equal(r.scopeMeters,0);assert.ok(calls[0].searchParams.has('rect'));assert.ok(r.warnings.length);
+ const extended=await run('근처 카페 찾아줘',{scopeMeters:1000});assert.equal(extended.scopeMeters,0);
+ calls.length=0;await run('서울역 근처 카페 찾아줘');assert.ok(calls.length>=2);assert.ok(calls.every(u=>u.searchParams.has('rect')));
 });
 test('chat overview uses actual project data and measured area, never a POI or invented road width',async t=>{
  mock(t,global,'fetch',()=>assert.fail('project overview must not call external search'));

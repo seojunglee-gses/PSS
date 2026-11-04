@@ -12,7 +12,36 @@ const place=(id,x=127.001)=>({id,place_name:`검색 시설 ${id}`,x:String(x),y:
 const payload=(distance=400,seconds=360)=>({status:'OK',route:{properties:{totalDistance:distance,totalTime:seconds},legs:[{steps:[{path:{points:[[127,37.5],[127.001,37.501]]}}]}]}});
 function mock(t,obj,key,value){const old=obj[key];obj[key]=value;t.after(()=>obj[key]=old)}
 function key(t){const previous=process.env.KAKAO_REST_API_KEY;process.env.KAKAO_REST_API_KEY='test-only-key';t.after(()=>{if(previous===undefined)delete process.env.KAKAO_REST_API_KEY;else process.env.KAKAO_REST_API_KEY=previous})}
-const run=(question,context={},choices)=>server.executeGeoQuery({question,context,choices},user,'geo-project',layers);
+const projectBoundary=load('lib/spatial/boundary.js').deriveBoundary({type:'FeatureCollection',features:[{type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[[[127,37.5],[127.01,37.5],[127.01,37.51],[127,37.51],[127,37.5]]]}}]});
+const run=(question,context={},choices)=>server.executeGeoQuery({question,context,choices},user,'geo-project',layers,[],undefined,{boundary:projectBoundary,settings:{defaultNearbyMeters:500,activeBoundaryDatasetId:'boundary'}});
+test('generic project property names and alias fields support multiple named locations without external search',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('registered spatial features must be resolved before external search'));
+ const q='회복의 숲 타워와 전파기지는 어디에 위치해 있어?';assert.deepEqual(geo.parseGeoPlan(q).locations,['회복의 숲 타워','전파기지']);assert.ok(geo.isGeoQuestion(q));
+ const result=await run(q);assert.equal(result.places.length,2);assert.ok(result.places.every(p=>p.insideBoundary));assert.match(result.reply,/동쪽/);assert.match(result.reply,/직선/);
+ const {resolveSources,sourceRoutingQuestion}=load('lib/research/routing.js');assert.deepEqual(resolveSources(sourceRoutingQuestion(q,[{role:'user',content:'주민 참여 연구를 찾아줘'}])),['project','spatial']);
+ assert.equal(geo.parseGeoPlan('주요 사업시설은 어디에 있나요?').intent,'EXISTING_GIS_QUERY');
+ const features=[{...point('ignored'),properties:{facility_name:'새빛 문화관',alternate_names:['문화관','새빛관']}},{...point('ignored'),properties:{building_name:'중앙 건물',alias_name:'본관'}},{...point('ignored'),properties:{nameField:'PNAME',PNAME:'중앙 필지'}}].map((feature,index)=>({...feature,id:String(index)}));
+ const loaded=[{config:{id:'uploaded',label:'업로드 자료',type:'point'},data:{type:'FeatureCollection',features}}];
+ for(const term of ['새빛관','본관','중앙 필지'])assert.equal(geo.internalPlaces(term,loaded,(f,i)=>String(i)).length,1);
+ const followed=await server.executeGeoQuery({question:'이 건물에서 사업구역까지 거리는?',context:{selected:{layerId:'uploaded',featureId:'1'}}},user,'geo-project',loaded,[],undefined,{boundary:projectBoundary});assert.equal(followed.origin.name,'중앙 건물');
+});
+test('external searches expand only around the project boundary and never accept distant nationwide results',async t=>{
+ key(t);const calls=[];mock(t,global,'fetch',async url=>{const u=new URL(url);calls.push(u);return Response.json({meta:{is_end:true},documents:[place('near',127.029),place('national',129)]})});
+ const r=await run('동네상점 찾아줘');assert.equal(calls.length,4);assert.ok(calls.every(u=>u.searchParams.has('rect')));assert.equal(r.scopeMeters,2000);assert.equal(r.places[0].id,'near');assert.ok(!r.places.some(p=>p.id==='national'));
+ calls.length=0;const insideOnly=await run('동네상점 찾아줘',{scopeMeters:0});assert.equal(calls.length,1);assert.equal(insideOnly.places.length,0);
+});
+test('without a registered boundary external search is disabled, including explicit origins',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('missing boundary must not trigger nationwide or map-center search'));
+ for(const q of ['미등록상점 찾아줘','서울역에서 타워까지 거리는?']){
+  const r=await server.executeGeoQuery({question:q,context:{mapCenter:[127,37.5]}},user,'geo-project',layers);assert.ok(r.warnings.some(w=>/사업구역/.test(w)));assert.equal(r.places.length,0);
+ }
+});
+test('distance to project area uses the nearest boundary rather than the boundary center',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('registered store and project area must not call a provider'));
+ const added=[...layers,{config:{id:'store',label:'시설',type:'point'},data:{type:'FeatureCollection',features:[point('아울렛 마트',127.022,37.505)]}}];
+ const r=await server.executeGeoQuery({question:'아울렛 마트에서 사업구역까지 거리는?'},user,'geo-project',added,[],undefined,{boundary:projectBoundary});
+ assert.ok(r.straightDistanceMeters>1000&&r.straightDistanceMeters<1100);assert.ok(Math.abs(r.destination.coordinate[0]-127.01)<1e-5);assert.match(r.reply,/최단 직선거리/);
+});
 
 test('all eight Korean examples produce bounded structured intents without hardcoded businesses',()=>{
  const examples=[['여기서 가장 가까운 카페가 어디야?','NEAREST_PLACE'],['OO마트에서 타워까지 몇 미터야?','STRAIGHT_DISTANCE'],['전파기지 주변에 음식점 있어?','NEARBY_SEARCH'],['이 건물에서 약국까지 얼마나 걸려?','WALKING_ROUTE'],['선택한 필지에서 300m 이내 편의점 찾아줘.','RADIUS_SEARCH'],['근처에 병원 5개 보여줘.','NEARBY_SEARCH'],['OO초등학교에서 회복의 숲 타워까지 걸어서 몇 분?','WALKING_ROUTE'],['지금 선택한 건물 주변 시설을 보여줘.','NEARBY_SEARCH']];

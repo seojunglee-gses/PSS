@@ -5,6 +5,7 @@ import { read } from "shapefile";
 import { bbox } from "@turf/turf";
 import type { FeatureCollection, Geometry } from "geojson";
 import { MAX_DATASET_BYTES, parseCsv, parseDataset, type SpatialDataset, type DatasetType } from "./datasets";
+import { featureNames } from "./geo-query";
 
 export const UPLOAD_CRS = ["EPSG:4326", "EPSG:3857", "EPSG:5179", "EPSG:5186"] as const;
 proj4.defs("EPSG:5179", "+proj=tmerc +lat_0=38 +lon_0=127.5 +k=0.9996 +x_0=1000000 +y_0=2000000 +ellps=GRS80 +units=m +no_defs");
@@ -98,6 +99,10 @@ export async function analyzeUpload(bytes: Uint8Array, format: SpatialDataset["f
   if (!from || !converter || format === "zip" && !hasPrj && !manualCrs) return { needsCrs: true, sourceCrs: declared ?? null, webCrs: "EPSG:4326", geometryType: null, featureCount: features.length, extent: null, data: null };
   const transformed = { type: "FeatureCollection", features: features.map(f => ({ ...f, geometry: { ...f.geometry, coordinates: mapCoordinates((f.geometry as Geometry & {coordinates: unknown}).coordinates, p => from === "EPSG:4326" ? [...p] : [...converter!.forward(p.slice(0, 2)), ...p.slice(2)]) } })) };
   const parsed = parseDataset(JSON.stringify(transformed), "geojson", type);
+  if (parsed.data) for (const feature of parsed.data.features) {
+    const name = featureNames(feature)[0];
+    if (name) feature.properties = { ...feature.properties, display_name: name };
+  }
   if (!parsed.data || Buffer.byteLength(JSON.stringify(parsed.data)) > MAX_DATASET_BYTES) throw new Error("upload.webSize");
   return { needsCrs: false, sourceCrs: from, webCrs: "EPSG:4326", geometryType: parsed.geometryType, featureCount: parsed.data.features.length, extent: bbox(parsed.data) as [number, number, number, number], data: parsed.data };
 }
