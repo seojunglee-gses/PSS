@@ -12,6 +12,23 @@ test('A: simple facts and direct-only requests do not invite a planning survey',
 test('B: vague concerns prompt one open clarification without forced categories or early solutions',()=>{
  assert.equal(followUpPolicy('우리 동네가 불편해요.').mode,'clarify');const prompt=facilitationInstructions('problem','우리 동네가 불편해요.');assert.match(prompt,/ONE/);assert.match(prompt,/without forcing predefined categories/);assert.match(prompt,/before proposing solutions/);
 });
+test('Problem Definition continues from participant answers with one concise closing question, without changing other stages',()=>{
+ const history=[assistant('어느 장소에서 불편을 겪으셨나요?'),user('시장 앞 골목이요.')];
+ const prompt=facilitationInstructions('problem','저녁에 퇴근할 때 자주 지나가요.',history);
+ assert.match(prompt,/Adaptive follow-up policy: OPTIONAL/);assert.match(prompt,/2–4 short sentences/);assert.match(prompt,/end with exactly ONE short, natural, open question/);assert.match(prompt,/Never ask again for information/);assert.match(prompt,/not a reason to stop/);
+ assert.equal(followUpPolicy('저녁에 퇴근할 때 자주 지나가요.',history,'data').mode,'none');
+ for(const q of ['답변만 해주세요','면적이 얼마야?','오늘은 여기까지만 할게요','감사합니다'])assert.equal(followUpPolicy(q,history,'problem').mode,'none',q);
+ assert.equal(followUpPolicy('그 골목이 어두워요.',[user('앞으로 후속 질문은 하지 마세요.')],'problem').mode,'none');
+});
+test('Problem Definition chat applies conversational cadence in the existing single response call',async t=>{
+ const context=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');let calls=0,sent;
+ mock(t,context,'loadProjectContext',async()=>({currentMaterial:'현재 사업: 시장 주변 보행환경',previousSummaries:{},stageHistory:[]}));
+ const reply='시장 앞 골목을 퇴근길에 자주 이용하시는군요. 그 시간대에는 어떤 점이 가장 불편하셨나요?';
+ mock(t,llm,'callLLM',async input=>{calls++;sent=input;return reply});
+ const res={status(n){this.code=n;return this},json(body){this.body=body}};
+ await load('pages/api/chat.js').default({method:'POST',body:{stepId:'problem',message:'퇴근길에 시장 앞 골목을 지나가요.',history:[assistant('주로 어느 길을 이용하시나요?')]},headers:{}},res);
+ assert.equal(res.code,200);assert.equal(calls,1);assert.equal(res.body.reply,reply);assert.match(sent.systemText,/Adaptive follow-up policy: OPTIONAL/);assert.match(sent.userText,/시장 주변 보행환경/);assert.match(sent.userText,/주로 어느 길/);
+});
 test('C: GIS reflection requires verified values and an actual planning concern, never a new model call',()=>{
  const q='타워에서 전파기지까지 얼마나 걸려? 이동할 때 불편해요.';
  assert.equal(gisReflection(q,[],false,'ko'),'');assert.equal(gisReflection('두 시설까지 몇 미터야?',[],true,'ko'),'');
