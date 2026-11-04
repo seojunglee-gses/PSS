@@ -4,10 +4,13 @@ export const SOURCE_OPTIONS: EvidenceSource[] = ["project", "spatial", "cases", 
 // Empty selection means automatic routing, not searching every source.
 export const DEFAULT_SOURCES: EvidenceSource[] = [];
 
-export type CaseMaterial = { id: string; label: string; title: string; text: string };
+export type CaseMaterial = { id: string; label: string; title: string; text: string; aliases?: string[] };
+export type CaseSourceMeta = { sourceId:string;caseId:string;title:string;fileName:string;revisionId:string;uploadedAt:string;passageCount:number };
+export type CasePassage = { passageId:string;text:string;page?:number;paragraph:number };
 export type CaseEvidence = CaseMaterial & {
   sourceId: string;
   relevanceTerms: string[];
+  documentId?: string; documentTitle?:string; fileName?:string; revisionId?:string; passageId?:string; page?:number; paragraph?:number;
 };
 export type ResearchPaper = {
   sourceId: string;
@@ -43,6 +46,7 @@ export type EvidenceCitation = {
   citationCount: number | null;
 };
 export type AnalysisAnswer = {
+  format?: 'direct';
   summary: string;
   caseFindings: Finding[];
   researchFindings: Finding[];

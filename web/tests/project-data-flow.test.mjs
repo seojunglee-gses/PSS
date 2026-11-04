@@ -14,6 +14,7 @@ const project={projectName:'실제 사업',projectAdmin:'owner@example.org',work
 function database(records,writes=[]){return {doc:p=>({get:async()=>({exists:p in records,data:()=>records[p]}),set:async v=>writes.push({p,v})}),collection:p=>({add:async v=>writes.push({p,v})})}}
 const request=(body={})=>({method:'POST',headers:{authorization:'Bearer fixture-token',origin:'https://example.org'},body:{projectId:'alpha',...body}});
 function fixture(t){
+ mock(t,load('lib/research/case-sources-server.js'),'readCasePassages',async()=>[]);
  mock(t,admin,'verifyUserRequest',async()=>({uid:'member',email:'member@example.org'}));
  const records={'ppssProjects/alpha':project,'users/member/projectMemberships/alpha':{role:'participant'},'ppssBackgroundKnowledge_alpha/current':{curatedText:'사업 자료 요약'},'ppssWorkspaceSummaries_alpha/member':{stageSummaries:{problem:'이전 단계 결론',data:'현재 단계',report:'미래 단계'}}};
  mock(t,admin,'adminDb',()=>database(records));return records;

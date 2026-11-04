@@ -8,7 +8,7 @@ export default function EvidencePanel({ evidence, enabled, loading, highlighted,
   availableCaseIds?: string[];
   researchFindings?: Finding[];
 }) {
-  const { locale } = useI18n();
+  const { locale,t } = useI18n();
   const labels = researchLabels(locale);
   const papers = evidence?.papers ?? [];
   const years = papers.flatMap((p) => p.year ? [p.year] : []);
@@ -29,10 +29,12 @@ export default function EvidencePanel({ evidence, enabled, loading, highlighted,
     </section>}
     {evidence && enabled.includes("cases") && evidence.cases.length > 0 && <section className="mt-5" aria-label={labels.caseEvidence}>
       <h4 className="font-semibold text-slate-800">{labels.caseEvidence}</h4>
-      <p className="mt-1 text-xs text-slate-500">{evidence?.cases.length ?? 0} {labels.caseCount}</p>
+      <p className="mt-1 text-xs text-slate-500">{new Set(evidence.cases.map(c=>c.id)).size} {labels.caseCount}</p>
       <div className="mt-3 space-y-3">{evidence?.cases.map((c) => <article key={c.sourceId} id={`evidence-${c.sourceId}`} className={cardClass(c.sourceId)}>
-        <p className="text-xs text-blue-700">[{c.sourceId}] · {labels.projectMaterial}</p>
+        <p className="text-xs text-blue-700">[{c.sourceId}] · {c.documentId?t('caseSource.title'):labels.projectMaterial}</p>
         <h5 className="mt-1 font-semibold">{c.title}</h5>
+        {c.documentTitle&&<p className="mt-1 text-sm font-medium">{c.documentTitle}</p>}
+        {c.passageId&&<p className="mt-1 break-words text-xs text-slate-500">{c.fileName&&`${c.fileName} · `}{c.page?t('caseSource.page',{page:c.page}):t('caseSource.paragraph',{paragraph:c.paragraph??1})}</p>}
         <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{c.text}</p>
         <p className="mt-2 text-xs text-slate-500">{c.relevanceTerms.length ? `${labels.why}: ${c.relevanceTerms.join(", ")}` : labels.contextual}</p>
         {onViewCase && availableCaseIds.includes(c.id) && <button type="button" onClick={() => onViewCase(c.id)} className="mt-3 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">{labels.fullCase}</button>}

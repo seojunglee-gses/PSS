@@ -5,8 +5,9 @@ import { uploadProjectFile } from "../lib/storage-upload";
 import { logStorageFailure } from "../lib/storage-errors";
 import { imageList } from "../lib/content-format";
 
-export default function ProjectImageGallery({ value, editable, projectId, onChange, onBusyChange, purpose = "background" }: {
+export default function ProjectImageGallery({ value, editable, projectId, onChange, onBusyChange, purpose = "background", captions = [], onCaptionsChange }: {
   value: string; editable: boolean; projectId: string; onChange: (value: string) => void; onBusyChange: (busy: boolean) => void; purpose?: "background" | "case";
+  captions?:string[]; onCaptionsChange?:(captions:string[])=>void;
 }) {
   const { t, localize } = useI18n();
   const { user } = useAuth();
@@ -51,6 +52,7 @@ export default function ProjectImageGallery({ value, editable, projectId, onChan
       onTouchEnd={(event) => { const touch = event.changedTouches[0]; if (start.current && images.length > 1 && Math.abs(touch.clientX - start.current.x) > 50 && Math.abs(touch.clientY - start.current.y) < 50) move(touch.clientX < start.current.x ? 1 : -1); start.current = null; }}>
       {images[current] ? <img src={images[current]} alt={t("image.alt", { number: current + 1 })} className="max-h-[420px] w-full object-contain" /> : <p className="p-4 text-sm text-slate-500">{t("image.empty")}</p>}
     </div>
+    {!!images.length && (editable && onCaptionsChange ? <input aria-label={t('image.caption')} placeholder={t('image.captionHint')} value={captions[current]??''} maxLength={240} disabled={busy} className="min-h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs text-slate-600" onChange={event=>onCaptionsChange(images.map((_,index)=>index===current?event.target.value:captions[index]??''))}/> : captions[current] && <p className="break-words text-center text-xs leading-relaxed text-slate-500">{captions[current]}</p>)}
     {images.length > 1 && <div className="flex items-center justify-center gap-4 py-1">
       <button type="button" aria-label={t("image.previous")} title={t("image.previous")} className="inline-flex h-[48px] w-[64px] shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 shadow-sm transition-colors hover:bg-blue-100 active:bg-blue-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" onClick={() => move(-1)}>
         <svg aria-hidden="true" className="h-6 w-6" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
@@ -71,7 +73,7 @@ export default function ProjectImageGallery({ value, editable, projectId, onChan
         if (!imageList(url).length || /\s/.test(url)) { setError(t("image.urlInvalid")); return; }
         onChange([...images, url.trim()].join("\n")); setIndex(images.length); setError("");
       }}>{t("image.addUrl")}</button>
-      {!!images.length && <button type="button" disabled={busy} className="min-h-11 rounded-full border px-4" onClick={() => onChange(images.filter((_, i) => i !== current).join("\n"))}>{t("image.remove")}</button>}
+      {!!images.length && <button type="button" disabled={busy} className="min-h-11 rounded-full border px-4" onClick={() => { onChange(images.filter((_, i) => i !== current).join("\n"));onCaptionsChange?.(captions.filter((_,i)=>i!==current)); }}>{t("image.remove")}</button>}
     </div>}
     {error && <p role="alert" className="text-sm text-rose-600">{localize(error, "image.uploadFailed")}</p>}
   </div>;

@@ -14,6 +14,7 @@ import AppShell from "../../components/AppShell";
 import WorkspacePanels from "../../components/WorkspacePanels";
 import ContentEditor, { ContentText, type ContentEditorHandle } from "../../components/ContentEditor";
 import ProjectImageGallery from "../../components/ProjectImageGallery";
+import CaseSourceManager from "../../components/analysis/CaseSourceManager";
 import { DEFAULT_PANEL_RATIO, type WorkspacePanelView } from "../../lib/workspace-layout";
 import StageChatEmptyState from "../../components/chat/StageChatEmptyState";
 import { resolveSources, sourceRoutingQuestion } from "../../lib/research/routing";
@@ -1074,7 +1075,7 @@ const handleSend = async (suggestedQuestion?: string) => {
 
   const stepId = activeStep.id;
   const history = conversationHistory((chatLogsByStep[stepId] ?? []).map(log=>stepId==="data"&&geoChat?.time===log.createdAt&&geo.result?.question===geoChat.question?{...log,text:geo.result.reply}:log), stepId);
-  const effectiveSources = resolveSources(sourceRoutingQuestion(userMessage, history), selectedSources);
+  const effectiveSources = resolveSources(sourceRoutingQuestion(userMessage, history), selectedSources, activeProject?.workspaceContent.data.cases,history);
   setSendingChatScope(chatScope);
   setIsSending(true);
   setErrorMessage(null);
@@ -1990,6 +1991,7 @@ const handleSend = async (suggestedQuestion?: string) => {
             {contentSaveError && <p role="alert" className="mt-3 text-sm text-rose-600">{localize(contentSaveError, "common.requestFailed")}</p>}
             {contentSaveNotice && <p role="status" className="mt-3 text-sm text-emerald-700">{localize(contentSaveNotice)}</p>}
             <ProjectImageGallery value={(editingStageId === "problem" ? problemDraft.imageUrl : activeProject?.workspaceContent.problem.imageUrl) ?? ""}
+              captions={(editingStageId==='problem'?problemDraft.imageCaptions:activeProject?.workspaceContent.problem.imageCaptions)??[]} onCaptionsChange={imageCaptions=>setProblemDraft(previous=>({...previous,imageCaptions}))}
               editable={canEditContent && editingStageId === "problem" && !isSavingContent} projectId={projectId} onBusyChange={setImageUploading}
               onChange={(imageUrl) => setProblemDraft((prev) => ({ ...prev, imageUrl }))} />
             {editingStageId === "problem" && canEditContent ? <input aria-label={t("editor.projectTitle")} className="mt-4 w-full rounded-lg border p-2 text-lg font-semibold" value={problemDraft.title}
@@ -2099,11 +2101,16 @@ const handleSend = async (suggestedQuestion?: string) => {
                           ? <input aria-label={t("cases.title")} className="w-full rounded-lg border p-2 text-base font-semibold" disabled={isSavingContent} value={activeCase.title} onChange={(event) => saveDataCaseDraft(activeCase.id, { title: event.target.value, label: event.target.value })} />
                           : <h4 className="whitespace-pre-wrap text-base font-semibold text-slate-800">{localizeDefaultContent(locale, activeCase.title)}</h4>}
                         <ProjectImageGallery key={activeCase.id} purpose="case" projectId={projectId} value={activeCase.imageUrl}
+                          captions={activeCase.imageCaptions??[]} onCaptionsChange={imageCaptions=>saveDataCaseDraft(activeCase.id,{imageCaptions})}
                           editable={canEditContent && editingStageId === "data" && editingCaseId === activeCase.id && !isSavingContent} onBusyChange={setImageUploading}
                           onChange={(imageUrl) => saveDataCaseDraft(activeCase.id, { imageUrl })} />
                         {canEditContent && editingStageId === "data" && editingCaseId === activeCase.id
                           ? <ContentEditor key={activeCase.id} ref={caseEditor} disabled={isSavingContent} label={t("cases.body")} value={activeCase.text} onChange={(text) => saveDataCaseDraft(activeCase.id, { text })} />
                           : <ContentText value={localizeDefaultContent(locale, activeCase.text)} />}
+                        {canEditContent && editingStageId === 'data' && editingCaseId === activeCase.id && <>
+                          <label className="mt-4 grid gap-1 text-sm">{t('caseSource.aliases')}<input key={activeCase.id} className="min-h-11 rounded-lg border p-2" defaultValue={(activeCase.aliases??[]).join(', ')} disabled={isSavingContent} onBlur={event=>saveDataCaseDraft(activeCase.id,{aliases:event.target.value.split(',').map(value=>value.trim()).filter(Boolean).slice(0,20)})}/></label>
+                          <CaseSourceManager key={activeCase.id} projectId={projectId} caseId={activeCase.id} persisted={!!activeProject?.workspaceContent.data.cases.some(item=>item.id===activeCase.id)}/>
+                        </>}
                       </>
                     );
                   })()}
