@@ -1,5 +1,6 @@
 import { deriveBoundary, boundaryGeoJSON } from '../../lib/spatial/boundary';
 import NaturalLanguageGIS from "./NaturalLanguageGIS";
+import SpatialEntityPicker from "./SpatialEntityPicker";
 import type { GeoWorkspace } from "../../lib/spatial/use-geo";
 import { useI18n } from "../../lib/i18n";
 import { useEffect, useMemo, useState } from "react";
@@ -153,6 +154,12 @@ export default function SpatialAnalysis({
   };
   const boundary=useMemo(()=>{const layer=layers.find(l=>l.config.id===`uploaded-${config.spatialSettings?.activeBoundaryDatasetId}`);if(!layer)return;try{return deriveBoundary(boundaryGeoJSON(layer.data));}catch{return;}},[layers,config.spatialSettings]);
   const activeLayers = layers;
+  const mapResult = useMemo(()=>showResults && geo?.result ? { ...geo.result,
+    places: geo.candidates.length ? geo.candidates : geo.result.places,
+    resolvedPlaces: [...(geo.result.resolvedPlaces ?? []), ...geo.result.places.filter(p => !geo.candidates.some(candidate => candidate.id === p.id))],
+  } : null,[showResults,geo?.result,geo?.candidates]);
+  const hasMapResult = !!mapResult;
+  const mapVisible = useMemo(()=>hasMapResult && config.spatialSettings?.activeBoundaryDatasetId ? [...new Set([...visible, `uploaded-${config.spatialSettings.activeBoundaryDatasetId}`])] : visible,[visible,config.spatialSettings?.activeBoundaryDatasetId,hasMapResult]);
   return (
     <div className="spatial-analysis space-y-3 p-4 sm:p-6">
       <h3 className="text-lg font-semibold">{t("boundary.explore")}</h3>
@@ -161,9 +168,11 @@ export default function SpatialAnalysis({
       </div>
       {!loading&&<>
         {!boundary&&<p role="status" className="text-xs text-amber-800">{t("boundary.noActive")}</p>}
-        <SpatialMap layers={layers} visible={visible} overlay={showResults?overlay:featureCollection([])} extent={boundary?.bbox} resetVersion={resetVersion} onSelect={choose}
+        <SpatialEntityPicker entities={showResults?(geo?.candidates??[]):[]} selected={showResults?(geo?.chosenPlace??null):null} highlighted={geo?.highlighted??null} onHighlight={id=>geo?.setHighlighted(id)} onChoose={place=>geo?.choosePlace(place)} busy={geo?.loading??false} reference={showResults?geo?.result?.clarify?.reference:undefined}>
+        <SpatialMap layers={layers} visible={mapVisible} overlay={showResults?overlay:featureCollection([])} extent={boundary?.bbox} resetVersion={resetVersion} onSelect={choose}
           onPoint={(coordinate)=>{setSelected(null);setOverlay(featureCollection([{type:"Feature",properties:{},geometry:{type:"Point",coordinates:coordinate}}]));geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter,point:coordinate}));}}
-          onCenter={(mapCenter)=>geo?.setContext(prev=>({...prev,mapCenter}))} geoResult={showResults?geo?.result:null} highlightedPlaceId={geo?.highlighted} onPlace={place=>geo?.setHighlighted(place.id)}/>
+          onCenter={(mapCenter)=>geo?.setContext(prev=>({...prev,mapCenter}))} geoResult={mapResult} highlightedPlaceId={geo?.highlighted} selectedPlaceId={geo?.chosenPlace?.id} onPlace={place=>geo?.setHighlighted(place.id)}/>
+        </SpatialEntityPicker>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="text-xs">{t("boundary.scope")} <select aria-label={t("boundary.scope")} className="rounded border px-2" value={geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500} onChange={e=>geo?.setContext(prev=>({...prev,scopeMeters:Number(e.target.value) as 0|500|1000}))}>{[0,500,1000].map(n=><option key={n} value={n}>{t(`boundary.scope.${n}`)}</option>)}</select></label>
           <button type="button" className="spatial-button text-xs" onClick={()=>{setSelected(null);setOverlay(featureCollection([]));if(geo?.loading)geo.clear();setShowResults(false);geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter}));setResetVersion(v=>v+1);}}>{t("boundary.return")}</button>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
-import { bbox, featureCollection } from '../../lib/spatial/engine';
+import { bbox, featureCollection, featureKey } from '../../lib/spatial/engine';
 import type { LoadedLayer } from '../../lib/spatial/types';
 import { featureNames, representativePoint, type Coordinate, type GeoResult, type Place } from '../../lib/spatial/geo-query';
 import { loadKakaoMaps, kakaoFeatureOverlays, latLng, type KakaoMap, type KakaoSDK, type KakaoOverlay } from '../../lib/spatial/kakao-map';
@@ -16,12 +16,13 @@ export type SpatialMapProps = {
     onCenter?: (coordinate: Coordinate) => void;
     geoResult?: GeoResult | null;
     highlightedPlaceId?: string | null;
+    selectedPlaceId?: string | null;
     onPlace?: (place: Place) => void;
 };
 export default function KakaoSpatialMap(props: SpatialMapProps & {
     onFailure: (key: string) => void;
 }) {
-    const { t } = useI18n();
+    const { t, localize } = useI18n();
     const root = useRef<HTMLDivElement>(null);
     const map = useRef<KakaoMap | null>(null);
     const sdk = useRef<KakaoSDK | null>(null);
@@ -30,6 +31,7 @@ export default function KakaoSpatialMap(props: SpatialMapProps & {
     const [ready, setReady] = useState(false);
     const [error, setError] = useState('');
     const fitted = useRef(false);
+    const fittedResult = useRef('');
     useEffect(()=>{fitted.current=false;},[props.resetVersion,props.extent]);
     useEffect(() => {
         let alive = true;
@@ -118,15 +120,30 @@ export default function KakaoSpatialMap(props: SpatialMapProps & {
     }, [ready, props.overlay]);
     useEffect(() => {
         const api = sdk.current, instance = map.current, result = props.geoResult;
+        if (!result) fittedResult.current='';
         if (!ready || !api || !instance || !result)
             return;
         const created: KakaoOverlay[] = [];
         const bounds = new api.LatLngBounds();
-        const addPlace = (place: Place, label: string, color: string) => { const element = document.createElement('button'); element.type = 'button'; element.className = 'min-h-11 rounded-full border-2 bg-white px-3 text-xs font-semibold shadow'; element.style.borderColor = color; element.textContent = label; element.onclick = () => { api.event.preventMap(); latest.current.onPlace?.(place); }; const object = new api.CustomOverlay({ position: latLng(api, place.coordinate), content: element, yAnchor: 1.2 }); object.setMap(instance); created.push(object); bounds.extend(latLng(api, place.coordinate)); };
-        if (result.origin)
+        const seen = new Set<string>();
+        const addPlace = (place: Place, label: string, color: string) => {
+            if (seen.has(place.id)) return; seen.add(place.id);
+            const active = place.id === props.highlightedPlaceId || place.id === props.selectedPlaceId;
+            const opacity = props.selectedPlaceId && props.selectedPlaceId !== place.id && result.places.some(p=>p.id===place.id) ? .3 : 1;
+            const element = document.createElement('button'); element.type = 'button'; element.className = 'min-h-11 min-w-11 rounded-full border-2 bg-white px-3 text-xs font-semibold shadow'; element.style.borderColor = active ? '#f59e0b' : color; element.style.backgroundColor = active ? '#fef3c7' : 'white'; element.style.opacity = String(opacity); element.textContent = label; element.title = localize(place.name); element.setAttribute('aria-label', `${label}. ${localize(place.name)}`);element.setAttribute('aria-pressed',String(active)); element.onclick = () => { api.event.preventMap(); latest.current.onPlace?.(place); };
+            const object = new api.CustomOverlay({ position: latLng(api, place.coordinate), content: element, yAnchor: 1.2 }); object.setMap(instance); created.push(object); bounds.extend(latLng(api, place.coordinate));
+            if (place.source === 'project') {
+                const layer = props.layers.find(l=>l.config.id===place.layerId), feature = layer?.data.features.find((f,i)=>featureKey(f,i)===place.featureId);
+                if (feature && !['Point','MultiPoint'].includes(feature.geometry.type)) {
+                    const shapes = kakaoFeatureOverlays(api,feature,active?'#f59e0b':color,()=>latest.current.onPlace?.(place),active,opacity);shapes.forEach(shape=>{shape.setMap(instance);created.push(shape);});
+                    const b=bbox(feature);bounds.extend(latLng(api,[b[0],b[1]]));bounds.extend(latLng(api,[b[2],b[3]]));
+                }
+            }
+        };
+        if (result.origin && !result.places.some(p=>p.id===result.origin?.id))
             addPlace(result.origin, t('gis.origin'), '#16a34a');
-        for (const place of result.places)
-            addPlace(place, place.name, place.id === props.highlightedPlaceId ? '#f59e0b' : '#7c3aed');
+        result.places.forEach((place,index)=>addPlace(place, String(index+1), '#7c3aed'));
+        for (const place of result.resolvedPlaces??[]) addPlace(place,place.name,'#16a34a');
         if (result.destination)
             addPlace(result.destination, t('gis.destination'), '#dc2626');
         const points = result.route?.coordinates ?? (result.origin && result.destination ? [result.origin.coordinate, result.destination.coordinate] : []);
@@ -141,10 +158,11 @@ export default function KakaoSpatialMap(props: SpatialMapProps & {
             object.setMap(instance);
             created.push(object);
         }
-        if (result.places.length || result.destination)
-            instance.setBounds(bounds);
+        if (props.extent) {bounds.extend(latLng(api,[props.extent[0],props.extent[1]]));bounds.extend(latLng(api,[props.extent[2],props.extent[3]]));}
+        const key = JSON.stringify([result.question,result.places,result.origin,result.destination,result.resolvedPlaces,props.extent]);
+        if ((result.places.length || result.destination) && key !== fittedResult.current) { instance.setBounds(bounds); fittedResult.current=key; }
         return () => created.forEach(o => o.setMap(null));
-    }, [ready, props.geoResult, props.highlightedPlaceId, t]);
+    }, [ready, props.geoResult, props.highlightedPlaceId, props.selectedPlaceId, props.layers, props.extent, t, localize]);
     return <div className="spatial-map relative"><div ref={root} className="h-[360px] w-full rounded-xl sm:h-[420px]" aria-label={t('spatial.mapLabel')}/>{ready && <div className="absolute right-3 top-3 flex flex-col rounded-lg bg-white shadow"><button type="button" className="min-h-11 min-w-11 text-xl" aria-label={t('map.zoomIn')} onClick={() => { const instance = map.current; if (instance)
         instance.setLevel(Math.max(1, instance.getLevel() - 1)); }}>+</button><button type="button" className="min-h-11 min-w-11 text-xl" aria-label={t('map.zoomOut')} onClick={() => { const instance = map.current; if (instance)
         instance.setLevel(Math.min(14, instance.getLevel() + 1)); }}>−</button></div>}{!ready && !error && <p role="status">{t('gis.mapLoading')}</p>}{error && <p role="alert">{t(error)}</p>}</div>;

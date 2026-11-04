@@ -77,7 +77,7 @@ export function deriveBoundary(data: FeatureCollection<Polygon | MultiPolygon>) 
 }
 export type ProjectBoundary = ReturnType<typeof deriveBoundary>;
 export function boundaryScope(boundary: ProjectBoundary, meters: number): BoundaryFeature {
-    if (![0, 500, 1000].includes(meters))
+    if (![0, 500, 1000, 2000].includes(meters))
         throw new Error('boundary.invalidScope');
     if (!meters)
         return boundary.geometry;

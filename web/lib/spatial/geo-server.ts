@@ -7,11 +7,11 @@ import { listDatasets, readDataset } from './dataset-server';
 import { datasetLayer } from './datasets';
 import { validateConfig, validateGeoJSON } from './loader';
 import { featureKey, featureCollection, resultFor, isArea } from './engine';
-import { bbox } from '@turf/turf';
+import { bbox, bearing, point, booleanPointInPolygon, pointToPolygonDistance, nearestPointOnLine, lineString } from '@turf/turf';
 import type { Identity } from '../membership/server';
 import type { LoadedLayer } from './types';
 import { coordinate, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, isMapReference, featureNames, type Place, type GeoContext, type GeoResult } from './geo-query';
-import { searchPlaces, searchNearbyPlaces, findNearestPlaces, getWalkingRoute, searchBoundaryPlaces } from './kakao-server';
+import { getWalkingRoute, searchBoundaryPlaces } from './kakao-server';
 import { translate, type Locale } from '../i18n';
 const geometryCache = new Map<string, {
     data: LoadedLayer['data'];
@@ -90,7 +90,7 @@ function selectedPlace(context: GeoContext, layers: LoadedLayer[]): Place | unde
         if (!layer || index < 0)
             throw new Error('gis.selectionChanged');
         const feature = layer.data.features[index];
-        return { id: `${layer.config.id}:${featureKey(feature, index)}`, name: typeof feature.properties?.name === 'string' ? feature.properties.name : layer.config.label, source: 'project', layerId: layer.config.id, featureId: featureKey(feature, index), ...representativePoint(feature) };
+        return { id: `${layer.config.id}:${featureKey(feature, index)}`, name: featureNames(feature)[0] ?? layer.config.label, source: 'project', layerId: layer.config.id, featureId: featureKey(feature, index), ...representativePoint(feature) };
     }
     if (context.point)
         return { id: 'map-point', name: 'gis.selectedPoint', coordinate: context.point, source: 'map' };
@@ -137,7 +137,7 @@ export function verifyChoice(token: unknown, binding: string): Place | undefined
         return;
     }
 }
-export async function resolvePlaceReference(name: string, context: GeoContext, layers: LoadedLayer[], center?: Place, signal?: AbortSignal) {
+export async function resolvePlaceReference(name: string, context: GeoContext, layers: LoadedLayer[], search?: (query: string) => Promise<Place[]>) {
     if (/^(현재\s*(지도\s*)?중심|map center)$/i.test(name.trim()))
         return context.mapCenter ? [{ id: 'map-center', name: 'gis.mapCenter', coordinate: context.mapCenter, source: 'map' as const }] : [];
     if (isMapReference(name)) {
@@ -147,7 +147,14 @@ export async function resolvePlaceReference(name: string, context: GeoContext, l
     const internal = internalPlaces(name, layers, featureKey);
     if (internal.length)
         return internal;
-    return searchPlaces(name, { center: center?.coordinate, limit: 10, signal }); // Proximity preference, no exact-name radius exclusion.
+    return search ? search(name) : [];
+}
+function nearestBoundaryCoordinate(place: Place, boundary: ProjectBoundary) {
+    if (booleanPointInPolygon(point(place.coordinate), boundary.geometry)) return place.coordinate;
+    const geometry = boundary.geometry.geometry;
+    const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+    return polygons.flatMap(polygon => polygon.map(ring => nearestPointOnLine(lineString(ring), point(place.coordinate), { units: 'meters' })))
+        .sort((a,b) => (a.properties.dist ?? Infinity) - (b.properties.dist ?? Infinity))[0].geometry.coordinates.slice(0,2) as import('./geo-query').Coordinate;
 }
 export async function executeGeoQuery(input: {
     question: string;
@@ -164,7 +171,29 @@ export async function executeGeoQuery(input: {
     const warnings = layerWarnings.map(w => t(w));
     if(options&&!boundary)warnings.push(t('boundary.noActive'));
     const result: GeoResult = { question: input.question, intent: plan.intent, reply: '', places: [], warnings };
-    const resolve = async (name: string, role: 'origin' | 'destination') => {
+    let remainingCalls = 16;
+    const external = async (query: string) => {
+        if (!boundary) { if (!warnings.includes(t('picker.needBoundary'))) warnings.push(t('picker.needBoundary')); return []; }
+        const distances = context.scopeMeters === 0 ? [0] : [...new Set([0, scopeMeters, 1000, 2000])].sort((a,b) => a-b);
+        for (const meters of distances) {
+            signal?.throwIfAborted();
+            if (!remainingCalls) break;
+            const found = await searchBoundaryPlaces(query, boundaryScope(boundary, meters), signal, Math.min(4, remainingCalls));
+            remainingCalls -= found.calls;
+            result.scopeMeters = meters;
+            if (!warnings.includes(t('boundary.partialSearch'))) warnings.push(t('boundary.partialSearch'));
+            let places = found.places;
+            if (plan.nearby && origin && /\d+(?:\.\d+)?\s*(?:m|km|미터|킬로미터)/i.test(input.question)) places = places.filter(p => calculateStraightLineDistance(origin!.coordinate, p.coordinate) <= plan.radius);
+            if (places.length) {
+                if (meters > scopeMeters) warnings.push(t('picker.expanded', { meters }));
+                return places;
+            }
+        }
+        return [];
+    };
+    const resolve = async (name: string, role: 'origin' | 'destination' | 'place') => {
+        if (/^(?:이\s*)?(?:사업구역|사업\s*경계|대상지|project (?:area|boundary))$/i.test(name) && boundary)
+            return { id: 'project-boundary', name: t('upload.boundary'), source: 'project' as const, coordinate: boundary.center, approximate: true, boundaryTarget: true };
         const binding = scope(user.uid, projectId, input.question, name);
         const token = input.choices && Object.prototype.hasOwnProperty.call(input.choices, name) ? input.choices[name] : undefined;
         let selected: Place | undefined;
@@ -172,14 +201,12 @@ export async function executeGeoQuery(input: {
             selected = internalPlaces(name, layers, featureKey).find(p => 'project:' + p.id === token);
         else
             selected = verifyChoice(token, binding);
+        if (selected?.source === 'kakao' && (!boundary || !filterBoundaryPlaces([selected], boundaryScope(boundary, context.scopeMeters === 0 ? 0 : 2000)).length)) throw new Error('gis.choiceExpired');
         if (selected)
             return selected;
         if (token)
             throw new Error('gis.choiceExpired');
-        let options = await resolvePlaceReference(name, context, layers, origin, signal);
-        if(boundary&&!internalPlaces(name,layers,featureKey).length&&role==='destination'){
-          const local=filterBoundaryPlaces(options,boundaryScope(boundary,scopeMeters));if(local.length)options=local;
-        }
+        const options = await resolvePlaceReference(name, context, layers, external);
         const ambiguousGeneric = /^(경로당|주민센터|건강생활지원센터)$/.test(name.trim());
         if (options.length === 1 && !ambiguousGeneric)
             return options[0];
@@ -192,6 +219,28 @@ export async function executeGeoQuery(input: {
         result.reply = t('gis.choosePlace', { name });
         return;
     };
+    if (plan.locations) {
+        const resolved: Place[] = [];
+        for (const name of plan.locations) {
+            const place = await resolve(name, 'place');
+            if (!place) { result.resolvedPlaces = resolved; return result; }
+            resolved.push(place);
+        }
+        result.places = [...new Map(resolved.map(p => [p.id,p])).values()];
+        result.reply = result.places.map(p => {
+            if (!boundary) return t('picker.located', { name: p.name });
+            p.insideBoundary = booleanPointInPolygon(point(p.coordinate), boundary.geometry);
+            p.boundaryDistanceMeters = Math.max(0, pointToPolygonDistance(point(p.coordinate), boundary.geometry, { units: 'meters' }));
+            return t(p.insideBoundary ? 'picker.inside' : 'picker.outside', { name: p.approximate?t('picker.representative',{name:p.name}):p.name, distance: Math.round(p.boundaryDistanceMeters) });
+        }).join('\n');
+        for (let i=1; i<result.places.length; i++) {
+            const first=result.places[0], next=result.places[i], meters=calculateStraightLineDistance(first.coordinate,next.coordinate);
+            const direction=['n','ne','e','se','s','sw','w','nw'][Math.round((bearing(point(first.coordinate),point(next.coordinate))+360)/45)%8];
+            result.reply += '\n'+(meters < 1 ? t('picker.sameLocation',{first:first.name,next:next.name}) : t('picker.relationship',{first:first.name,next:next.name,direction:t(`picker.direction.${direction}`),distance:Math.round(meters)}));
+        }
+        if (result.places.some(p=>p.approximate)) warnings.push(t('gis.approximate'));
+        return result;
+    }
     if (plan.intent === 'EXISTING_GIS_QUERY') {
         const named=layers.flatMap(l=>l.data.features.flatMap((f,i)=>featureNames(f).some(name=>name.length>1&&input.question.includes(name))?[{layer:l,feature:f,index:i}]:[]));
         if(/시설|타워|전파기지|facilit|tower|station/i.test(input.question)){
@@ -222,6 +271,7 @@ export async function executeGeoQuery(input: {
         if (!origin)
             return result;
     }
+    result.origin = origin;
     if (plan.destination) {
         if (!origin) {
             result.reply = t('gis.needOrigin');
@@ -233,6 +283,15 @@ export async function executeGeoQuery(input: {
         result.origin = origin;
         result.destination = destination;
         result.places = [destination];
+        if (destination.boundaryTarget && boundary) {
+            destination.coordinate = nearestBoundaryCoordinate(origin, boundary);
+            const meters = Math.max(0, pointToPolygonDistance(point(origin.coordinate),boundary.geometry,{units:'meters'}));
+            result.straightDistanceMeters = meters;
+            result.reply = meters < 1 ? t('picker.originInside',{name:origin.approximate?t('picker.representative',{name:origin.name}):origin.name}) : t('picker.boundaryDistance',{name:origin.approximate?t('picker.representative',{name:origin.name}):origin.name,distance:Math.round(meters)});
+            if (origin.approximate) warnings.push(t('gis.approximate'));
+            if (plan.walking) warnings.push(t('gis.noRoute'));
+            return result;
+        }
         const meters = calculateStraightLineDistance(origin.coordinate, destination.coordinate);
         result.straightDistanceMeters = meters;
         if (meters < 1) {
@@ -260,48 +319,27 @@ export async function executeGeoQuery(input: {
         return result;
     }
     result.origin = origin;
-    const internal = internalPlaces(plan.query, layers, featureKey);
-    if (internal.length && !plan.nearby)
-        result.places = internal;
-    else if(boundary&&(!origin||filterBoundaryPlaces([origin],boundaryScope(boundary,scopeMeters)).length>0)&&(!plan.origin||isMapReference(plan.origin)||origin?.source==='project')){
-        let candidates=(await searchBoundaryPlaces(plan.query,boundaryScope(boundary,scopeMeters),signal)).places;
-        const explicitRadius=/\d+(?:\.\d+)?\s*(?:m|km|미터|킬로미터)/i.test(input.question);
-        if(explicitRadius&&origin)candidates=candidates.filter(p=>calculateStraightLineDistance(origin!.coordinate,p.coordinate)<=plan.radius);
-        candidates=candidates.map(p=>({...p,distanceMeters:origin?calculateStraightLineDistance(origin.coordinate,p.coordinate):undefined})).sort((a,b)=>(a.distanceMeters??0)-(b.distanceMeters??0));
-        result.scopeMeters=scopeMeters;warnings.push(t('boundary.partialSearch'));
-        if(plan.intent==='NEAREST_PLACE'&&plan.walking){
-          const checked=await Promise.allSettled(candidates.slice(0,3).map(async place=>({place,route:await getWalkingRoute(origin!.coordinate,place.coordinate,signal)})));
-          warnings.push(...[...new Set(checked.flatMap(r=>r.status==='rejected'?[r.reason instanceof Error&&r.reason.message.startsWith('gis.')?r.reason.message:'gis.noRoute']:[]))].map(key=>t(key)));
-          const routes=checked.flatMap(r=>r.status==='fulfilled'?[r.value]:[]).sort((a,b)=>a.route.distanceMeters-b.route.distanceMeters);
-          if(routes.length){result.places=routes.slice(0,plan.limit).map(r=>({...r.place,distanceMeters:r.route.distanceMeters}));result.route=routes[0].route;result.destination=result.places[0];result.ranking='walking';warnings.push(t('gis.limitedRanking'));}
-          else{result.places=candidates.slice(0,plan.limit);result.ranking='straight';warnings.push(t('gis.noRoute'));}
-        }else{result.places=candidates.slice(0,plan.limit);if(plan.intent==='NEAREST_PLACE')result.ranking='straight';}
-        if(explicitRadius)result.radiusMeters=plan.radius;
+    if (!plan.nearby) {
+        const place = await resolve(plan.query, 'place');
+        if (!place) return result;
+        result.places = [place];
+    } else {
+        const internal = internalPlaces(plan.query, layers, featureKey).filter(p => !origin || !/\d+(?:\.\d+)?\s*(?:m|km|미터|킬로미터)/i.test(input.question) || calculateStraightLineDistance(origin.coordinate,p.coordinate) <= plan.radius);
+        const candidates = (internal.length ? internal : await external(plan.query)).map(p => ({...p,distanceMeters:origin?calculateStraightLineDistance(origin.coordinate,p.coordinate):undefined})).sort((a,b)=>(a.distanceMeters??0)-(b.distanceMeters??0));
+        result.places = candidates.slice(0,plan.limit);
+        if (/\d+(?:\.\d+)?\s*(?:m|km|미터|킬로미터)/i.test(input.question)) result.radiusMeters=plan.radius;
+        if (plan.intent === 'NEAREST_PLACE') {
+            result.ranking = 'straight';
+            if (plan.walking && origin) {
+                const checked = await Promise.allSettled(candidates.slice(0,3).map(async place => ({place,route:await getWalkingRoute(origin!.coordinate,place.coordinate,signal)})));
+                warnings.push(...[...new Set(checked.flatMap(r=>r.status==='rejected'?[r.reason instanceof Error&&r.reason.message.startsWith('gis.')?r.reason.message:'gis.noRoute']:[]))].map(key=>t(key)));
+                const routes=checked.flatMap(r=>r.status==='fulfilled'?[r.value]:[]).sort((a,b)=>a.route.distanceMeters-b.route.distanceMeters);
+                if (routes.length) { result.places=routes.slice(0,plan.limit).map(r=>({...r.place,distanceMeters:r.route.distanceMeters}));result.route=routes[0].route;result.destination=result.places[0];result.ranking='walking';warnings.push(t('gis.limitedRanking')); }
+                else if(candidates.length) warnings.push(t('gis.noRoute'));
+                result.partial = candidates.length > 3 || routes.length < candidates.length;
+            }
+        }
     }
-    else if (plan.intent === 'NEAREST_PLACE') {
-        const nearest = await findNearestPlaces(plan.query, origin!, plan.radius, plan.limit, plan.walking, signal);
-        result.places = nearest.places;
-        result.ranking = plan.walking && nearest.routes.length ? 'walking' : 'straight';
-        result.route = nearest.routes[0]?.route;
-        result.destination = result.places[0];
-        result.partial = nearest.partial;
-        warnings.push(...nearest.routeErrors.map(key => t(key)));
-        if (nearest.expanded)
-            warnings.push(t('gis.expanded'));
-        if (plan.walking && nearest.partial && result.route)
-            warnings.push(t('gis.limitedRanking'));
-        if (plan.walking && !result.route)
-            warnings.push(t('gis.noRoute'));
-    }
-    else if (plan.nearby) {
-        const nearby = await searchNearbyPlaces(plan.query, origin!.coordinate, plan.radius, signal);
-        result.places = nearby.places.slice(0, plan.limit);
-        if (nearby.expanded)
-            warnings.push(t('gis.expanded'));
-        result.radiusMeters = nearby.expanded ? Math.min(20000, plan.radius * 3) : plan.radius;
-    }
-    else
-        result.places = await searchPlaces(plan.query, { center: origin?.coordinate, limit: plan.limit, signal });
     result.reply = result.places.length ? t('gis.searchSummary', { count: result.places.length }) : t('gis.noPlace', { name: plan.query });
     if (result.ranking)
         result.reply += ' ' + t(result.ranking === 'walking' ? 'gis.rankWalking' : 'gis.rankStraight');

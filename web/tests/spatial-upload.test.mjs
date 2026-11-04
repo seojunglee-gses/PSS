@@ -17,6 +17,7 @@ function pointZip(x,y,prj){
 test('GeoJSON geographic coordinates are detected without asking for CRS; original bytes and properties are preserved',async()=>{
  const original=bytes(point([127.01,37.5]));const before=original.toString();const result=await analyzeUpload(original,'geojson');
  assert.equal(result.needsCrs,false);assert.equal(result.sourceCrs,'EPSG:4326');assert.equal(result.featureCount,1);assert.equal(result.geometryType,'point');assert.deepEqual(result.extent,[127.01,37.5,127.01,37.5]);assert.equal(result.data.features[0].properties.name,'자료 이름');assert.equal(original.toString(),before);
+ assert.equal(result.data.features[0].properties.display_name,'자료 이름');assert.equal(JSON.parse(before).properties.display_name,undefined);
 });
 test('Korean projected CRS conversions match independent projection origins',async()=>{
  for(const [crs,position,expected] of [['EPSG:5186',[200000,600000],[127,38]],['EPSG:5179',[1000000,2000000],[127.5,38]],['EPSG:3857',[0,0],[0,0]]]){

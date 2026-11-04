@@ -67,12 +67,12 @@ export function loadKakaoMaps(key: string): Promise<KakaoSDK> {
 }
 export function latLng(sdk: KakaoSDK, p: Coordinate) { const c = coordinate(p); return new sdk.LatLng(c[1], c[0]); }
 // Read-only projection adapter. Polygon rings stay together, so interior rings remain holes.
-export function kakaoFeatureOverlays(sdk: KakaoSDK, feature: Feature<Geometry>, color: string, select: () => void, selected = false): KakaoOverlay[] {
+export function kakaoFeatureOverlays(sdk: KakaoSDK, feature: Feature<Geometry>, color: string, select: () => void, selected = false, opacity = 1): KakaoOverlay[] {
     const geometry = feature.geometry;
     if (!geometry)
         return [];
     const overlays: KakaoOverlay[] = [];
-    const style = { strokeWeight: selected ? 4 : 2, strokeColor: color, strokeOpacity: 1, fillColor: color, fillOpacity: selected ? .3 : .25 };
+    const style = { strokeWeight: selected ? 4 : 2, strokeColor: color, strokeOpacity: opacity, fillColor: color, fillOpacity: (selected ? .3 : .25) * opacity };
     const line = (coordinates: number[][]) => new sdk.Polyline({ ...style, path: coordinates.map(c => latLng(sdk, coordinate(c.slice(0,2)))) });
     const polygon = (coordinates: number[][][]) => new sdk.Polygon({ ...style, path: coordinates.map(ring => ring.map(c => latLng(sdk, coordinate(c.slice(0,2))))) });
     const marker = (position: number[]) => {

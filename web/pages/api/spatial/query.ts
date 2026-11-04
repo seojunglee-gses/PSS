@@ -46,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         parseGeoPlan(req.body.question);
         parseGeoContext(req.body.context);
         const choices = req.body.choices;
-        if (choices !== undefined && (!choices || typeof choices !== 'object' || Array.isArray(choices) || Object.entries(choices).length > 3 || Object.entries(choices).some(([k, v]) => k.length > 200 || typeof v !== 'string' || v.length > 5000)))
+        if (choices !== undefined && (!choices || typeof choices !== 'object' || Array.isArray(choices) || Object.entries(choices).length > 4 || Object.entries(choices).some(([k, v]) => k.length > 200 || typeof v !== 'string' || v.length > 5000)))
             throw new Error('gis.invalidQuestion');
         if (!allowGeoRequest(`${context.user.uid}:${context.projectId}`)) {
             res.status(429).json({ error: translate(locale, 'gis.quota') });
