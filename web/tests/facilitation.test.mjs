@@ -9,13 +9,13 @@ function mock(t,obj,key,value){const previous=obj[key];obj[key]=value;t.after(()
 test('A: simple facts and direct-only requests do not invite a planning survey',()=>{
  for(const q of ['면적이 얼마야?','타워는 어디야?','두 시설까지 몇 미터야?','What is the distance?','답변만 해주세요','Just answer the question.','여기까지만 할게요','그만할게요','요약만 해주세요','No, thanks','네','감사합니다','OK' ])assert.equal(followUpPolicy(q).mode,'none',q);
 });
-test('B: vague concerns prompt one open clarification without forced categories or early solutions',()=>{
+test('B: vague concerns retain a clarification option without forced categories or early solutions',()=>{
  assert.equal(followUpPolicy('우리 동네가 불편해요.').mode,'clarify');const prompt=facilitationInstructions('problem','우리 동네가 불편해요.');assert.match(prompt,/ONE/);assert.match(prompt,/without forcing predefined categories/);assert.match(prompt,/before proposing solutions/);
 });
-test('Problem Definition continues from participant answers with one concise closing question, without changing other stages',()=>{
+test('Problem Definition interprets before questioning and permits synthesis without a closing question',()=>{
  const history=[assistant('어느 장소에서 불편을 겪으셨나요?'),user('시장 앞 골목이요.')];
  const prompt=facilitationInstructions('problem','저녁에 퇴근할 때 자주 지나가요.',history);
- assert.match(prompt,/Adaptive follow-up policy: OPTIONAL/);assert.match(prompt,/2–4 short sentences/);assert.match(prompt,/end with exactly ONE short, natural, open question/);assert.match(prompt,/Never ask again for information/);assert.match(prompt,/not a reason to stop/);
+ assert.match(prompt,/Adaptive follow-up policy: OPTIONAL/);assert.match(prompt,/2–4 short sentences/);assert.match(prompt,/Interpretation before questioning/);assert.match(prompt,/OPTIONAL and CLARIFY permit zero questions/);assert.match(prompt,/Never ask again for information/);assert.match(prompt,/would its answer materially change or refine/);assert.doesNotMatch(prompt,/end with exactly ONE/);
  assert.equal(followUpPolicy('저녁에 퇴근할 때 자주 지나가요.',history,'data').mode,'none');
  for(const q of ['답변만 해주세요','면적이 얼마야?','오늘은 여기까지만 할게요','감사합니다'])assert.equal(followUpPolicy(q,history,'problem').mode,'none',q);
  assert.equal(followUpPolicy('그 골목이 어두워요.',[user('앞으로 후속 질문은 하지 마세요.')],'problem').mode,'none');
@@ -23,7 +23,7 @@ test('Problem Definition continues from participant answers with one concise clo
 test('Problem Definition chat applies conversational cadence in the existing single response call',async t=>{
  const context=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');let calls=0,sent;
  mock(t,context,'loadProjectContext',async()=>({currentMaterial:'현재 사업: 시장 주변 보행환경',previousSummaries:{},stageHistory:[]}));
- const reply='시장 앞 골목을 퇴근길에 자주 이용하시는군요. 그 시간대에는 어떤 점이 가장 불편하셨나요?';
+ const reply='퇴근길의 보행 경험을 사업에서 살펴볼 문제와 연결해볼 수 있겠습니다. 어떤 변화가 생기면 이 길을 이용하기 좋아졌다고 느끼실까요?';
  mock(t,llm,'callLLM',async input=>{calls++;sent=input;return reply});
  const res={status(n){this.code=n;return this},json(body){this.body=body}};
  await load('pages/api/chat.js').default({method:'POST',body:{stepId:'problem',message:'퇴근길에 시장 앞 골목을 지나가요.',history:[assistant('주로 어느 길을 이용하시나요?')]},headers:{}},res);
@@ -73,4 +73,43 @@ test('stage-end dialogue preserves early concerns, AI attribution and a bounded,
 test('Stage 3 conversation does not generate images unless a design-generation/edit action is explicit',()=>{
  const {isDesignGenerationRequest}=load('lib/facilitation.js');for(const q of ['어르신과 어린이가 함께 쓸 공간을 고민하고 있어요.','두 대안의 장단점은?','계획안을 어떻게 수정하면 좋을까요?','이 문장을 수정해주세요','이미지는 만들지 말고 의견만 정리해주세요','Do not generate an image; discuss options'])assert.equal(isDesignGenerationRequest(q),false,q);
  for(const q of ['지금까지 나온 의견을 반영해 계획안을 정리해주세요.','이미지를 생성해주세요','벤치를 더 넣어줘','계획안을 수정해주세요','Generate a design alternative'])assert.equal(isDesignGenerationRequest(q),true,q);
+});
+
+test('Problem Definition pauses repeated questioning without changing other stages or overriding explicit preferences',()=>{
+ const history=[user('주민들이 모일 공간이 부족해요.'),assistant('교류할 기회가 줄어드는 문제일 수 있겠습니다. 무엇이 가장 중요한가요?'),user('서로 알고 지내는 관계가 중요해요.'),assistant('일상적인 관계를 유지하는 데 의미를 두시는군요. 어떤 변화가 필요할까요?')];
+ assert.equal(followUpPolicy('기존 주민센터가 저녁에도 열리면 좋겠어요.',history,'problem').mode,'none');
+ const prompt=facilitationInstructions('problem','기존 주민센터가 저녁에도 열리면 좋겠어요.',history);
+ assert.match(prompt,/pause questioning/);assert.match(prompt,/converge without another question/);assert.match(prompt,/no number of turns establishes sufficient evidence or consent/);
+ assert.notEqual(followUpPolicy('이제 질문해도 괜찮아요',history,'problem').mode,'none');
+ assert.equal(followUpPolicy('더 질문해줘',[user('질문하지 마세요')],'problem').mode,'optional');
+ assert.equal(followUpPolicy('핵심 문제를 정리해줘',[],'problem').mode,'none');
+ for(const stage of ['data','alternatives','evaluation','report']){
+  const other=facilitationInstructions(stage,'우리 동네가 불편해요.');
+  assert.doesNotMatch(other,/reflective and critical thinking partner|Progressive problem definition|INTERPRET/);
+ }
+});
+test('A–D initial contributions receive contextual interpretation guidance rather than fixed interview questions',async t=>{
+ const context=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');let calls=[];
+ mock(t,context,'loadProjectContext',async()=>({currentMaterial:'현재 사업: 주민 생활환경 개선. 시설 이용 현황은 아직 조사되지 않았음.',previousSummaries:{},stageHistory:[]}));
+ mock(t,llm,'callLLM',async request=>{calls.push(request);return '잠정적인 해석입니다.'});
+ for(const message of ['우리 동네는 주민들이 모일 공간이 부족해요.','이 지역은 노인들이 살기 불편한 것 같아요.','청년들이 이 동네를 떠나는 게 가장 큰 문제라고 생각해요.','공원을 새로 만드는 게 좋을 것 같아요.']){
+  const res={status(n){this.code=n;return this},json(value){this.body=value}};
+  await load('pages/api/chat.js').default({method:'POST',body:{stepId:'problem',message,history:[]},headers:{}},res);
+  assert.equal(res.code,200);assert.ok(calls.at(-1).userText.includes(message));
+ }
+ assert.equal(calls.length,4);
+ for(const request of calls){assert.match(request.systemText,/REFLECT.*REFRAME.*SYNTHESIZE.*PRIORITIZE/);assert.match(request.systemText,/Explicitly mark your interpretation/);assert.match(request.systemText,/unnecessary personal data/);assert.match(request.systemText,/chosen solution without dismissing/);}
+});
+test('synthesis retains original dialogue, user corrections, project grounding and the existing response API',async t=>{
+ const context=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');let count=0,sent;
+ mock(t,context,'loadProjectContext',async()=>({currentMaterial:'사업 자료: 주민센터가 있음. 운영 시간은 미확인.',previousSummaries:{},stageHistory:[]}));
+ mock(t,llm,'callLLM',async request=>{count++;sent=request;return '핵심 문제: 시설 신설보다 기존 공간을 이용할 기회에 관한 문제일 수 있습니다.'});
+ const history=[user('공간이 부족해요'),assistant('새 시설이 필요할 수 있겠습니다.'),user('새 시설을 원하는 것은 아니고, 저녁에도 기존 시설을 이용하고 싶어요.')];
+ const res={status(n){this.code=n;return this},json(value){this.body=value}};
+ await load('pages/api/chat.js').default({method:'POST',body:{stepId:'problem',message:'지금까지 얘기한 핵심 문제를 정리해줘',history},headers:{}},res);
+ assert.equal(count,1);assert.equal(res.code,200);assert.deepEqual(Object.keys(res.body).sort(),['model','provider','reply']);
+ assert.match(sent.systemText,/Adaptive follow-up policy: NONE/);assert.match(sent.systemText,/revise or discard your previous hypotheses/);
+ for(const name of ['Core Problem','Context','Potential Causes','Stakeholders','User Priorities','Unverified Assumptions'])assert.ok(sent.systemText.includes(name));
+ assert.match(sent.userText,/새 시설을 원하는 것은 아니고/);assert.match(sent.userText,/운영 시간은 미확인/);
+ assert.match(sent.systemText,/not yet stated or not verified/);assert.match(sent.systemText,/not stage completion or a saved report/);
 });
