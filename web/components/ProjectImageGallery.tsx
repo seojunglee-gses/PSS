@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { useAuth } from "../lib/auth";
 import { uploadProjectFile } from "../lib/storage-upload";
 import { logStorageFailure } from "../lib/storage-errors";
+import ImageViewer from "./ImageViewer";
 import { imageList } from "../lib/content-format";
 
 export default function ProjectImageGallery({ value, editable, projectId, onChange, onBusyChange, purpose = "background", captions = [], onCaptionsChange }: {
@@ -16,6 +17,8 @@ export default function ProjectImageGallery({ value, editable, projectId, onChan
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const start = useRef<{ x: number; y: number } | null>(null);
+  const suppressClick = useRef(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
   const current = Math.min(index, Math.max(0, images.length - 1));
   const move = (direction: number) => setIndex((current + direction + images.length) % images.length);
   const upload = async (files: File[]) => {
@@ -47,11 +50,23 @@ export default function ProjectImageGallery({ value, editable, projectId, onChan
     }
   };
   return <div className="mt-4 space-y-2">
-    <div style={{ touchAction: "pan-y pinch-zoom" }} className="flex min-h-40 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
-      onTouchStart={(event) => { const touch = event.touches[0]; start.current = { x: touch.clientX, y: touch.clientY }; }}
-      onTouchEnd={(event) => { const touch = event.changedTouches[0]; if (start.current && images.length > 1 && Math.abs(touch.clientX - start.current.x) > 50 && Math.abs(touch.clientY - start.current.y) < 50) move(touch.clientX < start.current.x ? 1 : -1); start.current = null; }}>
-      {images[current] ? <img src={images[current]} alt={t("image.alt", { number: current + 1 })} className="max-h-[420px] w-full object-contain" /> : <p className="p-4 text-sm text-slate-500">{t("image.empty")}</p>}
+    <div className="project-image-frame"
+      onTouchStart={(event) => { suppressClick.current = event.touches.length !== 1; const touch = event.touches[0]; start.current = event.touches.length === 1 ? { x: touch.clientX, y: touch.clientY } : null; }}
+      onTouchMove={(event) => { const touch = event.touches[0]; if (event.touches.length !== 1 || start.current && Math.hypot(touch.clientX - start.current.x, touch.clientY - start.current.y) > 8) suppressClick.current = true; if (event.touches.length !== 1) start.current = null; }}
+      onTouchCancel={() => { start.current = null; suppressClick.current = true; }}
+      onTouchEnd={(event) => {
+        const touch = event.changedTouches[0], origin = start.current;
+        if (origin && event.touches.length === 0 && images.length > 1) {
+          const dx = touch.clientX - origin.x, dy = touch.clientY - origin.y;
+          if (Math.abs(dx) >= 64 && Math.abs(dx) > Math.abs(dy) * 1.5) { move(dx < 0 ? 1 : -1); suppressClick.current = true; }
+        }
+        start.current = null;
+      }}>
+      {images[current] ? <button type="button" className="project-image-open" onPointerDown={event => { if (event.pointerType === "mouse") suppressClick.current = false; }} aria-label={t("image.expand")} onClick={event => { if (event.detail === 0 || !suppressClick.current) setViewerOpen(true); suppressClick.current = false; }}>
+        <img src={images[current]} alt={t("image.alt", { number: current + 1 })} draggable={false} />
+      </button> : <p className="absolute inset-0 flex items-center justify-center p-4 text-sm text-slate-500">{t("image.empty")}</p>}
     </div>
+    {viewerOpen && images[current] && <ImageViewer src={images[current]} alt={t("image.alt", { number: current + 1 })} onClose={() => setViewerOpen(false)} />}
     {!!images.length && (editable && onCaptionsChange ? <input aria-label={t('image.caption')} placeholder={t('image.captionHint')} value={captions[current]??''} maxLength={240} disabled={busy} className="min-h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs text-slate-600" onChange={event=>onCaptionsChange(images.map((_,index)=>index===current?event.target.value:captions[index]??''))}/> : captions[current] && <p className="break-words text-center text-xs leading-relaxed text-slate-500">{captions[current]}</p>)}
     {images.length > 1 && <div className="flex items-center justify-center gap-4 py-1">
       <button type="button" aria-label={t("image.previous")} title={t("image.previous")} className="inline-flex h-[48px] w-[64px] shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 shadow-sm transition-colors hover:bg-blue-100 active:bg-blue-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" onClick={() => move(-1)}>

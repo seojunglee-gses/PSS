@@ -225,7 +225,7 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
     <div className={`app-shell min-h-screen bg-[var(--background)] text-[var(--foreground)] ${isWorkspace ? "workspace-shell" : ""}`} style={{ "--sidebar-width": sidebarPinned ? "288px" : "76px" } as CSSProperties}>
       <div className="shell-frame flex min-h-screen flex-col lg:flex-row">
         <aside ref={sidebarRef} className="desktop-sidebar hidden lg:block" data-pinned={sidebarPinned} data-expanded={sidebarExpanded}
-          onPointerEnter={(event) => { if (event.pointerType === "mouse" && window.matchMedia("(hover: hover) and (pointer: fine)").matches) setSidebarHovered(true); }}
+          onPointerEnter={(event) => { if (event.pointerType === "mouse" && window.matchMedia("(hover: hover) and (pointer: fine)").matches && !window.matchMedia("(any-pointer: coarse)").matches) setSidebarHovered(true); }}
           onPointerLeave={() => setSidebarHovered(false)}
           onKeyDown={(event) => { if (event.key === "Escape") { closeSidebar(); sidebarRef.current?.querySelector<HTMLButtonElement>(".sidebar-toggle")?.focus(); } }}>
           <div className="desktop-sidebar-panel">

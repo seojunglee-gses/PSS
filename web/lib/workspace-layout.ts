@@ -1,5 +1,5 @@
 export const DEFAULT_PANEL_RATIO = 60;
-export const PANEL_DIVIDER_WIDTH = 24;
+export const PANEL_DIVIDER_WIDTH = 44;
 export type WorkspacePanelView = "information" | "chat";
 
 export function workspaceLayoutMode(availableWidth: number, viewportWidth: number, landscape: boolean, finePointer: boolean) {
