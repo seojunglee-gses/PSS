@@ -1,3 +1,4 @@
+import ChatMessageContent from "../chat/ChatMessageContent";
 import { useI18n } from "../../lib/i18n";
 import { researchLabels } from "../../lib/research/labels";
 import type { AnalysisAnswer as Answer, Finding } from "../../lib/research/types";
@@ -22,19 +23,19 @@ export default function AnalysisAnswer({ answer, onViewEvidence, additionalSourc
       ? <span key={index} className="inline-flex max-w-full flex-wrap align-middle">{inlineSourceIds(part).map((id, sourceIndex) => citation(id, `${index}-${sourceIndex}`))}</span>
       : part,
   );
-  const textSection = (title: string, text: string) => text && <section className="mt-3"><h4 className="font-semibold">{title}</h4><p className="mt-1 whitespace-pre-line">{renderText(text)}</p></section>;
+  const textSection = (title: string, text: string) => text && <section className="mt-3"><h4 className="font-semibold">{title}</h4><div className="mt-1"><ChatMessageContent text={text} renderInline={renderText} /></div></section>;
   const findings = (title: string, items: Finding[]) => items.length > 0 && <section className="mt-3"><h4 className="font-semibold">{title}</h4>
     <ul className="mt-1 space-y-2">{items.map((finding, index) => <li key={index} className="whitespace-pre-line">
-      {renderText(finding.text)}
+      <ChatMessageContent text={finding.text} renderInline={renderText} />
       {finding.sourceIds.filter((id) => !inlineSourceIds(finding.text).includes(id)).map((id) => citation(id, id))}
     </li>)}</ul>
   </section>;
   return <div className="mt-2 break-words text-sm">
-    {answer.format==='direct'?<p className="whitespace-pre-line">{renderText(answer.summary)}</p>:textSection(labels.summary, answer.summary)}
+    {answer.format==='direct'?<ChatMessageContent text={answer.summary} renderInline={renderText} />:textSection(labels.summary, answer.summary)}
     {answer.format!=='direct'&&findings(labels.caseFindings, answer.caseFindings)}
     {answer.format!=='direct'&&textSection(labels.integrated, answer.integratedInterpretation || [answer.agreement, answer.differences].filter(Boolean).join("\n\n"))}
-    {answer.projectImplications.length > 0 && <section className="mt-3"><h4 className="font-semibold">{labels.implications}</h4><ul className="mt-1 list-disc space-y-1 pl-4">{answer.projectImplications.map((text, index) => <li key={index}>{renderText(text)}</li>)}</ul></section>}
-    {answer.limitations && <p className="mt-3 whitespace-pre-line">{renderText(answer.limitations)}</p>}
+    {answer.projectImplications.length > 0 && <section className="mt-3"><h4 className="font-semibold">{labels.implications}</h4><ul className="mt-1 list-disc space-y-1 pl-4">{answer.projectImplications.map((text, index) => <li key={index}><ChatMessageContent text={text} renderInline={renderText} /></li>)}</ul></section>}
+    {answer.limitations && <div className="mt-3"><ChatMessageContent text={answer.limitations} renderInline={renderText} /></div>}
     {(sources.length > 0 || additionalSources.length > 0) && <button type="button" onClick={() => onViewEvidence()} className="mt-3 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">{labels.view}</button>}
   </div>;
 }

@@ -16,6 +16,7 @@ import ContentEditor, { ContentText, type ContentEditorHandle } from "../../comp
 import ProjectImageGallery from "../../components/ProjectImageGallery";
 import CaseSourceManager from "../../components/analysis/CaseSourceManager";
 import { DEFAULT_PANEL_RATIO, type WorkspacePanelView } from "../../lib/workspace-layout";
+import ChatMessageContent from "../../components/chat/ChatMessageContent";
 import StageChatEmptyState from "../../components/chat/StageChatEmptyState";
 import { resolveSources, sourceRoutingQuestion } from "../../lib/research/routing";
 import { stageChatGuide } from "../../lib/stage-chat-guides";
@@ -1627,17 +1628,6 @@ const handleSend = async (suggestedQuestion?: string) => {
       setExpandedStarterScope(null);
       composerInputRef.current?.focus({ preventScroll: true });
     };
-    const formatMessage = (text: string) =>
-      text.split(/(\*\*[^*]+\*\*)/g).map((segment, segmentIndex) => {
-        if (segment.startsWith("**") && segment.endsWith("**")) {
-          return (
-            <strong key={`bold-${segmentIndex}`}>
-              {segment.slice(2, -2)}
-            </strong>
-          );
-        }
-        return <span key={`text-${segmentIndex}`}>{segment}</span>;
-      });
     const isStageLocked = Boolean(lockedStages[activeStep.id]) || completedStages.includes(activeStep.id);
     return (
     <div className="workspace-chat relative rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm xl:p-6">
@@ -1752,9 +1742,9 @@ const handleSend = async (suggestedQuestion?: string) => {
                 }, 0);
               }} />}
               {message.text && !message.analysis && (
-                <p className="mt-2 whitespace-pre-line">
-                  {formatMessage(geoChat?.time === message.createdAt && geo.result?.question === geoChat.question ? geo.result.reply : isAssistant && message.imageUrl ? localize(message.text) : message.text)}
-                </p>
+                <div className="mt-2">
+                  <ChatMessageContent text={geoChat?.time === message.createdAt && geo.result?.question === geoChat.question ? geo.result.reply : isAssistant && message.imageUrl ? localize(message.text) : message.text} />
+                </div>
               )}
               {message.imageUrl && (
                 <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -1779,7 +1769,9 @@ const handleSend = async (suggestedQuestion?: string) => {
       </div>
       <div className="workspace-chat-footer">
       {hasLoadedChatLogs && displayedMessages.length > 0 && guide && <div className="mt-2">
-        <button type="button" className="inline-flex min-h-11 items-center rounded-full border border-slate-200 px-3 text-xs font-medium text-slate-600" aria-expanded={expandedStarterScope === chatScope} aria-controls="workspace-starter-prompts" disabled={isSending || isLoadingAlternatives || isStageLocked} onClick={() => setExpandedStarterScope(current => current === chatScope ? null : chatScope)}>{t("workspace.starterPrompts")}</button>
+        <button type="button" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-200 text-slate-600" aria-label={t("workspace.starterPrompts")} title={t("workspace.starterPrompts")} aria-expanded={expandedStarterScope === chatScope} aria-controls="workspace-starter-prompts" disabled={isSending || isLoadingAlternatives || isStageLocked} onClick={() => setExpandedStarterScope(current => current === chatScope ? null : chatScope)}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.7-1.5 1.6-1.5 3.5h-4c0-1.9-.6-2.8-1.5-3.5Z" /></svg>
+        </button>
         {expandedStarterScope === chatScope && <div id="workspace-starter-prompts" className="max-h-36 overflow-y-auto overscroll-contain">
           <StageChatEmptyState guide={guide} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} />
         </div>}
