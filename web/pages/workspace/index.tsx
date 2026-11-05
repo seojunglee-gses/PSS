@@ -1782,7 +1782,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         <div className="flex items-center gap-2">
         {activeStep.id === "data" && <SourceSelector selected={selectedSources} onChange={setSelectedSources} disabled={isSending || isStageLocked} />}
         <input
-          className="min-w-0 flex-1 rounded-full border border-slate-200 px-4 py-2 text-sm focus:border-[var(--primary)] focus:outline-none disabled:bg-slate-100"
+          className="min-w-0 flex-1 rounded-full border border-slate-200 px-4 py-2 text-base focus:border-[var(--primary)] focus:outline-none disabled:bg-slate-100"
           placeholder={t("workspace.promptPlaceholder")}
           value={inputValue}
           onChange={(event) => setInputValue(event.target.value)}

@@ -1,7 +1,7 @@
 import { Children, useCallback, useEffect, useId, useRef } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
 import { useI18n } from "../lib/i18n";
-import { constrainPanelRatio, DEFAULT_PANEL_RATIO, PANEL_DIVIDER_WIDTH, panelRatioBounds, workspaceLayoutMode } from "../lib/workspace-layout";
+import { constrainPanelRatio, DEFAULT_PANEL_RATIO, PANEL_DIVIDER_WIDTH, panelRatioBounds, workspaceLayoutMode, workspaceViewportMetrics } from "../lib/workspace-layout";
 import type { WorkspacePanelView } from "../lib/workspace-layout";
 
 export default function WorkspacePanels({ children, ratio, onRatioChange, view, onViewChange }: {
@@ -51,7 +51,7 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
     let keyboardOpen = false;
     const measure = () => {
       frame = 0;
-      const height = viewport?.height ?? window.innerHeight;
+      const {height, top} = workspaceViewportMetrics(viewport, window.innerHeight);
       const width = window.innerWidth;
       const editable = shell.contains(document.activeElement) && document.activeElement?.matches("input, textarea, [contenteditable='plaintext-only'], [contenteditable='true']");
       // Keep physical orientation stable when Android resizes its layout viewport for the keyboard.
@@ -70,9 +70,9 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
       node.dataset.layout = mode;
       shell.dataset.chatView = String(mode === "toggle" && node.dataset.view === "chat");
       shell.dataset.keyboardOpen = String(keyboardOpen);
-      // Fixed shell uses visual, not layout, viewport bounds; iPad Safari may pan offsetTop.
+      // Keep keyboard bounds responsive without treating Safari zoom as a smaller layout.
       shell.style.setProperty("--workspace-visible-height", `${height}px`);
-      shell.style.setProperty("--workspace-visible-top", `${viewport?.offsetTop ?? 0}px`);
+      shell.style.setProperty("--workspace-visible-top", `${top}px`);
       applyRatio(ratioRef.current);
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
