@@ -52,6 +52,7 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
     const measure = () => {
       frame = 0;
       const {height, top} = workspaceViewportMetrics(viewport, window.innerHeight);
+      if (document.visibilityState === "hidden" || !Number.isFinite(height) || height <= 0) return;
       const width = window.innerWidth;
       const editable = shell.contains(document.activeElement) && document.activeElement?.matches("input, textarea, [contenteditable='plaintext-only'], [contenteditable='true']");
       // Keep physical orientation stable when Android resizes its layout viewport for the keyboard.
@@ -60,7 +61,8 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
         baselineHeight = Math.max(window.innerHeight, previousWidth);
       }
       if (!editable && !keyboardOpen) baselineHeight = Math.max(window.innerHeight, height);
-      const nextKeyboardOpen = Boolean((editable || keyboardOpen) && baselineHeight - height > 120 && (window.matchMedia("(any-pointer: coarse)").matches || window.innerHeight - height > 120));
+      // A stale viewport reading after blur/navigation must not latch keyboard mode.
+      const nextKeyboardOpen = Boolean(editable && baselineHeight - height > 120 && (window.matchMedia("(any-pointer: coarse)").matches || window.innerHeight - height > 120));
       if (rotated && keyboardOpen) landscape = width > previousWidth;
       else if (!keyboardOpen && !nextKeyboardOpen) landscape = window.matchMedia("(orientation: landscape)").matches;
       previousWidth = width;
@@ -70,9 +72,15 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
       node.dataset.layout = mode;
       shell.dataset.chatView = String(mode === "toggle" && node.dataset.view === "chat");
       shell.dataset.keyboardOpen = String(keyboardOpen);
-      // Keep keyboard bounds responsive without treating Safari zoom as a smaller layout.
-      shell.style.setProperty("--workspace-visible-height", `${height}px`);
-      shell.style.setProperty("--workspace-visible-top", `${top}px`);
+      // Safari may report a transient viewport during drawer/route/browser-bar
+      // transitions. Outside keyboard use, let CSS 100dvh follow the screen.
+      if (keyboardOpen) {
+        shell.style.setProperty("--workspace-visible-height", `${height}px`);
+        shell.style.setProperty("--workspace-visible-top", `${top}px`);
+      } else {
+        shell.style.removeProperty("--workspace-visible-height");
+        shell.style.removeProperty("--workspace-visible-top");
+      }
       applyRatio(ratioRef.current);
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
@@ -84,6 +92,9 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
     resize.observe(node);
     window.addEventListener("resize", schedule);
     window.addEventListener("orientationchange", schedule);
+    window.addEventListener("pageshow", schedule);
+    window.addEventListener("focus", schedule);
+    document.addEventListener("visibilitychange", schedule);
     viewport?.addEventListener("resize", schedule);
     viewport?.addEventListener("scroll", schedule);
     shell.addEventListener("focusin", focus);
@@ -94,10 +105,16 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
       resize.disconnect();
       window.removeEventListener("resize", schedule);
       window.removeEventListener("orientationchange", schedule);
+      window.removeEventListener("pageshow", schedule);
+      window.removeEventListener("focus", schedule);
+      document.removeEventListener("visibilitychange", schedule);
       viewport?.removeEventListener("resize", schedule);
       viewport?.removeEventListener("scroll", schedule);
       shell.removeEventListener("focusin", focus);
       shell.removeEventListener("focusout", schedule);
+      shell.style.removeProperty("--workspace-visible-height");
+      shell.style.removeProperty("--workspace-visible-top");
+      delete shell.dataset.keyboardOpen;
     };
   }, [applyRatio]);
 
