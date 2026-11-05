@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require=createRequire(import.meta.url);
-const {constrainPanelRatio,panelRatioBounds,workspaceLayoutMode,DEFAULT_PANEL_RATIO,PANEL_DIVIDER_WIDTH}=require(`${process.env.PSS_TEST_BUILD}/lib/workspace-layout.js`);
+const {constrainPanelRatio,panelRatioBounds,workspaceLayoutMode,DEFAULT_PANEL_RATIO,PANEL_DIVIDER_WIDTH,workspaceViewportMetrics}=require(`${process.env.PSS_TEST_BUILD}/lib/workspace-layout.js`);
 test('tablet portrait toggles while landscape and sufficiently wide desktop split',()=>{
   assert.equal(workspaceLayoutMode(736,768,false,false),'toggle');
   assert.equal(workspaceLayoutMode(788,820,false,false),'toggle');
@@ -29,4 +29,12 @@ test('a narrow landscape preserves the requested ratio preference without collap
   assert.ok(constrainPanelRatio(desired,640)<desired);
   assert.equal(constrainPanelRatio(desired,1200),desired);
   const b=panelRatioBounds(640);assert.ok(b.min<b.max);
+});
+
+test('keyboard dismissal restores workspace height even when Safari retains a page zoom',()=>{
+ assert.deepEqual(workspaceViewportMetrics({height:480,offsetTop:110,scale:1},1000),{height:480,top:110});
+ assert.deepEqual(workspaceViewportMetrics({height:384,offsetTop:150,scale:1.25},1000),{height:480,top:0});
+ assert.deepEqual(workspaceViewportMetrics({height:800,offsetTop:80,scale:1.25},1000),{height:1000,top:0});
+ assert.deepEqual(workspaceViewportMetrics({height:1000,offsetTop:0,scale:1},1000),{height:1000,top:0});
+ assert.deepEqual(workspaceViewportMetrics(null,1000),{height:1000,top:0});
 });

@@ -119,10 +119,13 @@ html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overs
 .workspace-divider { display: none; position: relative; align-items: center; justify-content: center; min-width: 0; }
 .workspace-divider::before { content: ""; position: absolute; top: 0; bottom: 0; width: 1px; background: #cbd5e1; pointer-events: none; }
 .workspace-panels[data-layout="split"] .workspace-divider { display: flex; }
-.workspace-resize-handle { position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 56px; flex-shrink: 0; border: 1px solid #94a3b8; border-radius: 12px; background: #f1f5f9; color: #334155; cursor: col-resize; touch-action: none; user-select: none; }
+.workspace-resize-handle { position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 48px; flex-shrink: 0; color: #334155; cursor: col-resize; touch-action: none; user-select: none; }
+.workspace-resize-handle::before { content: ""; position: absolute; width: 28px; height: 34px; border: 1px solid #94a3b8; border-radius: 8px; background: #f1f5f9; }
+.workspace-resize-handle svg { position: relative; width: 20px; height: 20px; pointer-events: none; }
 .workspace-resize-handle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.workspace-panels[data-resizing="true"] .workspace-resize-handle { color: white; background: var(--primary); }
-@media (hover: hover) and (pointer: fine) { .workspace-resize-handle:hover { border-color: var(--primary); color: var(--primary); } }
+.workspace-panels[data-resizing="true"] .workspace-resize-handle { color: white; }
+.workspace-panels[data-resizing="true"] .workspace-resize-handle::before { background: var(--primary); border-color: var(--primary); }
+@media (hover: hover) and (pointer: fine) { .workspace-resize-handle:hover { color: var(--primary); } .workspace-resize-handle:hover::before { border-color: var(--primary); } }
 .workspace-panels[data-resizing="true"] { user-select: none; cursor: col-resize; }
 .workspace-chat { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; overflow: hidden; container: workspace-chat / size; }
 .workspace-chat-header { flex-wrap: wrap; flex-shrink: 0; align-items: flex-start; gap: 8px; }

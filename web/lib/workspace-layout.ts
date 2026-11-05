@@ -16,3 +16,10 @@ export function constrainPanelRatio(ratio: number, width: number) {
   const value = Number.isFinite(ratio) ? ratio : DEFAULT_PANEL_RATIO;
   return min <= max ? Math.min(max, Math.max(min, value)) : DEFAULT_PANEL_RATIO;
 }
+
+// visualViewport dimensions shrink during browser zoom as well as keyboard use.
+// Only the keyboard should resize the workspace's layout in CSS pixels.
+export function workspaceViewportMetrics(viewport: {height:number;offsetTop:number;scale:number} | null, fallbackHeight:number) {
+  const scale = viewport && Number.isFinite(viewport.scale) && viewport.scale > 0 ? viewport.scale : 1;
+  return { height: viewport ? viewport.height * scale : fallbackHeight, top: viewport && Math.abs(scale - 1) < 0.01 ? viewport.offsetTop : 0 };
+}
