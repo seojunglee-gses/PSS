@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { adminDb, verifyUserRequest } from "../../../lib/firebaseAdmin";
+import {pruneDeletedCaseSources} from '../../../lib/research/case-sources-server';
 import {
   AccessError,
   listProjects,
@@ -42,6 +43,9 @@ export default async function handler(
     if (!req.body || typeof req.body !== "object")
       throw new AccessError(400, "잘못된 요청입니다.");
     await mutateProject(adminDb(), user, req.body);
+    if(req.body.action==='update'&&Array.isArray(req.body.project?.workspaceContent?.data?.cases)){
+      try{await pruneDeletedCaseSources(req.body.projectId);}catch{console.error('Case source cleanup pending',{projectId:req.body.projectId});}
+    }
     const project = req.body.action === "update"
       ? { ...(await adminDb().doc(`ppssProjects/${req.body.projectId}`).get()).data(), projectId: req.body.projectId }
       : undefined;

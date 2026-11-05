@@ -32,6 +32,37 @@ async function savedLegacy(overrides={}){
  const d=await saved(owner,overrides);objects.delete(d.webStoragePath);
  const {webStoragePath,webCrs,...legacy}=d;await db.doc(collection+'/'+d.datasetId).set(legacy);return legacy;
 }
+test('case answer sources are admin-only, owner-isolated, revisioned, and inaccessible through direct client Firestore',async()=>{
+ await db.doc('ppssProjects/p1').update({workspaceContent:{data:{cases:[{id:'guildford',title:'Guildford Lane',label:'Guildford Lane',text:'Case body'}]}}});
+ const sourceApi=require(build+'/pages/api/projects/case-sources.js').default,store=require(build+'/lib/research/case-sources-server.js');
+ const original={db:adminModule.adminDb,bucket:adminModule.adminBucket,verify:adminModule.verifyUserRequest};adminModule.adminDb=()=>db;adminModule.adminBucket=()=>bucket;adminModule.verifyUserRequest=async token=>{if(token==='reader')return participant;if(token==='owner')return owner;throw Error('bad token')};
+ const invoke=async(body,token='owner',method='POST')=>{const result={};await sourceApi({method,body:{projectId:'p1',caseId:'guildford',...body},query:{projectId:'p1',caseId:'guildford'},headers:{authorization:token?'Bearer '+token:undefined}},{setHeader(){},status(n){result.status=n;return this},json(value){result.body=value;return this}});return result};
+ try{
+  assert.equal((await invoke({action:'add',title:'Report',text:'Private source'},'reader')).status,403);assert.equal((await invoke({},'reader','GET')).status,403);assert.equal((await invoke({},'', 'GET')).status,401);assert.equal(objects.size,0);
+  const added=await invoke({action:'add',title:'Evaluation',text:'Vehicles retain access.\n\nEvents caused noise complaints.'});assert.equal(added.status,200);
+  const list=(await invoke({},'owner','GET')).body.sources;assert.equal(list.length,1);assert.equal(list[0].passageCount,2);assert.equal(list[0].passagesPath,undefined);
+  const client=env.authenticatedContext(owner.uid,{email:owner.email}).firestore();await assertFails(getDoc(doc(client,`ppssProjects/p1/caseSources/${added.body.sourceId}`)));await assertFails(setDoc(doc(env.authenticatedContext(participant.uid,{email:participant.email}).firestore(),`ppssProjects/p1/caseSources/forged`),{text:'forged evidence'}));
+  const cases=[{id:'guildford',title:'Guildford Lane',label:'Guildford Lane',text:''}],snapshot=await store.readCasePassages('p1',cases);assert.equal(snapshot.length,2);assert.match(snapshot[1].text,/noise/);assert.equal((await store.readCasePassages('p2',cases)).length,0);
+  const replaced=await invoke({action:'replace',sourceId:list[0].sourceId,expectedRevisionId:list[0].revisionId,title:'Updated report',text:'Traffic remains restricted.'});assert.equal(replaced.status,200);assert.equal(replaced.body.sourceId,list[0].sourceId);assert.equal(objects.size,1);assert.match(snapshot[1].text,/noise/);
+  const current=(await invoke({},'owner','GET')).body.sources[0];assert.notEqual(current.revisionId,list[0].revisionId);assert.equal((await invoke({action:'delete',sourceId:current.sourceId,expectedRevisionId:list[0].revisionId})).status,409);assert.equal(objects.size,1);
+  assert.equal((await invoke({action:'delete',sourceId:current.sourceId,expectedRevisionId:current.revisionId})).status,200);assert.equal(objects.size,0);assert.equal((await invoke({},'owner','GET')).body.sources.length,0);
+ }finally{adminModule.adminDb=original.db;adminModule.adminBucket=original.bucket;adminModule.verifyUserRequest=original.verify}
+});
+test('case source commits recheck current administrators and case existence after text extraction',async()=>{
+ await db.doc('ppssProjects/p1').update({workspaceContent:{data:{cases:[{id:'one',title:'One',label:'One',text:''}]}}});
+ const store=require(build+'/lib/research/case-sources-server.js'),original={db:adminModule.adminDb,bucket:adminModule.adminBucket};adminModule.adminDb=()=>db;adminModule.adminBucket=()=>bucket;
+ try{afterSave=async()=>await db.doc('ppssProjects/p1').update({projectAdmin:'changed@example.org'});await assert.rejects(store.mutateCaseSource('p1','one',owner,{action:'add',title:'Report',text:'Source text.'}),e=>e.status===403);assert.equal(objects.size,0);assert.equal((await db.collection('ppssProjects/p1/caseSources').get()).empty,true);}
+ finally{adminModule.adminDb=original.db;adminModule.adminBucket=original.bucket}
+});
+test('uploaded case PDF retains original bytes and page provenance; deleting its case cleans source files',async()=>{
+ await db.doc('ppssProjects/p1').update({workspaceContent:{data:{cases:[{id:'pdf-case',title:'PDF case',label:'PDF case',text:''}]}}});
+ let pdf='%PDF-1.4\n';const offsets=[0],stream='BT /F1 12 Tf 72 720 Td (Delivery vehicles retain restricted access.) Tj ET';const parts=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`];for(let i=0;i<parts.length;i++){offsets.push(pdf.length);pdf+=`${i+1} 0 obj\n${parts[i]}\nendobj\n`;}const xref=pdf.length;pdf+=`xref\n0 6\n0000000000 65535 f \n${offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+ const bytes=Buffer.from(pdf),uploaded='projects/p1/case-sources/uploaded-pdf';objects.set(uploaded,bytes);const originalFile=bucket.file;bucket.file=path=>({...originalFile(path),getMetadata:async()=>[{size:bytes.length,contentType:'application/pdf',metadata:{uploadedBy:owner.uid,projectId:'p1',originalName:'report.pdf',expectedSize:String(bytes.length)}}]});
+ const store=require(build+'/lib/research/case-sources-server.js'),original={db:adminModule.adminDb,bucket:adminModule.adminBucket};adminModule.adminDb=()=>db;adminModule.adminBucket=()=>bucket;
+ try{await store.mutateCaseSource('p1','pdf-case',owner,{action:'add',title:'Original report',storagePath:uploaded});assert.deepEqual(objects.get(uploaded),bytes);const passages=await store.readCasePassages('p1',[{id:'pdf-case',title:'PDF case',label:'PDF case',text:''}]);assert.match(passages.map(p=>p.text).join(' '),/Delivery vehicles/);assert.equal(passages[0].page,1);assert.equal(passages[0].fileName,'report.pdf');
+ await db.doc('ppssProjects/p1').update({workspaceContent:{data:{cases:[]}}});await store.pruneDeletedCaseSources('p1');assert.equal(objects.size,0);assert.equal((await db.collection('ppssProjects/p1/caseSources').get()).empty,true);
+ }finally{adminModule.adminDb=original.db;adminModule.adminBucket=original.bucket}
+});
 test('inspection is manager-only, creates no storage or metadata, and saving a boundary activates it atomically',async()=>{
  const body=upload({action:'inspect',sourceCrs:undefined});
  await assert.rejects(server.mutateDataset(db,bucket,participant,body),e=>e.status===403);

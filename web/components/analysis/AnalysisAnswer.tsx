@@ -30,9 +30,9 @@ export default function AnalysisAnswer({ answer, onViewEvidence, additionalSourc
     </li>)}</ul>
   </section>;
   return <div className="mt-2 break-words text-sm">
-    {textSection(labels.summary, answer.summary)}
-    {findings(labels.caseFindings, answer.caseFindings)}
-    {textSection(labels.integrated, answer.integratedInterpretation || [answer.agreement, answer.differences].filter(Boolean).join("\n\n"))}
+    {answer.format==='direct'?<p className="whitespace-pre-line">{renderText(answer.summary)}</p>:textSection(labels.summary, answer.summary)}
+    {answer.format!=='direct'&&findings(labels.caseFindings, answer.caseFindings)}
+    {answer.format!=='direct'&&textSection(labels.integrated, answer.integratedInterpretation || [answer.agreement, answer.differences].filter(Boolean).join("\n\n"))}
     {answer.projectImplications.length > 0 && <section className="mt-3"><h4 className="font-semibold">{labels.implications}</h4><ul className="mt-1 list-disc space-y-1 pl-4">{answer.projectImplications.map((text, index) => <li key={index}>{renderText(text)}</li>)}</ul></section>}
     {answer.limitations && <p className="mt-3 whitespace-pre-line">{renderText(answer.limitations)}</p>}
     {(sources.length > 0 || additionalSources.length > 0) && <button type="button" onClick={() => onViewEvidence()} className="mt-3 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">{labels.view}</button>}

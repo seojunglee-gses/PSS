@@ -1,5 +1,6 @@
 import {facilitationInstructions,isPlanningConcern} from "../facilitation";
 import { MODELS } from "../llm/openai";
+import { wantsImplications } from "./routing";
 import { callLLM } from "../llm";
 import type { AnalysisRequest } from "./evidence";
 import type { AnalysisAnswer, EvidenceBundle, EvidenceCitation, Finding } from "./types";
@@ -7,7 +8,7 @@ import { answerNarrative, inlineSourceIds } from "./types";
 
 export function evidenceCitations(evidence: EvidenceBundle): EvidenceCitation[] {
   return [
-    ...evidence.cases.map((c) => ({ sourceId: c.sourceId, kind: "cases" as const, title: c.title, authors: [], year: null, openAlexId: null, doi: null, citationCount: null })),
+    ...evidence.cases.map((c) => ({ sourceId: c.sourceId, kind: "cases" as const, title: c.documentTitle?`${c.title} · ${c.documentTitle}${c.page?` · p.${c.page}`:''}`:c.title, authors: [], year: null, openAlexId: null, doi: null, citationCount: null })),
     ...evidence.papers.filter((p) => p.usedInAnswer).map((p) => ({ sourceId: p.sourceId, kind: "research" as const, title: p.title, authors: p.authors, year: p.year, openAlexId: p.openAlexId, doi: p.doi, citationCount: p.citationCount })),
   ];
 }
@@ -44,6 +45,7 @@ export function parseAnswer(text: string, evidence: EvidenceBundle): AnalysisAns
 }
 
 export async function answerFromEvidence(request: AnalysisRequest, evidence: EvidenceBundle): Promise<AnalysisAnswer> {
+  const directCases=request.selectedSources.includes('cases');
   if (!evidenceCitations(evidence).length && !request.spatialContext && !evidence.projectContext && !request.history?.length && !isPlanningConcern(request.question)) {
     return { summary: /[가-힣]/.test(request.question) ? "답변에 필요한 자료가 부족합니다. 다른 자료를 선택하거나 필요한 분석을 먼저 실행해주세요." : "There is not enough available evidence to answer this question. Refine the question or try another evidence source.", caseFindings: [], researchFindings: [], agreement: "", differences: "", integratedInterpretation: "", projectImplications: [], limitations: evidence.warnings.map((w) => w.message).join(" "), sources: [] };
   }
@@ -64,10 +66,12 @@ Return JSON only, with exactly this structure:
   const response = await callLLM({
     provider: request.provider,
     model: request.provider === "gemini" ? "gemini-2.5-flash" : request.provider === "deepseek" ? "deepseek-chat" : MODELS.chat,
-    systemText:systemText+"\n\n"+facilitationInstructions("data",request.question,[...(request.facilitationHistory??[]),...(request.history??[])])+" When the adaptive follow-up policy permits and it helps this conversation, finish integratedInterpretation with one natural, concrete next question OR a short offer of help grounded in the current project (for example, comparing the discussed strategies or checking a relevant spatial result). Do not add a separate next-steps heading, repeat generic offers, imply a tool was already run, or force a follow-up on every answer. If the policy is NONE, omit both follow-up questions and offers. Preserve the JSON schema and all evidence/citation constraints.",
+    systemText:systemText+"\n\n"+facilitationInstructions("data",request.question,[...(request.facilitationHistory??[]),...(request.history??[])])+" When the adaptive follow-up policy permits and it helps this conversation, finish integratedInterpretation with one natural, concrete next question OR a short offer of help grounded in the current project (for example, comparing the discussed strategies or checking a relevant spatial result). Do not add a separate next-steps heading, repeat generic offers, imply a tool was already run, or force a follow-up on every answer. If the policy is NONE, omit both follow-up questions and offers. Preserve the JSON schema and all evidence/citation constraints."+(directCases?`\nFor this case-study question, put the complete DIRECT answer in summary, grouped only by the user's subquestions (for example, vehicle access and adverse effects). Do not use the fixed Summary / Case lessons / Integrated interpretation template. Use short plain-text topical labels only when useful, without Markdown headings or bold markers. Return caseFindings=[], integratedInterpretation="", agreement="", differences="" to avoid duplicate chat sections. Prefer the administrator answer passages (documentId present), then saved case body. Every factual statement must cite the exact supplied C: passage or R: paper. C: codes are response-local: the same code in history may refer to another document revision. Re-ground historical claims in the current passage text, documentId, revisionId and passageId; a matching code alone does not verify a historical claim. Do not say a fact is unavailable when a supplied passage answers it, even if the wording differs. General research cannot establish the actual traffic rules, current operating status or observed incidents of a particular case; distinguish case-specific observations from general research and conditional interpretation. Absence of a reported incident does not establish that no adverse effects occurred; distinguish unreported or unmeasured outcomes from a confirmed absence. State only the genuinely missing part briefly. Project implications are ${wantsImplications(request.question)?'allowed because the user requested application/comparison/lessons; keep them brief':'NOT requested: projectImplications MUST be [], and do not add an application/advice section inside summary'}.`:''),
     userText: JSON.stringify({ question: request.question, history: request.history ?? [], projectMaterial: evidence.projectContext, spatialContext: request.spatialContext, projectContext: request.projectContext, previousStageSummaries: request.previousSummaries ?? {}, cases: evidence.cases, papers: evidence.papers.filter((p) => p.usedInAnswer), retrievalWarnings: evidence.warnings }),
   });
-  return parseAnswer(response, evidence);
+  const answer=parseAnswer(response,evidence);
+  if(directCases){answer.format='direct';if(!wantsImplications(request.question))answer.projectImplications=[];}
+  return answer;
 }
 
 // Plain text preserves compatibility with existing stage summaries and planning prompts.

@@ -48,5 +48,5 @@ export async function loadProjectContext(req: NextApiRequest, stage: string, inc
   const stageHistory=Array.isArray(savedDialogue?.data()?.logs)?savedDialogue!.data()!.logs:[];
 
   return { projectId, user, project, currentMaterial, previousSummaries, stageHistory,
-    cases: (Array.isArray(content?.data?.cases) ? content.data.cases : []).filter((c) => c && typeof c.id === "string" && typeof c.text === "string").map((c) => ({ id: c.id, label: c.label, title: c.title, text: plain(c.text) })) };
+    cases: (Array.isArray(content?.data?.cases) ? content.data.cases : []).filter((c) => c && typeof c.id === "string" && typeof c.text === "string").map((c) => ({ id: c.id, label: c.label, title: c.title, text: plain(c.text), ...(Array.isArray(c.aliases)?{aliases:c.aliases.filter((a):a is string=>typeof a==='string').slice(0,20)}:{}) })) };
 }

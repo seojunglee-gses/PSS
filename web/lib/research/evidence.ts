@@ -3,7 +3,8 @@ import { canonicalBuildingContext } from "../spatial/building-use-server";
 import type { SpatialResult } from "../spatial/types";
 import { searchOpenAlex } from "./openalex";
 import { SOURCE_OPTIONS } from "./types";
-import { resolveSources, sourceRoutingQuestion } from "./routing";
+import { resolveSources, sourceRoutingQuestion,namedCases,wantsImplications } from "./routing";
+import { retrieveCasePassages } from "./case-retrieval";
 import { conversationHistory } from "../chat-history";
 import type { ConversationMessage } from "../chat-history";
 import type { CaseEvidence, CaseMaterial, EvidenceBundle, EvidenceSource } from "./types";
@@ -19,6 +20,7 @@ export type AnalysisRequest = {
   projectContext: string;
   previousSummaries?: Record<string, unknown>;
   provider: "openai" | "gemini" | "deepseek";
+  casePassages?: CaseEvidence[];
 };
 
 export function parseAnalysisRequest(body: unknown): AnalysisRequest {
@@ -69,13 +71,27 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
     else evidence.warnings.push({ source: "project", message: "이 사업에 등록된 자료가 없습니다." });
   }
   if (request.selectedSources.includes("spatial") && !request.spatialContext) evidence.warnings.push({ source: "spatial", message: "공간 분석 결과가 없습니다. 공간 분석에서 질문에 필요한 분석을 먼저 실행해주세요." });
+  let researchQuery=request.searchQuestion ?? request.question;
+  let needsResearch=request.selectedSources.includes('research');
+  const focused=namedCases(request.question,request.cases,request.history);
+  const caseFactsOnly=request.casePassages!==undefined&&focused.length>0&&!wantsImplications(request.question)&&!/논문|연구|학술|일반|\b(?:research|stud(?:y|ies)|literature)\b/i.test(request.question);
   if (request.selectedSources.includes("cases")) {
-    evidence.cases = selectCases(request.searchQuestion ?? request.question, request.cases);
+    evidence.cases = selectCases(request.searchQuestion ?? request.question, focused.length?request.cases.filter(item=>focused.some(c=>c.id===item.id)):request.cases);
+    if(request.casePassages!==undefined&&(request.casePassages.length>0||namedCases(request.question,request.cases,request.history).length>0)){
+      const selected=await retrieveCasePassages(request,request.casePassages,evidence.cases);evidence.cases=selected.cases;
+      needsResearch=!!selected.researchQuery;researchQuery=selected.researchQuery;
+      if(needsResearch&&!request.selectedSources.includes('research'))request.selectedSources.push('research');
+      if(needsResearch&&caseFactsOnly&&!focused.some(c=>researchQuery.toLowerCase().includes(c.title.toLowerCase())))researchQuery=`${focused.map(c=>c.title).join(' ')} ${researchQuery}`.slice(0,350);
+    }
     if (!evidence.cases.length) evidence.warnings.push({ source: "cases", message: "No substantive case-study materials are available for this project." });
   }
-  if (request.selectedSources.includes("research")) {
+  if (needsResearch) {
     try {
-      evidence.papers = await searchOpenAlex(request.searchQuestion ?? request.question, request.provider, request.projectContext);
+      evidence.papers = await searchOpenAlex(researchQuery, request.provider, request.projectContext);
+      if(caseFactsOnly){
+        const normalized=(value:string)=>value.toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+        evidence.papers=evidence.papers.filter(p=>focused.some(c=>[c.title,...(c.aliases??[])].some(name=>normalized(name).length>=4&&normalized(`${p.title} ${p.abstract??''}`).includes(normalized(name)))));
+      }
       if (!evidence.papers.length) evidence.warnings.push({ source: "research", message: "No relevant research papers were found. Try a more specific question." });
       else if (!evidence.papers.some((paper) => paper.abstract)) evidence.warnings.push({ source: "research", message: "The retrieved papers have no available abstracts; research findings cannot be inferred from titles alone." });
     } catch (error) {

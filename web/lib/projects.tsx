@@ -8,10 +8,12 @@ export type CaseStudyContent = {
   title: string;
   text: string;
   imageUrl: string;
+  aliases?: string[];
+  imageCaptions?: string[];
 };
 
 export type StageWorkspaceContent = {
-  problem: { title: string; text: string; imageUrl: string };
+  problem: { title: string; text: string; imageUrl: string; imageCaptions?: string[] };
   data: { title: string; text: string; imageUrl: string; cases: CaseStudyContent[] };
   alternatives: { text: string; imageUrl: string };
   evaluation: { text: string; imageUrl: string };
@@ -171,9 +173,10 @@ const normalizeProject = (
         return { text: value, imageUrl: "" };
       }
       if (value && typeof value === "object") {
-        const stage = value as { text?: string; imageUrl?: string };
+        const stage = value as { text?: string; imageUrl?: string; imageCaptions?:unknown };
         return {
           text: typeof stage.text === "string" ? stage.text : fallback.text,
+          ...(Array.isArray(stage.imageCaptions)?{imageCaptions:stage.imageCaptions.map(value=>typeof value==='string'?value.slice(0,240):'')}:{}),
           imageUrl:
             typeof stage.imageUrl === "string" ? stage.imageUrl : fallback.imageUrl,
         };
@@ -216,6 +219,8 @@ const normalizeProject = (
                   title:
                     typeof value.title === "string" ? value.title : fallback.title,
                   text: typeof value.text === "string" ? value.text : fallback.text,
+                  ...(Array.isArray(value.aliases) ? { aliases: value.aliases.filter((alias): alias is string => typeof alias === "string").slice(0,20) } : {}),
+                  ...(Array.isArray(value.imageCaptions)?{imageCaptions:value.imageCaptions.map(value=>typeof value==='string'?value.slice(0,240):'')}:{}),
                   imageUrl:
                     typeof value.imageUrl === "string"
                       ? value.imageUrl

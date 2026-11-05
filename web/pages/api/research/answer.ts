@@ -5,6 +5,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { parseAnalysisRequest, retrieveEvidence } from "../../../lib/research/evidence";
 import { answerFromEvidence, answerText } from "../../../lib/research/answer";
 import { compactEvidence } from "../../../lib/research/types";
+import { namedCases,resolveSources,sourceRoutingQuestion } from "../../../lib/research/routing";
+import { readCasePassages } from "../../../lib/research/case-sources-server";
 
 export const config = { api: { bodyParser: { sizeLimit: "128kb" } } };
 export const maxDuration = 60;
@@ -19,6 +21,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     request.projectContext = context.currentMaterial;
     request.previousSummaries = context.previousSummaries;
     request.cases = context.cases;
+    if(!Array.isArray(req.body.selectedSources)||!req.body.selectedSources.length)request.selectedSources=resolveSources(sourceRoutingQuestion(request.question,request.history??[]),[],context.cases,request.history);
+    if(request.selectedSources.includes('cases')){
+      const focused=namedCases(request.question,context.cases,request.history);
+      request.casePassages=await readCasePassages(context.projectId,focused.length?focused:context.cases);
+    }
     request.facilitationHistory=policyHistory(context.stageHistory);
   } catch (error) { res.status(error instanceof AccessError ? error.status : 503).json({ error: error instanceof AccessError ? error.message : "사업 자료를 불러오지 못했습니다." }); return; }
   // Retrieve on the server, not from client-provided paper claims or URLs.

@@ -4,7 +4,7 @@ import { validProjectId } from "./membership/server";
 import type { NextApiRequest } from "next";
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-export async function prepareStorageUpload(req: NextApiRequest, uid: string, prefix: string, folder?: "background-images" | "case-images" | "site-images") {
+export async function prepareStorageUpload(req: NextApiRequest, uid: string, prefix: string, folder?: "background-images" | "case-images" | "site-images" | "case-sources") {
   const projectId = validProjectId(req.body.projectId);
   const { name, type, size } = req.body;
   if (typeof name !== "string" || !name.trim() || name.length > 255 || typeof type !== "string" || type.length > 150 || !Number.isSafeInteger(size) || size <= 0 || size > MAX_UPLOAD_BYTES) throw new Error("파일을 확인해주세요. 파일당 최대 20MB까지 올릴 수 있습니다.");
@@ -19,7 +19,7 @@ export async function prepareStorageUpload(req: NextApiRequest, uid: string, pre
   }
   return { uploadUrl, storagePath };
 }
-export async function readStorageUpload(input: { storagePath?: string }, projectId: string, uid: string, prefix: string, folder?: "background-images" | "case-images" | "site-images") {
+export async function readStorageUpload(input: { storagePath?: string }, projectId: string, uid: string, prefix: string, folder?: "background-images" | "case-images" | "site-images" | "case-sources") {
   validProjectId(projectId);
   if (typeof input.storagePath !== "string" || !input.storagePath.startsWith(`${prefix}/${projectId}/${folder ? `${folder}/` : ""}`) || input.storagePath.split("/").length !== prefix.split("/").length + 2 + (folder ? 1 : 0) || input.storagePath.includes("..")) throw new Error("업로드한 파일 경로를 확인해주세요.");
   const file = adminBucket().file(input.storagePath);
