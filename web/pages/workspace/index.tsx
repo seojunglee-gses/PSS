@@ -2100,12 +2100,12 @@ const handleSend = async (suggestedQuestion?: string) => {
                         {canEditContent && editingStageId === "data" && editingCaseId === activeCase.id
                           ? <input aria-label={t("cases.title")} className="w-full rounded-lg border p-2 text-base font-semibold" disabled={isSavingContent} value={activeCase.title} onChange={(event) => saveDataCaseDraft(activeCase.id, { title: event.target.value, label: event.target.value })} />
                           : <h4 className="whitespace-pre-wrap text-base font-semibold text-slate-800">{localizeDefaultContent(locale, activeCase.title)}</h4>}
-                        <ProjectImageGallery key={activeCase.id} purpose="case" projectId={projectId} value={activeCase.imageUrl}
+                        <ProjectImageGallery key={`${projectId}:case-gallery:${activeCase.id}`} purpose="case" projectId={projectId} value={activeCase.imageUrl}
                           captions={activeCase.imageCaptions??[]} onCaptionsChange={imageCaptions=>saveDataCaseDraft(activeCase.id,{imageCaptions})}
                           editable={canEditContent && editingStageId === "data" && editingCaseId === activeCase.id && !isSavingContent} onBusyChange={setImageUploading}
                           onChange={(imageUrl) => saveDataCaseDraft(activeCase.id, { imageUrl })} />
                         {canEditContent && editingStageId === "data" && editingCaseId === activeCase.id
-                          ? <ContentEditor key={activeCase.id} ref={caseEditor} disabled={isSavingContent} label={t("cases.body")} value={activeCase.text} onChange={(text) => saveDataCaseDraft(activeCase.id, { text })} />
+                          ? <ContentEditor key={`${projectId}:case-editor:${activeCase.id}`} ref={caseEditor} disabled={isSavingContent} label={t("cases.body")} value={activeCase.text} onChange={(text) => saveDataCaseDraft(activeCase.id, { text })} />
                           : <ContentText value={localizeDefaultContent(locale, activeCase.text)} />}
                         {canEditContent && editingStageId === 'data' && editingCaseId === activeCase.id && <>
                           <label className="mt-4 grid gap-1 text-sm">{t('caseSource.aliases')}<input key={activeCase.id} className="min-h-11 rounded-lg border p-2" defaultValue={(activeCase.aliases??[]).join(', ')} disabled={isSavingContent} onBlur={event=>saveDataCaseDraft(activeCase.id,{aliases:event.target.value.split(',').map(value=>value.trim()).filter(Boolean).slice(0,20)})}/></label>
