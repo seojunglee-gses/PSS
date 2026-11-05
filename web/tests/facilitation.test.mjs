@@ -10,12 +10,12 @@ test('A: simple facts and direct-only requests do not invite a planning survey',
  for(const q of ['면적이 얼마야?','타워는 어디야?','두 시설까지 몇 미터야?','What is the distance?','답변만 해주세요','Just answer the question.','여기까지만 할게요','그만할게요','요약만 해주세요','No, thanks','네','감사합니다','OK' ])assert.equal(followUpPolicy(q).mode,'none',q);
 });
 test('B: vague concerns retain a clarification option without forced categories or early solutions',()=>{
- assert.equal(followUpPolicy('우리 동네가 불편해요.').mode,'clarify');const prompt=facilitationInstructions('problem','우리 동네가 불편해요.');assert.match(prompt,/ONE/);assert.match(prompt,/without forcing predefined categories/);assert.match(prompt,/before proposing solutions/);
+ assert.equal(followUpPolicy('우리 동네가 불편해요.').mode,'clarify');const prompt=facilitationInstructions('problem','우리 동네가 불편해요.');assert.match(prompt,/ONE/);assert.match(prompt,/without forcing predefined categories/);assert.match(prompt,/without deciding the problem or solution/);
 });
 test('Problem Definition interprets before questioning and permits synthesis without a closing question',()=>{
  const history=[assistant('어느 장소에서 불편을 겪으셨나요?'),user('시장 앞 골목이요.')];
  const prompt=facilitationInstructions('problem','저녁에 퇴근할 때 자주 지나가요.',history);
- assert.match(prompt,/Adaptive follow-up policy: OPTIONAL/);assert.match(prompt,/2–4 short sentences/);assert.match(prompt,/Interpretation before questioning/);assert.match(prompt,/OPTIONAL and CLARIFY permit zero questions/);assert.match(prompt,/Never ask again for information/);assert.match(prompt,/would its answer materially change or refine/);assert.doesNotMatch(prompt,/end with exactly ONE/);
+ assert.match(prompt,/Adaptive follow-up policy: OPTIONAL/);assert.match(prompt,/1–3 short sentences/);assert.match(prompt,/Interpretation before questioning/);assert.match(prompt,/OPTIONAL and CLARIFY permit zero questions/);assert.match(prompt,/Never ask again for information/);assert.match(prompt,/would its answer materially change or refine/);assert.doesNotMatch(prompt,/end with exactly ONE/);
  assert.equal(followUpPolicy('저녁에 퇴근할 때 자주 지나가요.',history,'data').mode,'none');
  for(const q of ['답변만 해주세요','면적이 얼마야?','오늘은 여기까지만 할게요','감사합니다'])assert.equal(followUpPolicy(q,history,'problem').mode,'none',q);
  assert.equal(followUpPolicy('그 골목이 어두워요.',[user('앞으로 후속 질문은 하지 마세요.')],'problem').mode,'none');
