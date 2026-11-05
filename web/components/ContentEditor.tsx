@@ -23,25 +23,39 @@ function SectionInput({ section, onChange, index, disabled }: { disabled: boolea
     onPaste={(event) => { event.preventDefault(); document.execCommand("insertText", false, event.clipboardData.getData("text/plain")); update(); }} />;
 }
 export type ContentEditorHandle = { getValue: () => string };
+type EditorSection = TextSection & { id: number };
+function editorDraft(value: string) {
+  const sections = parseSections(value).map((section, id) => ({ ...section, id }));
+  return { value, sections, nextId: sections.length };
+}
 const ContentEditor = forwardRef<ContentEditorHandle, { value: string; onChange: (value: string) => void; label: string; disabled?: boolean }>(function ContentEditor({ value, onChange, label, disabled = false }, forwardedRef) {
   const { t } = useI18n();
   const root = useRef<HTMLFieldSetElement>(null);
-  const [draft, setDraft] = useState(() => ({ value, sections: parseSections(value) }));
-  if (draft.value !== value) setDraft({ value, sections: parseSections(value) });
+  const [draft, setDraft] = useState(() => editorDraft(value));
+  if (draft.value !== value) setDraft(editorDraft(value));
   const sections = draft.sections;
-  const emit = (next: TextSection[]) => {
+  const emit = (next: EditorSection[]) => {
     const formatted = serializeSections(next);
-    setDraft({ value: formatted, sections: next });
+    setDraft({ value: formatted, sections: next, nextId: Math.max(draft.nextId, ...next.map(section => section.id + 1)) });
     onChange(formatted);
   };
-  useImperativeHandle(forwardedRef, () => ({ getValue: () => {
+  const readSections = () => {
     const fields = root.current?.querySelectorAll<HTMLElement>('[role="textbox"]');
-    return serializeSections(sections.map((section, index) => ({ ...section, text: fields?.[index]
-      ? Array.from(fields[index].childNodes).map(editableText).join("").replace(/\n$/, "") : section.text })));
-  } }), [sections]);
+    return sections.map((section, index) => ({ ...section, text: fields?.[index]
+      ? Array.from(fields[index].childNodes).map(editableText).join("").replace(/\n$/, "") : section.text }));
+  };
+  useImperativeHandle(forwardedRef, () => ({ getValue: () => serializeSections(readSections()) }));
+  const move = (index: number, direction: number) => {
+    const target = index + direction;
+    if (disabled || target < 0 || target >= sections.length) return;
+    // Capture pending rich-text edits and keep each section's DOM identity as it moves.
+    const next = readSections();
+    [next[index], next[target]] = [next[target], next[index]];
+    emit(next);
+  };
   const update = (index: number, patch: Partial<TextSection>) => emit(sections.map((section, i) => i === index ? { ...section, ...patch } : section));
   return <fieldset disabled={disabled} ref={root} className="content-editor mt-4 w-full min-w-0 space-y-3 border-0 p-0" aria-label={label}>
-    {sections.map((section, index) => <div key={index} className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+    {sections.map((section, index) => <div key={section.id} className="rounded-xl border border-slate-200 bg-slate-50 p-2">
       <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label={t("editor.sectionFormat", { number: index + 1 })}>
         <select aria-label={t("editor.style")} value={section.kind} onChange={(event) => update(index, { kind: event.target.value as TextSection["kind"], size: event.target.value === "h2" ? 24 : event.target.value === "h3" ? 20 : 16 })}>
           <option value="p">{t("editor.body")}</option><option value="h2">{t("editor.heading")}</option><option value="h3">{t("editor.subheading")}</option>
@@ -51,11 +65,13 @@ const ContentEditor = forwardRef<ContentEditorHandle, { value: string; onChange:
         </select>
         <button type="button" aria-label={t("editor.bold")} className="font-bold" onPointerDown={(event) => event.preventDefault()}
           onClick={() => { document.execCommand("bold"); }}>{t("editor.bold")}</button>
+        <button type="button" disabled={disabled || index === 0} className="min-w-11 disabled:opacity-40" onClick={() => move(index, -1)}><span aria-hidden="true">↑ </span>{t("editor.moveUp")}</button>
+        <button type="button" disabled={disabled || index === sections.length - 1} className="min-w-11 disabled:opacity-40" onClick={() => move(index, 1)}><span aria-hidden="true">↓ </span>{t("editor.moveDown")}</button>
         {sections.length > 1 && <button type="button" onClick={() => emit(sections.filter((_, i) => i !== index))}>{t("editor.remove")}</button>}
       </div>
       <SectionInput section={section} index={index} disabled={disabled} onChange={(text) => update(index, { text })} />
     </div>)}
-    <button type="button" className="rounded-full border border-slate-200 px-4 py-2 text-sm" onClick={() => emit([...sections, { kind: "p", size: 16, text: "" }])}>{t("editor.add")}</button>
+    <button type="button" className="rounded-full border border-slate-200 px-4 py-2 text-sm" onClick={() => emit([...readSections(), { id: draft.nextId, kind: "p", size: 16, text: "" }])}>{t("editor.add")}</button>
   </fieldset>;
 });
 export default ContentEditor;
