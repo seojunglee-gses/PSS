@@ -274,6 +274,8 @@ function AuthorizedWorkspace() {
   const [compactHeader, setCompactHeader] = useState(true);
   const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
+  const [expandedStarterScope, setExpandedStarterScope] = useState<string | null>(null);
+  const composerInputRef = useRef<HTMLInputElement>(null);
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
   const [inspectedSpatial, setInspectedSpatial] = useState<SpatialResult | null>(null);
   const [inspectedResearchFindings, setInspectedResearchFindings] = useState<Finding[]>([]);
@@ -346,6 +348,7 @@ function AuthorizedWorkspace() {
     setInspectedSpatial(null);
     setHighlightedEvidence(null);
     setAnalysisView("cases");
+    setExpandedStarterScope(null);
     setErrorMessage(null);
   }, [projectId, userKey]);
 
@@ -358,6 +361,7 @@ function AuthorizedWorkspace() {
     const step = steps.find((s) => s.id === saved);
     if (step) {
       setActiveStep(step);
+      setExpandedStarterScope(null);
     }
   }, [activeStepStorageKey]);
 
@@ -1048,6 +1052,7 @@ const handleSend = async (suggestedQuestion?: string) => {
   setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextUserLogs }));
 
   setInputValue("");
+  setExpandedStarterScope(null);
 
   try {
     await persistChatLogs(stepId, nextUserLogs);
@@ -1615,8 +1620,13 @@ const handleSend = async (suggestedQuestion?: string) => {
 
   const renderChatPanel = () => {
     const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
-    const guide = stageChatGuide(activeStep.id, locale);
+    const guide = stageChatGuide(activeStep.id, locale, normalizedActiveRole);
     const displayedMessages = stepLogs;
+    const selectStarterPrompt = (prompt: string) => {
+      setInputValue(prompt);
+      setExpandedStarterScope(null);
+      composerInputRef.current?.focus({ preventScroll: true });
+    };
     const formatMessage = (text: string) =>
       text.split(/(\*\*[^*]+\*\*)/g).map((segment, segmentIndex) => {
         if (segment.startsWith("**") && segment.endsWith("**")) {
@@ -1710,7 +1720,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         {hasLoadedChatLogs && displayedMessages.length === 0 && guide && (
           <StageChatEmptyState guide={guide}
             disabled={isSending || isLoadingAlternatives || isStageLocked}
-            onSubmit={(question) => { void handleSend(question); }} />
+            onSelect={selectStarterPrompt} />
         )}
         {displayedMessages.map((message, index) => {
           const isAssistant = message.sender === "assistant";
@@ -1768,6 +1778,13 @@ const handleSend = async (suggestedQuestion?: string) => {
         <div ref={chatEndRef} />
       </div>
       <div className="workspace-chat-footer">
+      {hasLoadedChatLogs && displayedMessages.length > 0 && guide && <div className="mt-2">
+        <button type="button" className="inline-flex min-h-11 items-center rounded-full border border-slate-200 px-3 text-xs font-medium text-slate-600" aria-expanded={expandedStarterScope === chatScope} aria-controls="workspace-starter-prompts" disabled={isSending || isLoadingAlternatives || isStageLocked} onClick={() => setExpandedStarterScope(current => current === chatScope ? null : chatScope)}>{t("workspace.starterPrompts")}</button>
+        {expandedStarterScope === chatScope && <div id="workspace-starter-prompts" className="max-h-36 overflow-y-auto overscroll-contain">
+          <StageChatEmptyState guide={guide} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} />
+        </div>}
+      </div>}
+
       <div className="workspace-composer mt-4 bg-white">
         {activeStep.id === "data" && <div className="mb-2 flex flex-wrap items-center gap-2">
           {selectedSources.map((source) => <button key={source} type="button" disabled={isSending || isStageLocked}
@@ -1781,7 +1798,7 @@ const handleSend = async (suggestedQuestion?: string) => {
 
         <div className="flex items-center gap-2">
         {activeStep.id === "data" && <SourceSelector selected={selectedSources} onChange={setSelectedSources} disabled={isSending || isStageLocked} />}
-        <input
+        <input ref={composerInputRef}
           className="min-w-0 flex-1 rounded-full border border-slate-200 px-4 py-2 text-base focus:border-[var(--primary)] focus:outline-none disabled:bg-slate-100"
           placeholder={t("workspace.promptPlaceholder")}
           value={inputValue}
@@ -1885,6 +1902,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                     setDataDraft(activeProject?.workspaceContent.data ?? dataDraft);
                     setEditingStageId(null);
                   }
+                  setExpandedStarterScope(null);
                   setActiveStep(step);
                   if (step.id === "data") setAnalysisView("cases");
                 }}
