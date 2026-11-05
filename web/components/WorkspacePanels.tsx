@@ -11,10 +11,11 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
   const { t } = useI18n();
   const id = useId();
   const root = useRef<HTMLElement>(null);
+  const information = useRef<HTMLDivElement>(null);
+  const indicator = useRef<HTMLSpanElement>(null);
   const divider = useRef<HTMLDivElement>(null);
   const ratioRef = useRef(ratio);
-  const drag = useRef<{ id: number; x: number; moved: boolean } | null>(null);
-  const tap = useRef<{ time: number; x: number } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; initial: number; moved: boolean } | null>(null);
   const dragFrame = useRef(0);
   const panels = Children.toArray(children);
 
@@ -106,6 +107,24 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
     if (shell && node) shell.dataset.chatView = String(node.dataset.layout === "toggle" && view === "chat");
   }, [view]);
 
+  useEffect(() => {
+    const panel = information.current, thumb = indicator.current;
+    if (!panel || !thumb) return;
+    const update = () => {
+      const height = panel.clientHeight;
+      const thumbHeight = Math.min(height, Math.max(28, height * height / Math.max(height, panel.scrollHeight)));
+      const travel = Math.max(0, height - thumbHeight);
+      thumb.style.height = `${thumbHeight}px`;
+      thumb.style.transform = `translateY(${travel * panel.scrollTop / Math.max(1, panel.scrollHeight - height)}px)`;
+    };
+    const resize = new ResizeObserver(update);
+    resize.observe(panel);
+    for (const child of panel.children) resize.observe(child);
+    panel.addEventListener("scroll", update, { passive: true });
+    update();
+    return () => { resize.disconnect(); panel.removeEventListener("scroll", update); };
+  }, [children, view]);
+
   useEffect(() => () => cancelAnimationFrame(dragFrame.current), []);
   const commit = (value: number) => {
     ratioRef.current = applyRatio(value);
@@ -119,15 +138,7 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
     drag.current = null;
     if (root.current) delete root.current.dataset.resizing;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    commit(ratioRef.current);
-    if (event.type === "pointerup" && event.pointerType !== "mouse" && !current.moved) {
-      const previous = tap.current;
-      const now = performance.now();
-      if (previous && now - previous.time < 350 && Math.abs(event.clientX - previous.x) < 24) {
-        commit(DEFAULT_PANEL_RATIO);
-        tap.current = null;
-      } else tap.current = { time: now, x: event.clientX };
-    }
+    commit(event.type === "pointercancel" ? current.initial : ratioRef.current);
   };
   const keyResize = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowLeft", "ArrowRight", "Home"].includes(event.key)) return;
@@ -140,31 +151,39 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
       <button type="button" aria-pressed={view === "chat"} aria-controls={`${id}-chat`} onClick={() => onViewChange("chat")}>{t("workspace.chatView")}</button>
     </div>
     <div className="workspace-panel-body">
-      <div id={`${id}-information`} className="workspace-information" role="region" aria-label={t("workspace.informationView")}>{panels.slice(0, -1)}</div>
-      <div ref={divider} className="workspace-divider" role="separator" tabIndex={0} aria-orientation="vertical"
+      <div className="workspace-information-frame">
+        <div ref={information} id={`${id}-information`} className="workspace-information" role="region" tabIndex={0} aria-label={t("workspace.informationView")}>{panels.slice(0, -1)}</div>
+        <div className="workspace-scroll-indicator" aria-hidden="true"><span ref={indicator} /></div>
+      </div>
+      <div className="workspace-divider"><div ref={divider} className="workspace-resize-handle" role="separator" tabIndex={0} aria-orientation="vertical"
         aria-label={t("workspace.resizePanels")} aria-controls={`${id}-information ${id}-chat`}
         aria-valuemin={35} aria-valuemax={70} aria-valuenow={Math.round(ratio)} title={t("workspace.resizeHelp")}
-        onKeyDown={keyResize} onDoubleClick={() => commit(DEFAULT_PANEL_RATIO)}
+        onKeyDown={keyResize}
         onPointerDown={(event) => {
           if (!event.isPrimary || event.button !== 0) return;
           event.preventDefault();
           event.currentTarget.focus({ preventScroll: true });
           event.currentTarget.setPointerCapture(event.pointerId);
-          drag.current = { id: event.pointerId, x: event.clientX, moved: false };
-          if (root.current) root.current.dataset.resizing = "true";
+          drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, initial: ratioRef.current, moved: false };
         }}
         onPointerMove={(event) => {
           if (!drag.current || drag.current.id !== event.pointerId || !root.current) return;
-          if (Math.abs(event.clientX - drag.current.x) < 3 && !drag.current.moved) return;
-          drag.current.moved = true;
+          const dx = event.clientX - drag.current.x, dy = event.clientY - drag.current.y;
+          const threshold = event.pointerType === "mouse" ? 4 : 12;
+          if (!drag.current.moved) {
+            if (Math.abs(dy) >= threshold && Math.abs(dy) > Math.abs(dx)) { endDrag(event); return; }
+            if (Math.abs(dx) < threshold || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+            drag.current.moved = true;
+            root.current.dataset.resizing = "true";
+          }
           const bounds = root.current.getBoundingClientRect();
           const limits = panelRatioBounds(bounds.width);
-          ratioRef.current = Math.max(limits.min, Math.min(limits.max, (event.clientX - bounds.left - PANEL_DIVIDER_WIDTH / 2) / (bounds.width - PANEL_DIVIDER_WIDTH) * 100));
+          ratioRef.current = Math.max(limits.min, Math.min(limits.max, drag.current.initial + dx / (bounds.width - PANEL_DIVIDER_WIDTH) * 100));
           if (!dragFrame.current) dragFrame.current = requestAnimationFrame(() => { dragFrame.current = 0; applyRatio(ratioRef.current); });
         }}
         onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
-        <span aria-hidden="true" />
-      </div>
+        <svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m7 8-4 4 4 4m10-8 4 4-4 4M3 12h18M10 6v12m4-12v12" /></svg>
+      </div></div>
       <div id={`${id}-chat`} className="workspace-chat-slot" role="region" aria-label={t("workspace.chatView")}>{panels[panels.length - 1]}</div>
     </div>
   </section>;
