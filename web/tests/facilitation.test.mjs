@@ -65,7 +65,7 @@ test('workspace summary uses role-attributed dialogue, one existing model call a
  mock(t,admin,'adminDb',()=>({doc:()=>({get:async()=>({data:()=>({logs:[{sender:'user',text:'주민 쉼터를 원해요'},{sender:'assistant',text:'주차장은 어떨까요?'}]})})})}));
  mock(t,global,'fetch',async(url,options)=>{calls++;sent=JSON.parse(options.body);return Response.json({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({workspaceSummary:{stageSummaries:{problem:'참여자 관심: 주민 쉼터',data:'',alternatives:'',evaluation:'',report:''},overallSummary:'개인 초안'}})}]}]})});
  const res={setHeader(){},status(n){this.code=n;return this},json(body){this.body=body}};await load('pages/api/workspace-summary.js').default({method:'POST',body:{currentStage:'problem',workspaceInput:{problem:['unsafe unlabelled claim']}},headers:{}},res);
- assert.equal(res.code,200);assert.equal(calls,1);assert.equal(sent.model,'gpt-6.1-sol');assert.match(sent.input,/five short labeled sections/);assert.match(sent.input,/'?role'?/);assert.match(sent.input,/assistant/);assert.doesNotMatch(sent.input,/unsafe unlabelled claim/);assert.match(sent.input,/never attribute them to the participant/);
+ assert.equal(res.code,200);assert.equal(calls,1);assert.equal(sent.model,'gpt-6.1-sol');assert.match(sent.input,/participant-centered planning synthesis/);assert.match(sent.input,/not a mandatory five-section template/);assert.match(sent.input,/Problem Definition: emphasize problem framing/);assert.match(sent.input,/'?role'?/);assert.match(sent.input,/assistant/);assert.doesNotMatch(sent.input,/unsafe unlabelled claim/);assert.match(sent.input,/never attribute them to the participant/);
 });
 test('stage-end dialogue preserves early concerns, AI attribution and a bounded, explicitly incomplete scope',()=>{
  const {summaryDialogue}=load('lib/facilitation.js');const messages=[user('첫 관심: 쉼터'),assistant('AI 제안: 주차장'),...Array.from({length:45},(_,i)=>user(`경험 ${i}`))];const all=summaryDialogue(messages);assert.equal(all.messages[0].content,'첫 관심: 쉼터');assert.equal(all.messages[1].role,'assistant');assert.equal(all.truncated,false);const bounded=summaryDialogue([...messages,...messages]);assert.equal(bounded.truncated,true);assert.ok(bounded.messages.length<=60);assert.ok(bounded.messages.reduce((n,m)=>n+m.content.length,0)<=48000);
@@ -144,4 +144,38 @@ test('the reported resident-goals comparison reaches the model with a concrete c
  assert.match(sent.systemText,/A new observation followed only by a full stop/);
  assert.ok(sent.userText.includes(question));assert.match(sent.userText,/보행자가 차를 피해서/);assert.match(sent.userText,/의견수렴 결과는 등록되지 않았/);
  assert.match(sent.systemText,/Individual views are not community consensus/);
+});
+
+test('stage summaries use flexible themes, distinct stage focuses and evidence-aware attribution',()=>{
+ const {stageSummaryInstructions}=load('lib/facilitation.js');
+ assert.match(summaryAttributionRules,/participant-centered planning synthesis rather than a rigid conversation summary/);
+ assert.match(summaryAttributionRules,/Preserve relevant specific locations, experiences, preferences, priorities, corrections and disagreements/);
+ assert.match(summaryAttributionRules,/valuable planning inputs in their own right/);
+ assert.match(summaryAttributionRules,/Omit empty categories/);assert.match(summaryAttributionRules,/brief, natural attribution/);
+ assert.match(summaryAttributionRules,/This request does not itself run new searches/);
+ assert.match(summaryAttributionRules,/only when it materially affects a planning decision/);
+ assert.doesNotMatch(summaryAttributionRules,/with five short labeled sections|one or two concise sentences each/);
+ const focus=['problem','data','alternatives','evaluation','report'].map(stageSummaryInstructions);
+ assert.equal(new Set(focus).size,5);
+ for(const [index,pattern]of [/problem framing/,/changes in the initial understanding/,/design possibilities evolved/,/trade-offs/,/decision rationale/].entries())assert.match(focus[index],pattern);
+});
+test('all five summary stages retain the JSON contract and natural prose with optional participant perspective',async t=>{
+ const context=load('lib/project-context-server.js'),admin=load('lib/firebaseAdmin.js');let current;
+ const prior=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='summary-fixture';t.after(()=>prior===undefined?delete process.env.OPENAI_API_KEY:process.env.OPENAI_API_KEY=prior);
+ mock(t,context,'loadProjectContext',async()=>({projectId:'p',user:{uid:'u'},currentMaterial:'시장 옆 골목이 사업 대상지입니다. 통행 규정은 제공되지 않았습니다.',previousSummaries:{problem:'참여자는 퇴근길 휴식과 보행을 중요하게 봄'}}));
+ const dialogue=[{sender:'user',text:'시장 옆 골목에서 퇴근 후 쉬고 싶어요.'},{sender:'assistant',text:'공용 카페도 가능성이 될 수 있겠습니다.'},{sender:'user',text:'카페보다는 돈을 쓰지 않아도 머무는 공간을 원해요.'}];
+ mock(t,admin,'adminDb',()=>({doc:()=>({get:async()=>({data:()=>({logs:dialogue})})})}));
+ const paragraphs='시장 옆 골목에서 퇴근 후 비용 부담 없이 쉬는 기회를 중요하게 보았다. 카페 가능성을 논의했지만, 참여자는 소비하지 않아도 머물 수 있는 공간을 선호한다고 구체화했다.';
+ mock(t,global,'fetch',async(url,options)=>{current=JSON.parse(options.body);const input=JSON.parse(current.input.split('Input JSON: ')[1].split('\n\nReturn JSON')[0]);return Response.json({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({workspaceSummary:{stageSummaries:Object.fromEntries(['problem','data','alternatives','evaluation','report'].map(stage=>[stage,stage===input.currentStage?paragraphs:''])),overallSummary:paragraphs}})}]}]});});
+ for(const stage of ['problem','data','alternatives','evaluation','report']){
+  const res={status(n){this.code=n;return this},json(body){this.body=body}};
+  await load('pages/api/workspace-summary.js').default({method:'POST',body:{currentStage:stage,participantPerspective:'일반 시민'},headers:{}},res);
+  assert.equal(res.code,200);assert.equal(res.body.workspaceSummary.stageSummaries[stage],paragraphs);
+  assert.deepEqual(Object.keys(res.body.workspaceSummary.stageSummaries),['problem','data','alternatives','evaluation','report']);
+  assert.equal(current.model,'gpt-6.1-sol');assert.equal(current.text.format.type,'json_object');
+  assert.match(current.input,/"participantPerspective":"일반 시민"/);assert.match(current.input,/카페보다는 돈을 쓰지 않아도/);
+  assert.match(current.input,/never attribute them to the participant unless the participant explicitly adopted them/);
+  assert.match(current.input,/five stage keys are storage slots/);assert.match(current.input,/Leave the other stage strings empty/);
+  assert.match(current.input,/not stereotypes/);assert.match(current.input,/not independently revalidated evidence/);
+ }
 });
