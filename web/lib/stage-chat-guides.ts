@@ -389,3 +389,37 @@ export function stageChatGuide(stage: string, locale: Locale, role?: string | nu
   const stakeholder = normalizeRoleId(role);
   return { ...guide, suggestedQuestions: stakeholder && Object.prototype.hasOwnProperty.call(questions, stakeholder) ? questions[stakeholder] : questions.public };
 }
+
+export type DataSuggestionContext = "spatial" | "spatial-result" | "facilities" | "cases" | "research" | "project";
+// Data Analysis only: deterministic follow-ups for the material currently visible on the left.
+const dataFollowUps: Record<Locale, Record<DataSuggestionContext, readonly [readonly [string, string], readonly [string, string], readonly [string, string]]>> = {
+  ko: {
+    spatial: [["우리 지역 주요 시설", "우리 지역에는 어떤 주요 시설이 있어?"], ["개선할 장소 살펴보기", "개선이 필요한 장소를 찾으려면 어떤 자료부터 확인해야 해?"], ["비슷한 사업 사례", "비슷한 사업 사례를 보여줘."]],
+    "spatial-result": [["자료에서 보이는 특징", "여기서 어떤 특징이 보여?"], ["추가로 확인할 점", "이 공간 분석에서 추가로 확인할 점은 뭐야?"], ["우리 사업과 연결하기", "이 공간 분석이 우리 사업에 어떤 의미가 있어?"]],
+    facilities: [["시설 분포의 특징", "여기서 시설 분포에 어떤 특징이 보여?"], ["시설 부족 판단하기", "여기서 시설이 부족한지 판단하려면 무엇을 더 확인해야 해?"], ["우리 사업과 연결하기", "이 공간 분석이 우리 사업에 어떤 의미가 있어?"]],
+    cases: [["사례의 핵심 성과", "이 사례의 핵심 성과는 뭐야?"], ["우리 지역과 비교하기", "이 사례는 우리 지역과 어떤 점이 비슷해?"], ["우리 사업에 적용하기", "이 사례에서 우리 사업에 적용할 만한 점은 뭐야?"]],
+    research: [["연구의 주요 내용", "이 논문의 주요 내용은 뭐야?"], ["연구 근거 비교하기", "이 연구와 다른 관련 연구는 어떤 점에서 같거나 달라?"], ["우리 사업에 적용하기", "이 연구를 우리 사업에 적용할 때 무엇을 고려해야 해?"]],
+    project: [["자료의 핵심 내용", "이 자료에서 우리 사업과 관련된 핵심 내용은 뭐야?"], ["추가로 필요한 자료", "이 자료를 바탕으로 분석하려면 무엇을 더 확인해야 해?"], ["관련 사례 찾아보기", "이 자료와 관련된 비슷한 사업 사례를 보여줘."]],
+  },
+  en: {
+    spatial: [["Key local facilities", "What key facilities are in our area?"], ["Places to improve", "What information should we check first to identify places needing improvement?"], ["Similar projects", "Show me similar project cases."]],
+    "spatial-result": [["Patterns in this view", "What patterns do you see here?"], ["What to check next", "What else should we check in this spatial analysis?"], ["Meaning for our project", "What does this spatial analysis mean for our project?"]],
+    facilities: [["Facility distribution", "What patterns do you see in the facility distribution here?"], ["Assessing facility gaps", "What else do we need to check before judging whether facilities are lacking here?"], ["Meaning for our project", "What does this spatial analysis mean for our project?"]],
+    cases: [["Key case outcomes", "What are this case's key outcomes?"], ["Compare with our area", "How is this case similar to our area?"], ["Apply to our project", "What could we apply from this case to our project?"]],
+    research: [["Main research findings", "What are this paper's main findings?"], ["Compare research evidence", "How does this study compare with other related research?"], ["Apply to our project", "What should we consider when applying this study to our project?"]],
+    project: [["Key project information", "What are this material's key points for our project?"], ["Information still needed", "What else should we check to analyze this material?"], ["Find related cases", "Show me similar project cases related to this material."]],
+  },
+  zh: {
+    spatial: [["本地主要设施", "我们地区有哪些主要设施？"], ["寻找改善地点", "要识别需要改善的地点，应该先查看哪些资料？"], ["类似项目案例", "请展示类似项目的案例。"]],
+    "spatial-result": [["资料中的特点", "这里呈现出哪些特点？"], ["进一步确认", "这项空间分析还需要确认哪些信息？"], ["对本项目的意义", "这项空间分析对本项目有什么意义？"]],
+    facilities: [["设施分布特点", "这里的设施分布有哪些特点？"], ["判断设施缺口", "在判断这里是否缺少设施之前，还需要确认什么？"], ["对本项目的意义", "这项空间分析对本项目有什么意义？"]],
+    cases: [["案例主要成效", "这个案例的主要成效是什么？"], ["与本地区比较", "这个案例与我们地区有哪些相似之处？"], ["应用于本项目", "这个案例有哪些值得应用于本项目的做法？"]],
+    research: [["研究主要内容", "这篇论文的主要发现是什么？"], ["比较研究依据", "这项研究与其他相关研究有哪些异同？"], ["应用于本项目", "将这项研究应用于本项目时应考虑什么？"]],
+    project: [["项目资料重点", "这份资料中与本项目相关的重点是什么？"], ["仍需补充的资料", "分析这份资料还需要确认什么？"], ["寻找相关案例", "请展示与这份资料相关的类似项目案例。"]],
+  },
+};
+export function dataAnalysisStarterPrompts(locale: Locale, context: DataSuggestionContext): StageChatGuide["suggestedQuestions"] {
+  const items = dataFollowUps[locale][context];
+  const prompt = ([label, prompt]: readonly [string, string]): StarterPrompt => ({ label, prompt });
+  return [prompt(items[0]), prompt(items[1]), prompt(items[2])];
+}
