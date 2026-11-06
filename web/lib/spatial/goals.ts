@@ -1,4 +1,4 @@
-import type { SpatialResult } from "./types";
+import type { LayerConfig, SpatialResult } from "./types";
 import { metricValue } from "./labels";
 
 export const spatialGoals: {
@@ -82,4 +82,16 @@ export function spatialResultSummary(result: SpatialResult): string[] {
   return lines.length
     ? lines
     : ["계산 결과는 상세 정보에서 확인할 수 있습니다."];
+}
+
+// Reuse uploaded dataset types and legacy layer roles; boundary stays visible in every category.
+export function spatialCategoryLayerIds(layers: LayerConfig[], category: number | null, activeBoundaryId?: string | null): string[] {
+  return layers.filter(layer => {
+    if (layer.role === "boundary" || layer.datasetType === "project_boundary" || layer.id === `uploaded-${activeBoundaryId}`)
+      return !activeBoundaryId || layer.id === `uploaded-${activeBoundaryId}`;
+    return category === 1 ? layer.role === "roads" || layer.datasetType === "roads"
+      : category === 2 ? layer.role === "buildings" || ["buildings", "parcels"].includes(layer.datasetType ?? "")
+      : category === 3 ? layer.role === "green" || layer.datasetType === "green"
+      : layer.role === "facilities" || layer.datasetType === "public_facilities";
+  }).map(layer => layer.id);
 }

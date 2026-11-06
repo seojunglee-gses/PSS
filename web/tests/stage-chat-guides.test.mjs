@@ -47,3 +47,22 @@ test('Korean operations-team role retains legacy government selections and stage
  assert.ok(stageChatGuide('problem','ko','운영진').suggestedQuestions.some(q=>q.prompt.includes('운영진')));
  assert.ok(stageChatGuide('data','ko','운영진').suggestedQuestions.some(q=>q.prompt.includes('운영 성과')));
 });
+
+test('Data Analysis context questions are deterministic, localized triples and do not change the existing stage/role questions', () => {
+ const { dataAnalysisStarterPrompts } = require(`${process.env.PSS_TEST_BUILD}/lib/stage-chat-guides.js`);
+ const before = JSON.stringify(stageChatGuide('problem','ko','public'));
+ for(const locale of ['ko','en','zh']) {
+  const variants=[];
+  for(const context of ['spatial','spatial-result','facilities','cases','research','project']) {
+   const questions=dataAnalysisStarterPrompts(locale,context);
+   assert.equal(questions.length,3);
+   assert.ok(questions.every(q=>q.label.trim()&&q.prompt.trim()&&q.label!==q.prompt));
+   if(locale==='en')assert.ok(questions.every(q=>!/[가-힣]/.test(q.label+q.prompt)));
+   variants.push(JSON.stringify(questions));
+  }
+  assert.equal(new Set(variants).size,6);
+ }
+ assert.match(dataAnalysisStarterPrompts('ko','cases')[0].prompt,/이 사례/);
+ assert.match(dataAnalysisStarterPrompts('ko','facilities')[1].prompt,/판단하려면.*확인/);
+ assert.equal(JSON.stringify(stageChatGuide('problem','ko','public')),before);
+});

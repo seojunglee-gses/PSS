@@ -24,7 +24,7 @@ import type {
   SpatialResult,
 } from "../../lib/spatial/types";
 import SpatialSummary from "./SpatialSummary";
-import { spatialGoals } from "../../lib/spatial/goals";
+import { spatialCategoryLayerIds, spatialGoals } from "../../lib/spatial/goals";
 import { useAuth } from "../../lib/auth";
 export default function SpatialAnalysis({
   projectId,
@@ -33,11 +33,13 @@ export default function SpatialAnalysis({
   onResult,
   included,
   onInclude,
-  onAsk,
+  category = null,
+  onCategoryChange,
   onInspect,
 }: {
   onInspect?: (selection: { layerId: string; featureId: string; name: string; coordinate: [number, number]; scopeMeters?: number }) => void;
-  onAsk?: (question:string)=>void;
+  category?: number | null;
+  onCategoryChange?: (category: number, layers: LoadedLayer[]) => void;
   projectId: string;
   geo?: GeoWorkspace;
   result: SpatialResult | null;
@@ -64,7 +66,6 @@ export default function SpatialAnalysis({
     featureCollection([]),
   );
   const [tool, setTool] = useState<SpatialResult["type"] | null>(null);
-  const [category,setCategory]=useState(0);
   const [resetVersion,setResetVersion]=useState(0);
   const [showResults,setShowResults]=useState(true);
   const [distance, setDistance] = useState(300);
@@ -95,11 +96,6 @@ export default function SpatialAnalysis({
         );
         setConfig(c);
         setLayers(available);
-        setVisible(
-          available
-            .filter((l) => l.config.role === "facilities" || l.config.id === `uploaded-${c.spatialSettings?.activeBoundaryDatasetId}`)
-            .map((l) => l.config.id),
-        );
         setWarnings(failed);
       } catch (e) {
         if (current)
@@ -115,6 +111,9 @@ export default function SpatialAnalysis({
       controller.abort();
     };
   }, [projectId, user]);
+  useEffect(() => {
+    setVisible(spatialCategoryLayerIds(layers.map(layer => layer.config), category, config.spatialSettings?.activeBoundaryDatasetId));
+  }, [layers, category, config.spatialSettings?.activeBoundaryDatasetId]);
   const polygons = useMemo(
     () => layers.filter((l) => l.config.type === "polygon"),
     [layers],
@@ -168,8 +167,13 @@ export default function SpatialAnalysis({
   return (
     <div className="spatial-analysis space-y-3 p-4 sm:p-6">
       <h3 className="text-lg font-semibold">{t("boundary.explore")}</h3>
-      <div className="flex gap-1" role="group" aria-label={t("boundary.categories")}>
-        {[0,1,2].map(i=><button key={i} type="button" aria-pressed={category===i} className={`flex-1 min-w-0 break-keep rounded-lg border px-2 py-2 text-xs font-semibold ${category===i?'border-blue-500 bg-blue-50 text-blue-800':'border-slate-200'}`} onClick={()=>setCategory(i)}>{t(`boundary.category.${i}`)}</button>)}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label={t("boundary.categories")}>
+        {[0,1,2,3].map(i=><button key={i} type="button" aria-pressed={category===i} className={`min-h-11 min-w-0 break-keep rounded-lg border px-2 py-2 text-xs font-semibold ${category===i?'border-blue-500 bg-blue-50 text-blue-800':'border-slate-200'}`} disabled={loading} onClick={()=>{
+          const ids = spatialCategoryLayerIds(layers.map(layer => layer.config), i, config.spatialSettings?.activeBoundaryDatasetId);
+          setShowResults(false); setSelected(null); setOverlay(featureCollection([]));
+          geo?.setContext(prev => ({ scopeMeters: prev.scopeMeters, mapCenter: prev.mapCenter }));
+          onCategoryChange?.(i, layers.filter(layer => ids.includes(layer.config.id)));
+        }}>{t(`boundary.category.${i}`)}</button>)}
       </div>
       {!loading&&<>
         {!boundary&&<p role="status" className="text-xs text-amber-800">{t("boundary.noActive")}</p>}
@@ -179,14 +183,13 @@ export default function SpatialAnalysis({
           onCenter={(mapCenter)=>geo?.setContext(prev=>({...prev,mapCenter}))} geoResult={mapResult} highlightedPlaceId={geo?.highlighted} selectedPlaceId={geo?.chosenPlace?.id} onPlace={place=>geo?.setHighlighted(place.id)}/>
         </SpatialEntityPicker>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <label className="text-xs">{t("boundary.scope")} <select aria-label={t("boundary.scope")} className="rounded border px-2" value={geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500} onChange={e=>geo?.setContext(prev=>({...prev,scopeMeters:Number(e.target.value) as 0|500|1000}))}>{[0,500,1000].map(n=><option key={n} value={n}>{t(`boundary.scope.${n}`)}</option>)}</select></label>
+          <details className="min-w-0 text-xs text-slate-500"><summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-2"><span>{t("spatial.currentScope", { scope: t(`boundary.scope.${geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500}`) })}</span><span className="text-blue-700">{t("spatial.changeScope")}</span></summary>
+          <label className="text-xs">{t("boundary.scope")} <select aria-label={t("boundary.scope")} className="min-h-11 rounded border px-2" value={geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500} onChange={e=>geo?.setContext(prev=>({...prev,scopeMeters:Number(e.target.value) as 0|500|1000}))}>{[0,500,1000].map(n=><option key={n} value={n}>{t(`boundary.scope.${n}`)}</option>)}</select></label></details>
           <button type="button" className="spatial-button text-xs" onClick={()=>{setSelected(null);setOverlay(featureCollection([]));if(geo?.loading)geo.clear();setShowResults(false);geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter}));setResetVersion(v=>v+1);}}>{t("boundary.return")}</button>
         </div>
         {boundary&&<p className="text-xs text-slate-500">{t("boundary.area",{area:Math.round(boundary.areaSqm).toLocaleString()})}</p>}
-      <p className="text-sm text-slate-600">{t("boundary.exploreHint")}</p>
-      <p className="text-xs text-slate-600">{t(`boundary.categoryHint.${category}`)}</p>
         {geo&&<NaturalLanguageGIS geo={geo}/>}
-        <div className="space-y-1"><p className="text-xs font-semibold">{t("workspace.tryQuestions")}</p>{[0,1,2].map(i=><button key={i} type="button" className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 text-left text-xs text-blue-800 hover:bg-blue-50" disabled={geo?.loading||!onAsk} onClick={()=>onAsk?.(t(`boundary.question.${category}.${i}`))}><span aria-hidden="true">◌</span><span className="flex-1">{t(`boundary.question.${category}.${i}`)}</span><span aria-hidden="true">›</span></button>)}</div>
+
       </>}
       {loading ? (
         <p role="status" className="text-sm text-slate-500">
@@ -199,7 +202,7 @@ export default function SpatialAnalysis({
         </div>
       ) : (
         <>
-          <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.layers")}</summary><fieldset>
+          <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.chooseLayers")}</summary><p className="my-2 text-xs text-slate-500">{t("spatial.mapHint")} {t("spatial.touchHint")}</p><fieldset>
 
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               {config.layers.map((l) => (
@@ -227,10 +230,6 @@ export default function SpatialAnalysis({
               ))}
             </div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={showResults} onChange={e=>setShowResults(e.target.checked)}/>{t("boundary.layer.results")}</label></fieldset></details>
-          <p className="text-xs text-slate-500">
-            {t("spatial.mapHint")}<span className="mt-1 block">
-              {t("spatial.touchHint")}</span>
-          </p>
           {selected && (
             <section className="rounded-xl bg-slate-50 p-3 text-sm">
               <h4 className="font-semibold">
@@ -257,7 +256,7 @@ export default function SpatialAnalysis({
               </dl>
             </section>
           )}
-          <details className="space-y-3"><summary className="cursor-pointer text-sm font-semibold">{t("boundary.tools")}</summary><section aria-label={t("spatial.purpose")} className="space-y-3">
+          <details className="space-y-3 rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.advancedTools")}</summary><section aria-label={t("spatial.purpose")} className="space-y-3">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {spatialGoals.map((goal) => (
                 <button

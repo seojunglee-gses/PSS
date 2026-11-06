@@ -23,7 +23,7 @@ import { DEFAULT_PANEL_RATIO, type WorkspacePanelView } from "../../lib/workspac
 import ChatMessageContent from "../../components/chat/ChatMessageContent";
 import StageChatEmptyState from "../../components/chat/StageChatEmptyState";
 import { resolveSources, sourceRoutingQuestion } from "../../lib/research/routing";
-import { stageChatGuide } from "../../lib/stage-chat-guides";
+import { dataAnalysisStarterPrompts, stageChatGuide } from "../../lib/stage-chat-guides";
 import {
   loadChatLogsFromFirestore,
   loadCurrentSiteImage,
@@ -286,6 +286,7 @@ function AuthorizedWorkspace() {
   const [inspectedSpatial, setInspectedSpatial] = useState<SpatialResult | null>(null);
   const [inspectedResearchFindings, setInspectedResearchFindings] = useState<Finding[]>([]);
   const [inspectedEvidence, setInspectedEvidence] = useState<AnalysisRecord["evidence"] | null>(null);
+  const [spatialCategory, setSpatialCategory] = useState<number | null>(null);
   const [analysisView, setAnalysisView] = useState<"cases" | "spatial" | "answer">("cases");
   const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null);
   const spatialStorageKey = userKey ? `ppss-spatial-${projectId}-${userKey}` : null;
@@ -355,6 +356,7 @@ function AuthorizedWorkspace() {
     setInspectedSpatial(null);
     setHighlightedEvidence(null);
     setAnalysisView("cases");
+    setSpatialCategory(null);
     setExpandedStarterScope(null);
     setErrorMessage(null);
   }, [projectId, userKey]);
@@ -693,7 +695,11 @@ function AuthorizedWorkspace() {
           dataLogsRef.current = normalized;
           const current = analysisActivities(normalized, projectId).at(-1);
           if (current?.type === "cases") setActiveTab(current.referenceId);
-          if (current?.type === "spatial") updateSpatialResult(current.result ?? null);
+          if (current?.type === "spatial") {
+            updateSpatialResult(current.result ?? null);
+            const category = /^category-([0-3])$/.exec(current.referenceId);
+            if (category) setSpatialCategory(Number(category[1]));
+          }
           const place = current?.location?.places.length === 1 ? current.location.places[0] : undefined;
           if (place) geo.setContext({ point: place.coordinate, ...(place.layerId && place.featureId ? { selected: { layerId: place.layerId, featureId: place.featureId } } : {}), ...([0, 500, 1000].includes(current?.location?.scopeMeters ?? -1) ? { scopeMeters: current!.location!.scopeMeters as 0 | 500 | 1000 } : {}) });
         }
@@ -1689,7 +1695,11 @@ const handleSend = async (suggestedQuestion?: string) => {
 
   const renderChatPanel = () => {
     const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
-    const guide = stageChatGuide(activeStep.id, locale, normalizedActiveRole);
+    const defaultGuide = stageChatGuide(activeStep.id, locale, normalizedActiveRole);
+    const context = analysisView === "cases" ? "cases" : analysisView === "spatial"
+      ? spatialCategory === 0 ? "facilities" : spatialCategory !== null || spatialResult || geo.result ? "spatial-result" : "spatial"
+      : analysisEvidence?.papers.length ? "research" : analysisEvidence?.cases.length ? "cases" : answerSpatial ? "spatial-result" : "project";
+    const guide = activeStep.id === "data" && defaultGuide ? { ...defaultGuide, suggestedQuestions: dataAnalysisStarterPrompts(locale, context) } : defaultGuide;
     const displayedMessages = stepLogs;
     const hasDialogue = stepLogs.some(log => !log.activity);
     const selectStarterPrompt = (prompt: string) => {
@@ -2067,7 +2077,10 @@ const handleSend = async (suggestedQuestion?: string) => {
               </button>)}
             </div>
             {analysisView === "spatial" && <div role="tabpanel" id="analysis-spatial-panel" aria-labelledby="analysis-spatial-tab">
-              <SpatialAnalysis onInspect={selection => { updateSpatialResult(null); recordAnalysisActivity({ type: "spatial", referenceId: `${selection.layerId}/${selection.featureId}`, title: selection.name, location: { question: selection.name, reply: "Selected project feature; location only.", ...(selection.scopeMeters !== undefined ? { scopeMeters: selection.scopeMeters } : {}), places: [{ id: `${selection.layerId}/${selection.featureId}`, name: selection.name, coordinate: selection.coordinate, layerId: selection.layerId, featureId: selection.featureId }] } }); }} onAsk={(question)=>{void handleSend(question);}} geo={geo} key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={recordSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
+              <SpatialAnalysis category={spatialCategory} onCategoryChange={(category, layers) => {
+                setSpatialCategory(category); updateSpatialResult(null);
+                recordAnalysisActivity({ type: "spatial", referenceId: `category-${category}`, title: t(`boundary.category.${category}`), location: { question: t(`boundary.category.${category}`), reply: JSON.stringify({ displayedLayers: layers.map(layer => ({ id: layer.config.id, name: layer.config.label, featureCount: layer.data.features.length })), scope: "Counts cover uploaded datasets, not measured need or facility adequacy." }), places: [] } });
+              }} onInspect={selection => { updateSpatialResult(null); recordAnalysisActivity({ type: "spatial", referenceId: `${selection.layerId}/${selection.featureId}`, title: selection.name, location: { question: selection.name, reply: "Selected project feature; location only.", ...(selection.scopeMeters !== undefined ? { scopeMeters: selection.scopeMeters } : {}), places: [{ id: `${selection.layerId}/${selection.featureId}`, name: selection.name, coordinate: selection.coordinate, layerId: selection.layerId, featureId: selection.featureId }] } }); }} geo={geo} key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={recordSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
             </div>}
             {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
               <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>

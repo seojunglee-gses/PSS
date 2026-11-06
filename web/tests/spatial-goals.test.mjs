@@ -54,3 +54,15 @@ test("area summary only describes available metrics and formats ratios", () => {
   assert.ok(lines.some((l) => l.includes("10명")));
   assert.ok(!lines.some((l) => l.includes("면적은")));
 });
+
+test("map categories reuse dataset types and legacy roles while retaining project boundaries", () => {
+  const { spatialCategoryLayerIds } = require(`${process.env.PSS_TEST_BUILD}/lib/spatial/goals.js`);
+  const layers = [{ id: 'boundary', role: 'boundary' }, { id: 'uploaded-active' }, { id: 'clinic', role: 'facilities' }, { id: 'school', datasetType: 'public_facilities' }, { id: 'road', datasetType: 'roads' }, { id: 'walk', role: 'roads' }, { id: 'parcel', datasetType: 'parcels' }, { id: 'building', role: 'buildings' }, { id: 'park', datasetType: 'green' }, { id: 'trees', role: 'green' }];
+  assert.deepEqual(spatialCategoryLayerIds(layers, null, 'active'), ['uploaded-active', 'clinic', 'school']);
+  assert.deepEqual(spatialCategoryLayerIds(layers, 0, 'active'), ['uploaded-active', 'clinic', 'school']);
+  assert.deepEqual(spatialCategoryLayerIds(layers, 1, 'active'), ['uploaded-active', 'road', 'walk']);
+  assert.deepEqual(spatialCategoryLayerIds(layers, 2, 'active'), ['uploaded-active', 'parcel', 'building']);
+  assert.deepEqual(spatialCategoryLayerIds(layers, 3, 'active'), ['uploaded-active', 'park', 'trees']);
+  assert.deepEqual(spatialCategoryLayerIds(layers, 3), ['boundary', 'park', 'trees']);
+  assert.deepEqual(spatialCategoryLayerIds([], 0), []);
+});
