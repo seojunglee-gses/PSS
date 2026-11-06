@@ -62,9 +62,9 @@ const suggestedQuestions: Record<Locale, Record<ChatStage, Record<RoleId, StageC
         { label: "문제의 우선순위", prompt: "서로 다른 주민 요구 중 어떤 문제를 우선 정의해야 할까요?" },
       ],
       government: [
-        { label: "핵심 공공 문제", prompt: "이 사업이 해결해야 할 가장 중요한 공공 문제는 무엇일까요?" },
-        { label: "기존 사업과 연계", prompt: "기존 사업이나 공공시설과 연계할 기회는 없을까요?" },
-        { label: "주민과 행정의 목표", prompt: "주민의 요구와 행정의 목표가 다른 부분은 무엇일까요?" },
+        { label: "운영의 핵심 과제", prompt: "사업을 추진하고 운영할 때 가장 먼저 해결해야 할 문제는 무엇일까요?" },
+        { label: "기존 사업·시설과 연계", prompt: "기존 사업이나 시설과 연계해 운영 효과를 높일 방법은 없을까요?" },
+        { label: "주민과 운영진의 목표", prompt: "주민의 요구와 운영진의 목표가 다른 부분은 무엇일까요?" },
       ],
     },
     data: {
@@ -84,9 +84,9 @@ const suggestedQuestions: Record<Locale, Record<ChatStage, Record<RoleId, StageC
         { label: "자료로 모르는 특성", prompt: "현재 자료만으로 판단하기 어려운 공간적 특성은 무엇일까요?" },
       ],
       government: [
-        { label: "사업의 핵심 근거", prompt: "사업의 필요성을 설명할 수 있는 핵심 근거는 무엇일까요?" },
-        { label: "공공사업의 교훈", prompt: "유사한 공공사업의 성과와 한계에서 무엇을 배울 수 있을까요?" },
-        { label: "효과 검증에 필요한 자료", prompt: "사업 효과를 판단하려면 어떤 자료가 추가로 필요할까요?" },
+        { label: "추진·운영의 근거", prompt: "사업의 추진과 운영 방향을 뒷받침할 핵심 근거는 무엇일까요?" },
+        { label: "다른 사업의 운영 경험", prompt: "유사한 사업의 운영 성과와 한계에서 무엇을 배울 수 있을까요?" },
+        { label: "운영 성과를 확인할 자료", prompt: "사업 효과와 운영 성과를 판단하려면 어떤 자료가 추가로 필요할까요?" },
       ],
     },
     alternatives: {
@@ -107,8 +107,8 @@ const suggestedQuestions: Record<Locale, Record<ChatStage, Record<RoleId, StageC
       ],
       government: [
         { label: "서로 다른 실행 대안", prompt: "사업 목표를 달성할 수 있는 서로 다른 실행 대안은 무엇일까요?" },
-        { label: "공공시설과 연계", prompt: "기존 공공시설과 연계하는 대안을 구상해 볼까요?" },
-        { label: "예산과 운영 부담", prompt: "예산과 운영 부담을 줄이면서 효과를 높일 방법은 무엇일까요?" },
+        { label: "시설·프로그램 연계", prompt: "기존 시설과 프로그램을 연계하는 운영 대안을 구상해 볼까요?" },
+        { label: "예산·인력 부담", prompt: "예산과 인력 부담을 줄이면서 운영 효과를 높일 방법은 무엇일까요?" },
       ],
     },
     evaluation: {
@@ -130,7 +130,7 @@ const suggestedQuestions: Record<Locale, Record<ChatStage, Record<RoleId, StageC
       government: [
         { label: "목표 대비 효과", prompt: "어떤 대안이 사업 목표 대비 효과가 높을까요?" },
         { label: "장기 운영 부담", prompt: "초기 사업비뿐 아니라 장기 운영 부담은 어떻게 다를까요?" },
-        { label: "공공성과 주민 수용성", prompt: "공공성, 실행 가능성, 주민 수용성을 어떻게 함께 평가할까요?" },
+        { label: "운영 지속성과 수용성", prompt: "실행 가능성, 운영 지속성, 주민 수용성을 어떻게 함께 평가할까요?" },
       ],
     },
     report: {
