@@ -49,3 +49,12 @@ test('frontend JSX keeps fixed interface copy in the locale catalogs', () => {
     visit(source);
   }
 });
+
+test('Korean government-role labels become operations team without changing saved IDs or other locales',()=>{
+ const {normalizeRoleId}=require(`${process.env.PSS_TEST_BUILD}/lib/i18n.js`);
+ for(const role of ['government','Government','정부','공무원','운영진'])assert.equal(normalizeRoleId(role),'government');
+ assert.equal(translate('ko','role.government'),'운영진');
+ assert.equal(localizeMessage('ko','공무원'),'운영진');assert.equal(localizeMessage('ko','정부'),'운영진');
+ assert.equal(translate('en','role.government'),'Government');assert.equal(translate('zh','role.government'),'政府');
+ assert.ok(!Object.values(messagesByLocale.ko).some(text=>text.includes('공무원')));
+});

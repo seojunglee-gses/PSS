@@ -26,6 +26,8 @@ const legacyRoleToId: Record<string, RoleId> = {
   "사업자": "business",
   "기획자": "planners",
   "정부": "government",
+  "공무원": "government",
+  "운영진": "government",
   "公众": "public",
   "企业负责人": "business",
   "规划人员": "planners",
@@ -1370,11 +1372,11 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "role.public": "일반 시민",
     "role.business": "사업자",
     "role.planners": "도시계획가",
-    "role.government": "공무원",
+    "role.government": "운영진",
     "roledesc.public": "사업 진행 상황과 지역사회에 미치는 영향을 살펴봅니다.",
     "roledesc.business": "사업 목표를 조율하고 계획 진행 상황을 확인합니다.",
     "roledesc.planners": "AI와 함께 계획을 세우고 안전성과 결과를 검토합니다.",
-    "roledesc.government": "계획과 보고서가 관련 규정과 정책에 맞는지 확인합니다.",
+    "roledesc.government": "사업 추진과 운영을 살펴보고, 예산·인력·주민 의견을 고려해 실행 방향을 검토합니다.",
     "workspace.badge": "작업 공간",
     "workspace.title": "PPSS 계획 수립",
     "workspace.provider": "사용 중인 AI 서비스",
@@ -1770,7 +1772,7 @@ export function translate(locale: Locale, key: string, values: Record<string, st
 }
 
 // Translate built-in messages, including saved legacy notices, without changing stored data.
-const messageKeys = new Map<string, string>();
+const messageKeys = new Map<string, string>([["공무원", "role.government"], ["정부", "role.government"]]);
 const messagePatterns: { key: string; names: string[]; pattern: RegExp }[] = [];
 for (const catalog of Object.values(messagesByLocale)) for (const [key, text] of Object.entries(catalog)) {
   if (!text.includes("{")) messageKeys.set(text, key);

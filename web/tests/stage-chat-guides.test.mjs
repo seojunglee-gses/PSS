@@ -35,9 +35,15 @@ test('unknown and absent participant roles safely fall back to citizen questions
 test('changing stage, stakeholder or locale selects the corresponding questions without a model call',()=>{
  const publicProblem=stageChatGuide('problem','ko','public');
  assert.equal(publicProblem.suggestedQuestions[0].prompt,'우리 동네에서 가장 먼저 바뀌었으면 하는 것은 무엇일까요?');
- assert.equal(stageChatGuide('problem','ko','government').suggestedQuestions[0].prompt,'이 사업이 해결해야 할 가장 중요한 공공 문제는 무엇일까요?');
+ assert.equal(stageChatGuide('problem','ko','government').suggestedQuestions[0].prompt,'사업을 추진하고 운영할 때 가장 먼저 해결해야 할 문제는 무엇일까요?');
  assert.equal(stageChatGuide('data','ko','public').suggestedQuestions[0].prompt,'우리 동네의 생활 불편을 어떤 자료로 확인할 수 있을까요?');
  assert.equal(stageChatGuide('alternatives','ko','planners').suggestedQuestions[0].prompt,'대상지의 기존 자원을 활용한 서로 다른 계획 대안을 만들어 볼까요?');
  assert.equal(stageChatGuide('report','en','business').suggestedQuestions[1].prompt,'What compromise could both residents and local businesses accept?');
  assert.deepEqual(stageChatGuide('problem','ko','public'),publicProblem);
+});
+
+test('Korean operations-team role retains legacy government selections and stage-specific suggestions',()=>{
+ for(const stage of stages)for(const role of ['운영진','공무원','정부','Government'])assert.deepEqual(stageChatGuide(stage,'ko',role),stageChatGuide(stage,'ko','government'));
+ assert.ok(stageChatGuide('problem','ko','운영진').suggestedQuestions.some(q=>q.prompt.includes('운영진')));
+ assert.ok(stageChatGuide('data','ko','운영진').suggestedQuestions.some(q=>q.prompt.includes('운영 성과')));
 });
