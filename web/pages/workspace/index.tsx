@@ -502,13 +502,12 @@ function AuthorizedWorkspace() {
   useEffect(() => () => completionResolver.current?.(false), []);
   const [summaryOpen,setSummaryOpen]=useState(false);
   const [summaryDraft,setSummaryDraft]=useState("");
-  const [summaryShare,setSummaryShare]=useState(false);
   const summaryDialog=useRef<HTMLDialogElement>(null);
-  const summaryResolver=useRef<((value:{text:string;share:boolean}|null)=>void)|null>(null);
-  const reviewGeneratedSummary=(text:string)=>new Promise<{text:string;share:boolean}|null>(resolve=>{summaryResolver.current=resolve;setSummaryDraft(text);setSummaryShare(false);setSummaryOpen(true);});
-  const closeSummaryReview=(confirmed:boolean)=>{summaryResolver.current?.(confirmed?{text:summaryDraft.trim(),share:summaryShare}:null);summaryResolver.current=null;setSummaryOpen(false);};
+  const summaryResolver=useRef<((value:{text:string}|null)=>void)|null>(null);
+  const reviewGeneratedSummary=(text:string)=>new Promise<{text:string}|null>(resolve=>{summaryResolver.current=resolve;setSummaryDraft(text);setSummaryOpen(true);});
+  const closeSummaryReview=(confirmed:boolean)=>{summaryResolver.current?.(confirmed?{text:summaryDraft.trim()}:null);summaryResolver.current=null;setSummaryOpen(false);};
   useEffect(()=>{if(summaryOpen)summaryDialog.current?.showModal();else summaryDialog.current?.close();},[summaryOpen]);
-  useEffect(()=>{summaryResolver.current?.(null);summaryResolver.current=null;setSummaryOpen(false);setSummaryDraft("");setSummaryShare(false);},[projectId,userKey,activeStep.id]);
+  useEffect(()=>{summaryResolver.current?.(null);summaryResolver.current=null;setSummaryOpen(false);setSummaryDraft("");},[projectId,userKey,activeStep.id]);
   useEffect(()=>()=>summaryResolver.current?.(null),[]);
   const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
   const [revisedAfterLock, setRevisedAfterLock] = useState<
@@ -1257,11 +1256,10 @@ const handleSend = async (suggestedQuestion?: string) => {
       );
       await saveConfirmedStageSummary(userKey,activeStep.id,stageSummary,projectId);
       const previousPublic=await loadWorkspaceSummary(userKey,projectId);
-      const shared={...previousPublic?.stageSummaries};
-      if(reviewed.share)shared[activeStep.id]=stageSummary;
+      const shared={...previousPublic?.stageSummaries,[activeStep.id]:stageSummary};
       await saveWorkspaceSummary(userKey, {
         stageSummaries: shared,
-        overallSummary: reviewed.share?Object.values(shared).join("\n\n"):(previousPublic?.overallSummary??""),
+        overallSummary: Object.values(shared).join("\n\n"),
         role,
         completedStages: nextCompletedStages,
       }, projectId);
@@ -2551,7 +2549,6 @@ const handleSend = async (suggestedQuestion?: string) => {
         <h3 id="summary-review-title" className="text-lg font-semibold">{t("facilitation.reviewTitle")}</h3>
         <p className="mt-2 text-sm text-slate-600">{t("facilitation.reviewHint")}</p>
         <textarea aria-label={t("facilitation.summary")} value={summaryDraft} onChange={event=>setSummaryDraft(event.target.value)} maxLength={12000} className="mt-3 h-[min(45dvh,360px)] min-h-36 w-full rounded-xl border p-3 text-sm"/>
-        <label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" checked={summaryShare} onChange={event=>setSummaryShare(event.target.checked)}/><span>{t("facilitation.shareSummary")}</span></label>
         <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" className="min-h-11 rounded-full border px-4" onClick={()=>closeSummaryReview(false)}>{t("workspace.cancel")}</button><button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-4 text-white disabled:opacity-50" disabled={!summaryDraft.trim()} onClick={()=>closeSummaryReview(true)}>{t("facilitation.confirmSummary")}</button></div>
       </dialog>
       {selectedImage && (
