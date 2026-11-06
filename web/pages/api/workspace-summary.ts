@@ -1,3 +1,4 @@
+import { analysisSessionContext, analysisSessionRules } from "../../lib/analysis-session";
 import {summaryAttributionRules,summaryDialogue,stageSummaryInstructions} from "../../lib/facilitation";
 import {adminDb} from "../../lib/firebaseAdmin";
 import { AccessError } from "../../lib/membership/server";
@@ -49,7 +50,7 @@ export default async function handler(
     const saved=(await adminDb().doc(`users_${context.projectId}/${context.user.uid}/steps/${stage}`).get()).data()?.logs;
     const dialogue=summaryDialogue(Array.isArray(saved)&&saved.length?saved:req.body.historyByStage?.[stage]);
     const participantPerspective=typeof req.body.participantPerspective==='string'?req.body.participantPerspective.trim().slice(0,80):undefined;
-    const input={currentStage:stage,participantPerspective,dialogue:dialogue.messages,dialogueTruncated:dialogue.truncated,previousStageSummaries:context.previousSummaries};
+    const input={...(stage==="data"?{analysisActivities:analysisSessionContext(saved,context.projectId,context.cases)}:{}),currentStage:stage,participantPerspective,dialogue:dialogue.messages,dialogueTruncated:dialogue.truncated,previousStageSummaries:context.previousSummaries};
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -58,7 +59,7 @@ export default async function handler(
       },
       body: JSON.stringify({
         model: MODELS.chat,
-        input: `${buildSystemPrompt(curatedBackground)}\n${summaryAttributionRules}\n${stageSummaryInstructions(stage)}\nIf dialogueTruncated is true, briefly identify the omitted dialogue scope once; do not invent missing opinions or imply the full discussion was considered.\n\n${buildPrompt(input)}`,
+        input: `${buildSystemPrompt(curatedBackground)}\n${summaryAttributionRules}\n${stageSummaryInstructions(stage)}${stage==="data"?"\n"+analysisSessionRules:""}\nIf dialogueTruncated is true, briefly identify the omitted dialogue scope once; do not invent missing opinions or imply the full discussion was considered.\n\n${buildPrompt(input)}`,
         text: {
           format: { type: "json_object" }, 
         },

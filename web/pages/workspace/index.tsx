@@ -1,3 +1,7 @@
+import { spatialGoals } from "../../lib/spatial/goals";
+import type { GeoResult } from "../../lib/spatial/geo-query";
+import { analysisActivities, analysisActivityText, analysisSessionQuestion, parseAnalysisActivity, type AnalysisActivity } from "../../lib/analysis-session";
+import { mergeStepChatLogs } from "../../lib/chat-history";
 import {isDesignGenerationRequest} from "../../lib/facilitation";
 import { useGeoWorkspace } from "../../lib/spatial/use-geo";
 import { isGeoQuestion } from "../../lib/spatial/geo-query";
@@ -99,6 +103,7 @@ type ChatLog = {
   imageNote?: string;
   selectedSources?: EvidenceSource[];
   analysis?: AnalysisRecord;
+  activity?: AnalysisActivity;
 };
 
 function normalizeSender(
@@ -330,6 +335,7 @@ function AuthorizedWorkspace() {
     sendingRef.current = false;
     setIsSending(false);
     setIsLoadingAlternatives(false);
+    dataLogsRef.current = [];
     setChatLogsByStep({});
     setLoadedChatScope(null);
     setSavedSummaries({});
@@ -420,6 +426,13 @@ function AuthorizedWorkspace() {
   const [chatLogsByStep, setChatLogsByStep] = useState<
     Record<string, ChatLog[]>
   >({});
+  const dataLogsRef = useRef<ChatLog[]>([]);
+  const commitDataLogs = (logs: ChatLog[]) => {
+    const merged = mergeStepChatLogs(dataLogsRef.current, logs);
+    dataLogsRef.current = merged;
+    setChatLogsByStep(prev => ({ ...prev, data: merged }));
+    return merged;
+  };
   const chatLogs = useMemo(
     () => Object.values(chatLogsByStep).flat(),
     [chatLogsByStep]
@@ -627,12 +640,13 @@ function AuthorizedWorkspace() {
             imageLabel,
             imageNote,
             ...(log.analysis ? { analysis: log.analysis } : {}),
+            ...(log.activity && parseAnalysisActivity(log.activity, projectId) ? { activity: parseAnalysisActivity(log.activity, projectId) } : {}),
             ...(log.selectedSources ? { selectedSources: log.selectedSources } : {}),
           } as ChatLog;
         })
         .filter((log): log is ChatLog => Boolean(log))
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [role]
+    [role, projectId]
   );
 
   useEffect(() => {
@@ -668,12 +682,21 @@ function AuthorizedWorkspace() {
               imageLabel: log.imageLabel,
               imageNote: log.imageNote,
               ...(log.analysis ? { analysis: log.analysis } : {}),
+              ...(log.activity && parseAnalysisActivity(log.activity, projectId) ? { activity: parseAnalysisActivity(log.activity, projectId) } : {}),
               ...(log.selectedSources ? { selectedSources: log.selectedSources } : {}),
             } as ChatLog;
           })
           .filter((log): log is ChatLog => Boolean(log))
           .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
+        if (activeStep.id === "data") {
+          dataLogsRef.current = normalized;
+          const current = analysisActivities(normalized, projectId).at(-1);
+          if (current?.type === "cases") setActiveTab(current.referenceId);
+          if (current?.type === "spatial") updateSpatialResult(current.result ?? null);
+          const place = current?.location?.places.length === 1 ? current.location.places[0] : undefined;
+          if (place) geo.setContext({ point: place.coordinate, ...(place.layerId && place.featureId ? { selected: { layerId: place.layerId, featureId: place.featureId } } : {}), ...([0, 500, 1000].includes(current?.location?.scopeMeters ?? -1) ? { scopeMeters: current!.location!.scopeMeters as 0 | 500 | 1000 } : {}) });
+        }
         setChatLogsByStep((prev) => ({ ...prev, [activeStep.id]: normalized }));
         setLoadedChatScope(chatScope);
       } catch {
@@ -1012,6 +1035,40 @@ const sanitizeLogs = (logs: ChatLog[]) =>
 
 const sendingRef = useRef(false);
 
+const recordAnalysisActivity = (input: Omit<AnalysisActivity, "id" | "projectId">) => {
+  if (activeStep.id !== "data" || !userKey || !hasLoadedChatLogs || lockedStages.data || completedStages.includes("data") || editingStageId === "data") return;
+  const activity = parseAnalysisActivity({ ...input, projectId, id: crypto.randomUUID() }, projectId);
+  if (!activity) return;
+  const previous = analysisActivities(dataLogsRef.current, projectId).at(-1);
+  if (previous && JSON.stringify({ ...previous, id: "" }) === JSON.stringify({ ...activity, id: "" })) return;
+  const generation = chatGenerationRef.current;
+  const logs = commitDataLogs([{ stepId: "data", provider: activeProvider, sender: "assistant", label: "activity", text: analysisActivityText(activity, locale), createdAt: new Date().toISOString(), activity }]);
+  void persistChatLogs("data", logs).catch(() => { if (generation === chatGenerationRef.current) setErrorMessage(t("workspace.chatSaveError")); });
+};
+const recordCaseView = (id: string) => {
+  const item = activeProject?.workspaceContent.data.cases?.find(c => c.id === id);
+  if (item) recordAnalysisActivity({ type: "cases", referenceId: item.id, title: item.title || item.label });
+};
+const recordSpatialResult = (result: SpatialResult | null) => {
+  updateSpatialResult(result);
+  if (result?.projectId === projectId) recordAnalysisActivity({ type: "spatial", referenceId: result.timestamp, title: localize(spatialGoals.find(goal => goal.type === result.type)?.name ?? analysisLabels.spatial), result });
+};
+
+const seenGeoResult = useRef<GeoResult | null>(null);
+useEffect(() => {
+  const result = geo.result;
+  if (!result || seenGeoResult.current === result) return;
+  seenGeoResult.current = result;
+  if (result.clarify || (!result.places.length && !result.resolvedPlaces?.length && !result.computedResult)) return;
+  updateSpatialResult(result.computedResult ?? null);
+  recordAnalysisActivity({ type: "spatial", referenceId: crypto.randomUUID(), title: result.question,
+    ...(result.computedResult ? { result: result.computedResult } : {}),
+    location: { question: result.question, reply: result.reply, ...(result.scopeMeters !== undefined ? { scopeMeters: result.scopeMeters } : {}), places: [...(result.resolvedPlaces ?? []), ...result.places] },
+  });
+  // Result identity changes only after a query/choice, never on map pan, zoom or tab changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [geo.result]);
+
 const handleSend = async (suggestedQuestion?: string) => {
   const userMessage = (suggestedQuestion ?? inputValue).trim();
   if (!userMessage) return;
@@ -1023,6 +1080,11 @@ const handleSend = async (suggestedQuestion?: string) => {
     setErrorMessage(t("workspace.imageBusy"));
     return;
   }
+  if (activeStep.id === "data" && analysisView === "cases" && /여기서|여기에|이\s*사례|그\s*사례|적용할|\b(?:here|this case|apply)\b/i.test(userMessage)) {
+    const cases = activeProject?.workspaceContent.data.cases ?? [];
+    const current = cases.find(item => item.id === activeTab) ?? cases[0];
+    if (current) recordCaseView(current.id);
+  }
   sendingRef.current = true;
   followLatestRef.current = true;
   const generation = chatGenerationRef.current;
@@ -1031,7 +1093,8 @@ const handleSend = async (suggestedQuestion?: string) => {
 
   const stepId = activeStep.id;
   const history = conversationHistory((chatLogsByStep[stepId] ?? []).map(log=>stepId==="data"&&geoChat?.time===log.createdAt&&geo.result?.question===geoChat.question?{...log,text:geo.result.reply}:log), stepId);
-  const effectiveSources = resolveSources(sourceRoutingQuestion(userMessage, history), selectedSources, activeProject?.workspaceContent.data.cases,history);
+  const sessionQuestion = stepId === "data" ? analysisSessionQuestion(userMessage, analysisActivities(dataLogsRef.current, projectId), activeProject?.workspaceContent.data.cases) : userMessage;
+  const effectiveSources = resolveSources(sessionQuestion !== userMessage ? sessionQuestion : sourceRoutingQuestion(userMessage, history), selectedSources, activeProject?.workspaceContent.data.cases, sessionQuestion !== userMessage ? [] : history);
   setSendingChatScope(chatScope);
   setIsSending(true);
   setErrorMessage(null);
@@ -1049,13 +1112,14 @@ const handleSend = async (suggestedQuestion?: string) => {
   },
 ];
 
-  setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextUserLogs }));
+  if (stepId === "data") commitDataLogs(nextUserLogs);
+  else setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextUserLogs }));
 
   setInputValue("");
   setExpandedStarterScope(null);
 
   try {
-    await persistChatLogs(stepId, nextUserLogs);
+    await persistChatLogs(stepId, stepId === "data" ? dataLogsRef.current : nextUserLogs);
     if (!isCurrentConversation()) return;
     if (stepId === "data") {
       if (effectiveSources.includes("spatial") && !effectiveSources.some(source => source === "cases" || source === "research") && isGeoQuestion(userMessage)) {
@@ -1066,9 +1130,8 @@ const handleSend = async (suggestedQuestion?: string) => {
           if(result.computedResult)updateSpatialResult(result.computedResult);
           const createdAt = new Date().toISOString();
           setGeoChat({ time: createdAt, question: userMessage });
-          const nextLogs: ChatLog[] = [...nextUserLogs, { stepId, provider: activeProvider, sender: "assistant", text: t("gis.chatNotice")+(result.facilitationQuestion?"\n\n"+result.facilitationQuestion:""), label: activeProvider, createdAt }];
-          setChatLogsByStep(prev => ({ ...prev, [stepId]: nextLogs }));
-          await persistChatLogs(stepId, sanitizeLogs(nextLogs));
+          const nextLogs: ChatLog[] = [...nextUserLogs, { stepId, provider: activeProvider, sender: "assistant", text: result.reply+(result.facilitationQuestion?"\n\n"+result.facilitationQuestion:""), label: activeProvider, createdAt }];
+          await persistChatLogs(stepId, sanitizeLogs(commitDataLogs(nextLogs)));
         }
         return;
       }
@@ -1102,8 +1165,14 @@ const handleSend = async (suggestedQuestion?: string) => {
         stepId, provider: activeProvider, sender: "assistant", text: payload.reply,
         label: activeProvider, createdAt: new Date().toISOString(), analysis,
       }];
-      setChatLogsByStep((prev) => ({ ...prev, [stepId]: nextLogs }));
-      await persistChatLogs(stepId, sanitizeLogs(nextLogs));
+      if (activeStep.id === "data") {
+        setPanelView("information");
+        if (analysis.selectedSources.includes("research")) setAnalysisView("answer");
+        else if (analysis.selectedSources.includes("cases") && analysis.evidence.cases.length) {
+          setActiveTab(analysis.evidence.cases[0].id); setAnalysisView("cases"); recordCaseView(analysis.evidence.cases[0].id);
+        } else setAnalysisView("answer");
+      }
+      await persistChatLogs(stepId, sanitizeLogs(commitDataLogs(nextLogs)));
       return;
     }
     let finalMessage = userMessage;
@@ -1622,6 +1691,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
     const guide = stageChatGuide(activeStep.id, locale, normalizedActiveRole);
     const displayedMessages = stepLogs;
+    const hasDialogue = stepLogs.some(log => !log.activity);
     const selectStarterPrompt = (prompt: string) => {
       setInputValue(prompt);
       setExpandedStarterScope(null);
@@ -1706,12 +1776,13 @@ const handleSend = async (suggestedQuestion?: string) => {
           followLatestRef.current = list.scrollHeight - list.clientHeight - list.scrollTop < 80;
         }}
         onWheel={(event) => { if (event.deltaY < 0) followLatestRef.current = false; }}>
-        {hasLoadedChatLogs && displayedMessages.length === 0 && guide && (
+        {hasLoadedChatLogs && !hasDialogue && guide && (
           <StageChatEmptyState guide={guide} showFullPrompts
             disabled={isSending || isLoadingAlternatives || isStageLocked}
             onSelect={selectStarterPrompt} />
         )}
         {displayedMessages.map((message, index) => {
+          if (activeStep.id === "data" && message.activity) return <div key={message.activity.id} className="mx-auto w-full rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500" data-analysis-activity={message.activity.type}>{analysisActivityText(message.activity, locale)}</div>;
           const isAssistant = message.sender === "assistant";
           return (
             <div
@@ -1757,7 +1828,7 @@ const handleSend = async (suggestedQuestion?: string) => {
             </div>
           );
         })}
-        {isSending && sendingChatScope === chatScope && displayedMessages[displayedMessages.length - 1]?.sender === "user" && (
+        {isSending && sendingChatScope === chatScope && [...displayedMessages].reverse().find(message => !message.activity)?.sender === "user" && (
           <div role="status" aria-live="polite" aria-atomic="true"
             className="mr-auto flex max-w-[85%] items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-600">
             <span aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600 motion-reduce:animate-none" />
@@ -1767,7 +1838,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         <div ref={chatEndRef} />
       </div>
       <div className="workspace-chat-footer">
-      {hasLoadedChatLogs && displayedMessages.length > 0 && guide && <div className="mt-2">
+      {hasLoadedChatLogs && hasDialogue && guide && <div className="mt-2">
         <button type="button" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-200 text-slate-600" aria-label={t("workspace.starterPrompts")} title={t("workspace.starterPrompts")} aria-expanded={expandedStarterScope === chatScope} aria-controls="workspace-starter-prompts" disabled={isSending || isLoadingAlternatives || isStageLocked} onClick={() => setExpandedStarterScope(current => current === chatScope ? null : chatScope)}>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.7-1.5 1.6-1.5 3.5h-4c0-1.9-.6-2.8-1.5-3.5Z" /></svg>
         </button>
@@ -1996,7 +2067,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               </button>)}
             </div>
             {analysisView === "spatial" && <div role="tabpanel" id="analysis-spatial-panel" aria-labelledby="analysis-spatial-tab">
-              <SpatialAnalysis onAsk={(question)=>{void handleSend(question);}} geo={geo} key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={updateSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
+              <SpatialAnalysis onInspect={selection => { updateSpatialResult(null); recordAnalysisActivity({ type: "spatial", referenceId: `${selection.layerId}/${selection.featureId}`, title: selection.name, location: { question: selection.name, reply: "Selected project feature; location only.", ...(selection.scopeMeters !== undefined ? { scopeMeters: selection.scopeMeters } : {}), places: [{ id: `${selection.layerId}/${selection.featureId}`, name: selection.name, coordinate: selection.coordinate, layerId: selection.layerId, featureId: selection.featureId }] } }); }} onAsk={(question)=>{void handleSend(question);}} geo={geo} key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={recordSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
             </div>}
             {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
               <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>
@@ -2007,7 +2078,9 @@ const handleSend = async (suggestedQuestion?: string) => {
               <EvidencePanel evidence={analysisEvidence} enabled={analysisEvidence?.selectedSources ?? DEFAULT_SOURCES} loading={isSending} highlighted={highlightedEvidence}
                 researchFindings={inspectedEvidence ? inspectedResearchFindings : latestAnalysis?.answer.researchFindings ?? []}
                 availableCaseIds={(activeProject?.workspaceContent.data.cases ?? []).map((item) => item.id)}
-                onViewCase={(caseId) => { setActiveTab(caseId); setAnalysisView("cases"); }} />
+                onViewCase={(caseId) => { setActiveTab(caseId); setAnalysisView("cases"); recordCaseView(caseId); }}
+                onViewPaper={(paper) => recordAnalysisActivity({ type: "research", referenceId: paper.openAlexId, title: paper.title })}
+                onViewProject={() => recordAnalysisActivity({ type: "project", referenceId: "project-material", title: analysisLabels.project })} />
             </div>}
             <div role="tabpanel" id="analysis-cases-panel" aria-labelledby="analysis-cases-tab" hidden={analysisView !== "cases"}>
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
@@ -2028,6 +2101,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                   <div key={tab.id} className="flex min-w-0 items-center gap-1">
                     <button type="button" disabled={isSavingContent || imageUploading} className={`max-w-full rounded-full px-4 py-2 text-xs font-semibold ${activeTab === tab.id ? "bg-[var(--primary)] text-white" : "border bg-white text-slate-600"}`}
                       onClick={() => {
+                        if (editingStageId !== "data") recordCaseView(tab.id);
                         if (activeTab === tab.id) return;
                         if (editingStageId === "data") {
                           const text = caseEditor.current?.getValue();
