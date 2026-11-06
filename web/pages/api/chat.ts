@@ -40,7 +40,7 @@ export default async function handler(
     const context = await loadProjectContext(req, stepId ?? "problem", true, true);
     const marker="\n\nUser question:\n";
     const originalQuestion=stepId==="evaluation"&&message.includes(marker)?message.slice(message.lastIndexOf(marker)+marker.length):message;
-    const systemText = buildSystemText()+"\n\n"+facilitationInstructions(stepId??"problem",originalQuestion,policyHistory(context.stageHistory,history));
+    const systemText = buildSystemText()+"\n\n"+facilitationInstructions(stepId??"problem",originalQuestion,policyHistory(context.stageHistory,history,stepId??"problem"));
     const normalizedProvider =
     provider?.toLowerCase() === "gemini"
       ? "gemini"

@@ -75,11 +75,11 @@ test('Stage 3 conversation does not generate images unless a design-generation/e
  for(const q of ['지금까지 나온 의견을 반영해 계획안을 정리해주세요.','이미지를 생성해주세요','벤치를 더 넣어줘','계획안을 수정해주세요','Generate a design alternative'])assert.equal(isDesignGenerationRequest(q),true,q);
 });
 
-test('Problem Definition pauses repeated questioning without changing other stages or overriding explicit preferences',()=>{
+test('Problem Definition varies repeated questions without blocking useful continuation or other stages',()=>{
  const history=[user('주민들이 모일 공간이 부족해요.'),assistant('교류할 기회가 줄어드는 문제일 수 있겠습니다. 무엇이 가장 중요한가요?'),user('서로 알고 지내는 관계가 중요해요.'),assistant('일상적인 관계를 유지하는 데 의미를 두시는군요. 어떤 변화가 필요할까요?')];
- assert.equal(followUpPolicy('기존 주민센터가 저녁에도 열리면 좋겠어요.',history,'problem').mode,'none');
+ assert.equal(followUpPolicy('기존 주민센터가 저녁에도 열리면 좋겠어요.',history,'problem').mode,'optional');
  const prompt=facilitationInstructions('problem','기존 주민센터가 저녁에도 열리면 좋겠어요.',history);
- assert.match(prompt,/pause questioning/);assert.match(prompt,/converge without another question/);assert.match(prompt,/no number of turns establishes sufficient evidence or consent/);
+ assert.match(prompt,/avoid repeating that interview pattern/);assert.match(prompt,/converge without another question/);assert.match(prompt,/no number of turns establishes sufficient evidence or consent/);
  assert.notEqual(followUpPolicy('이제 질문해도 괜찮아요',history,'problem').mode,'none');
  assert.equal(followUpPolicy('더 질문해줘',[user('질문하지 마세요')],'problem').mode,'optional');
  assert.equal(followUpPolicy('핵심 문제를 정리해줘',[],'problem').mode,'none');
@@ -112,4 +112,36 @@ test('synthesis retains original dialogue, user corrections, project grounding a
  for(const name of ['Core Problem','Context','Potential Causes','Stakeholders','User Priorities','Unverified Assumptions'])assert.ok(sent.systemText.includes(name));
  assert.match(sent.userText,/새 시설을 원하는 것은 아니고/);assert.match(sent.userText,/운영 시간은 미확인/);
  assert.match(sent.systemText,/not yet stated or not verified/);assert.match(sent.systemText,/not stage completion or a saved report/);
+});
+
+test('Problem Definition turn-only requests do not become permanent question bans through saved history',()=>{
+ const saved=[{sender:'user',text:'요약만 해주세요.'},{sender:'assistant',text:'지금까지 논의한 내용입니다.'}];
+ const recent=[user('요약만 해주세요.'),assistant('지금까지 논의한 내용입니다.')];
+ const history=policyHistory(saved,recent,'problem');
+ assert.equal(followUpPolicy('이웃과 자연스럽게 만나는 공간이면 좋겠어요.',history,'problem').mode,'optional');
+ assert.equal(followUpPolicy('요약만 해주세요.',[],'problem').mode,'none');
+ assert.equal(followUpPolicy('계속 답변만 해주세요.',[],'problem').mode,'none');
+ const stopped=policyHistory([{sender:'user',text:'앞으로는 답변만 해주세요.'}],[],'problem');
+ assert.equal(followUpPolicy('이웃과 만나고 싶어요.',stopped,'problem').mode,'none');
+ assert.equal(followUpPolicy('다시 질문해도 괜찮아요',stopped,'problem').mode,'optional');
+ assert.equal(followUpPolicy('이웃과 만나고 싶어요.',policyHistory(saved),'data').mode,'none');
+});
+test('Problem Definition distinguishes a planning opinion from a factual question and an active reply from closure',()=>{
+ for(const q of ['거리보다 편하게 머무는 게 중요해요.','어디든 쉴 수 있는 공간이 있으면 좋겠어요.'])assert.equal(followUpPolicy(q,[],'problem').mode,'optional');
+ for(const q of ['거리가 얼마야?','시설은 어디에 있어요?','감사합니다','여기까지만 할게요'])assert.equal(followUpPolicy(q,[],'problem').mode,'none');
+ assert.equal(followUpPolicy('네',[user('여러 세대가 함께 쓰면 좋겠어요.'),assistant('함께 이용하는 공간을 생각해볼 수 있겠습니다.')],'problem').mode,'optional');
+ assert.equal(followUpPolicy('네',[user('앞으로 질문하지 마세요.')],'problem').mode,'none');
+});
+test('the reported resident-goals comparison reaches the model with a concrete conversational hand-off',async t=>{
+ const context=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');let sent,calls=0;
+ mock(t,context,'loadProjectContext',async()=>({currentMaterial:'사업 목표는 녹지·휴식공간 확충과 환경 회복입니다. 주민 의견수렴 결과는 등록되지 않았습니다.',previousSummaries:{},stageHistory:[{sender:'user',text:'요약만 해주세요.'}]}));
+ mock(t,llm,'callLLM',async request=>{sent=request;calls++;return '사업의 공간 개선 목표와 주민이 체감하는 보행 안전은 판단 기준이 다를 수 있겠습니다. 보행 안전에서 어떤 변화가 가장 중요할까요?';});
+ const question='주민의 요구와 행정의 목표가 다른 부분은 무엇일까요?';
+ const res={status(n){this.code=n;return this},json(value){this.body=value}};
+ await load('pages/api/chat.js').default({method:'POST',body:{stepId:'problem',message:question,history:[user('보행자가 차를 피해서 다녀야 하는 게 불편해요.')]},headers:{}},res);
+ assert.equal(res.code,200);assert.equal(calls,1);assert.match(sent.systemText,/Adaptive follow-up policy: OPTIONAL/);
+ assert.match(sent.systemText,/Conversational hand-off/);assert.match(sent.systemText,/ONE concrete next aspect/);
+ assert.match(sent.systemText,/A new observation followed only by a full stop/);
+ assert.ok(sent.userText.includes(question));assert.match(sent.userText,/보행자가 차를 피해서/);assert.match(sent.userText,/의견수렴 결과는 등록되지 않았/);
+ assert.match(sent.systemText,/Individual views are not community consensus/);
 });
