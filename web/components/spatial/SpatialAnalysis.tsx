@@ -34,7 +34,6 @@ export default function SpatialAnalysis({
   included,
   onInclude,
   category = null,
-  onCategoryChange,
   onInspect,
 }: {
   onInspect?: (selection: { layerId: string; featureId: string; name: string; coordinate: [number, number]; scopeMeters?: number }) => void;
@@ -164,30 +163,18 @@ export default function SpatialAnalysis({
   } : null,[showResults,geo?.result,geo?.candidates]);
   const hasMapResult = !!mapResult;
   const mapVisible = useMemo(()=>hasMapResult && config.spatialSettings?.activeBoundaryDatasetId ? [...new Set([...visible, `uploaded-${config.spatialSettings.activeBoundaryDatasetId}`])] : visible,[visible,config.spatialSettings?.activeBoundaryDatasetId,hasMapResult]);
+  const scopeControl = (<label className="text-xs">{t("boundary.scope")} <select aria-label={t("boundary.scope")} className="min-h-11 rounded border px-2" value={geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500} onChange={e=>geo?.setContext(prev=>({...prev,scopeMeters:Number(e.target.value) as 0|500|1000}))}>{[0,500,1000].map(n=><option key={n} value={n}>{t(`boundary.scope.${n}`)}</option>)}</select></label>);
   return (
     <div className="spatial-analysis space-y-3 p-4 sm:p-6">
       <h3 className="text-lg font-semibold">{t("boundary.explore")}</h3>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label={t("boundary.categories")}>
-        {[0,1,2,3].map(i=><button key={i} type="button" aria-pressed={category===i} className={`min-h-11 min-w-0 break-keep rounded-lg border px-2 py-2 text-xs font-semibold ${category===i?'border-blue-500 bg-blue-50 text-blue-800':'border-slate-200'}`} disabled={loading} onClick={()=>{
-          const ids = spatialCategoryLayerIds(layers.map(layer => layer.config), i, config.spatialSettings?.activeBoundaryDatasetId);
-          setShowResults(false); setSelected(null); setOverlay(featureCollection([]));
-          geo?.setContext(prev => ({ scopeMeters: prev.scopeMeters, mapCenter: prev.mapCenter }));
-          onCategoryChange?.(i, layers.filter(layer => ids.includes(layer.config.id)));
-        }}>{t(`boundary.category.${i}`)}</button>)}
-      </div>
+      <p className="text-sm text-slate-500">{t("spatial.exploreIntro")}</p>
       {!loading&&<>
         {!boundary&&<p role="status" className="text-xs text-amber-800">{t("boundary.noActive")}</p>}
         <SpatialEntityPicker entities={showResults?(geo?.candidates??[]):[]} selected={showResults?(geo?.chosenPlace??null):null} highlighted={geo?.highlighted??null} onHighlight={id=>geo?.setHighlighted(id)} onChoose={place=>geo?.choosePlace(place)} busy={geo?.loading??false} reference={showResults?geo?.result?.clarify?.reference:undefined}>
-        <SpatialMap layers={layers} visible={mapVisible} overlay={showResults?overlay:featureCollection([])} extent={boundary?.bbox} resetVersion={resetVersion} onSelect={choose}
+        <SpatialMap layers={layers} visible={mapVisible} overlay={showResults?overlay:featureCollection([])} extent={boundary?.bbox} resetVersion={resetVersion} onReturn={()=>{setSelected(null);setOverlay(featureCollection([]));if(geo?.loading)geo.clear();setShowResults(false);geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter}));setResetVersion(v=>v+1);}} onSelect={choose}
           onPoint={(coordinate)=>{setSelected(null);setOverlay(featureCollection([{type:"Feature",properties:{},geometry:{type:"Point",coordinates:coordinate}}]));geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter,point:coordinate}));}}
           onCenter={(mapCenter)=>geo?.setContext(prev=>({...prev,mapCenter}))} geoResult={mapResult} highlightedPlaceId={geo?.highlighted} selectedPlaceId={geo?.chosenPlace?.id} onPlace={place=>geo?.setHighlighted(place.id)}/>
         </SpatialEntityPicker>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <details className="min-w-0 text-xs text-slate-500"><summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-2"><span>{t("spatial.currentScope", { scope: t(`boundary.scope.${geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500}`) })}</span><span className="text-blue-700">{t("spatial.changeScope")}</span></summary>
-          <label className="text-xs">{t("boundary.scope")} <select aria-label={t("boundary.scope")} className="min-h-11 rounded border px-2" value={geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500} onChange={e=>geo?.setContext(prev=>({...prev,scopeMeters:Number(e.target.value) as 0|500|1000}))}>{[0,500,1000].map(n=><option key={n} value={n}>{t(`boundary.scope.${n}`)}</option>)}</select></label></details>
-          <button type="button" className="spatial-button text-xs" onClick={()=>{setSelected(null);setOverlay(featureCollection([]));if(geo?.loading)geo.clear();setShowResults(false);geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter}));setResetVersion(v=>v+1);}}>{t("boundary.return")}</button>
-        </div>
-        {boundary&&<p className="text-xs text-slate-500">{t("boundary.area",{area:Math.round(boundary.areaSqm).toLocaleString()})}</p>}
         {geo&&<NaturalLanguageGIS geo={geo}/>}
 
       </>}
@@ -195,14 +182,14 @@ export default function SpatialAnalysis({
         <p role="status" className="text-sm text-slate-500">
           {t("spatial.loading")}</p>
       ) : !layers.length ? (
-        <div className="rounded-xl bg-slate-50 p-6 text-sm text-slate-600">
-          <p className="font-semibold">{t("spatial.empty")}</p>
+        <details className="rounded-xl border border-slate-200 p-3 text-sm text-slate-600"><summary className="cursor-pointer font-semibold">{t("spatial.chooseLayers")}</summary>
+          <p className="mt-2 font-semibold">{t("spatial.empty")}</p>
           <p className="mt-2">
             {t("spatial.emptyHint")}</p>
-        </div>
+        </details>
       ) : (
         <>
-          <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.chooseLayers")}</summary><p className="my-2 text-xs text-slate-500">{t("spatial.mapHint")} {t("spatial.touchHint")}</p><fieldset>
+          <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.chooseLayers")}</summary><fieldset>
 
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               {config.layers.map((l) => (
@@ -257,6 +244,8 @@ export default function SpatialAnalysis({
             </section>
           )}
           <details className="space-y-3 rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.advancedTools")}</summary><section aria-label={t("spatial.purpose")} className="space-y-3">
+            {scopeControl}
+            {boundary&&<p className="text-xs text-slate-500">{t("boundary.area",{area:Math.round(boundary.areaSqm).toLocaleString()})}</p>}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {spatialGoals.map((goal) => (
                 <button
@@ -521,6 +510,8 @@ export default function SpatialAnalysis({
           </section></details>
         </>
       )}
+      {!loading && !layers.length && <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.advancedTools")}</summary>{scopeControl}</details>}
+      {!loading && <p className="text-xs text-slate-500">{t("spatial.exploreHelp")}</p>}
       {warnings.length > 0 && (
         <div role="status" className="space-y-1 text-xs text-amber-700">
           {warnings.map((w, i) => (
