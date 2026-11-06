@@ -1229,6 +1229,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         body: JSON.stringify({
           projectId,
           currentStage: activeStep.id,
+          participantPerspective: normalizedActiveRole ? t(roleLabelKeys[normalizedActiveRole]) : undefined,
           historyByStage:{[activeStep.id]:conversationHistory(chatLogsByStep[activeStep.id]??[],activeStep.id)},
         }),
       });
