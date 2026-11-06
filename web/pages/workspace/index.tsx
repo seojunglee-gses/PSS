@@ -1708,7 +1708,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         }}
         onWheel={(event) => { if (event.deltaY < 0) followLatestRef.current = false; }}>
         {hasLoadedChatLogs && displayedMessages.length === 0 && guide && (
-          <StageChatEmptyState guide={guide}
+          <StageChatEmptyState guide={guide} showFullPrompts
             disabled={isSending || isLoadingAlternatives || isStageLocked}
             onSelect={selectStarterPrompt} />
         )}
