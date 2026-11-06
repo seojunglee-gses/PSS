@@ -10,6 +10,7 @@ import type { ConversationMessage } from "../chat-history";
 import type { CaseEvidence, CaseMaterial, EvidenceBundle, EvidenceSource } from "./types";
 
 export type AnalysisRequest = {
+  analysisSession?: import("../analysis-session").AnalysisActivity[];
   facilitationHistory?: ConversationMessage[];
   question: string;
   history?: ConversationMessage[];
@@ -73,7 +74,7 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
   if (request.selectedSources.includes("spatial") && !request.spatialContext) evidence.warnings.push({ source: "spatial", message: "공간 분석 결과가 없습니다. 공간 분석에서 질문에 필요한 분석을 먼저 실행해주세요." });
   let researchQuery=request.searchQuestion ?? request.question;
   let needsResearch=request.selectedSources.includes('research');
-  const focused=namedCases(request.question,request.cases,request.history);
+  const focused=namedCases(request.searchQuestion ?? request.question,request.cases,request.history);
   const caseFactsOnly=request.casePassages!==undefined&&focused.length>0&&!wantsImplications(request.question)&&!/논문|연구|학술|일반|\b(?:research|stud(?:y|ies)|literature)\b/i.test(request.question);
   if (request.selectedSources.includes("cases")) {
     evidence.cases = selectCases(request.searchQuestion ?? request.question, focused.length?request.cases.filter(item=>focused.some(c=>c.id===item.id)):request.cases);

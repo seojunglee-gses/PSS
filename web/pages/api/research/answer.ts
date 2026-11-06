@@ -1,3 +1,5 @@
+import { canonicalBuildingContext } from "../../../lib/spatial/building-use-server";
+import { analysisActivities, analysisSessionContext, analysisSessionQuestion } from "../../../lib/analysis-session";
 import {policyHistory} from "../../../lib/facilitation";
 import { loadProjectContext } from "../../../lib/project-context-server";
 import { AccessError } from "../../../lib/membership/server";
@@ -21,9 +23,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     request.projectContext = context.currentMaterial;
     request.previousSummaries = context.previousSummaries;
     request.cases = context.cases;
-    if(!Array.isArray(req.body.selectedSources)||!req.body.selectedSources.length)request.selectedSources=resolveSources(sourceRoutingQuestion(request.question,request.history??[]),[],context.cases,request.history);
+    const activities=analysisActivities(context.stageHistory,context.projectId);
+    request.searchQuestion=analysisSessionQuestion(request.question,activities,context.cases);
+    const contextual=request.searchQuestion!==request.question;
+    if(!contextual)request.searchQuestion=sourceRoutingQuestion(request.question,request.history??[]);
+    if(!Array.isArray(req.body.selectedSources)||!req.body.selectedSources.length)request.selectedSources=resolveSources(request.searchQuestion,[],context.cases,contextual?[]:request.history);
+    request.analysisSession=analysisSessionContext(context.stageHistory,context.projectId,context.cases,request.selectedSources);
+    if(request.selectedSources.includes("spatial") && !request.spatialContext)request.spatialContext=canonicalBuildingContext([...activities].reverse().find(a=>a.type==="spatial")?.result);
     if(request.selectedSources.includes('cases')){
-      const focused=namedCases(request.question,context.cases,request.history);
+      const focused=namedCases(request.searchQuestion,context.cases,contextual?[]:request.history);
       request.casePassages=await readCasePassages(context.projectId,focused.length?focused:context.cases);
     }
     request.facilitationHistory=policyHistory(context.stageHistory);

@@ -1,3 +1,4 @@
+import { representativePoint, featureNames } from "../../lib/spatial/geo-query";
 import { deriveBoundary, boundaryGeoJSON } from '../../lib/spatial/boundary';
 import NaturalLanguageGIS from "./NaturalLanguageGIS";
 import SpatialEntityPicker from "./SpatialEntityPicker";
@@ -33,7 +34,9 @@ export default function SpatialAnalysis({
   included,
   onInclude,
   onAsk,
+  onInspect,
 }: {
+  onInspect?: (selection: { layerId: string; featureId: string; name: string; coordinate: [number, number]; scopeMeters?: number }) => void;
   onAsk?: (question:string)=>void;
   projectId: string;
   geo?: GeoWorkspace;
@@ -146,6 +149,8 @@ export default function SpatialAnalysis({
   ) => {
     setShowResults(true);
     setSelected({ layer, feature, index });
+    const point = representativePoint(feature);
+    if (point) onInspect?.({ layerId: layer.config.id, featureId: featureKey(feature, index), name: featureNames(feature)[0] ?? layer.config.label, coordinate: point.coordinate, ...(geo?.context.scopeMeters !== undefined ? { scopeMeters: geo.context.scopeMeters } : {}) });
     geo?.setContext(prev => ({ scopeMeters:prev.scopeMeters, mapCenter: prev.mapCenter, selected: { layerId: layer.config.id, featureId: featureKey(feature, index) } }));
     setError("");
     setOverlay(

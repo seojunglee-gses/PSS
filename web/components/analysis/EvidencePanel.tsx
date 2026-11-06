@@ -2,8 +2,10 @@ import { useI18n } from "../../lib/i18n";
 import { researchLabels } from "../../lib/research/labels";
 import type { AnalysisRecord, EvidenceSource, Finding } from "../../lib/research/types";
 
-export default function EvidencePanel({ evidence, enabled, loading, highlighted, onViewCase, availableCaseIds = [], researchFindings = [] }: {
+export default function EvidencePanel({ evidence, enabled, loading, highlighted, onViewCase, onViewPaper, onViewProject, availableCaseIds = [], researchFindings = [] }: {
   evidence: AnalysisRecord["evidence"] | null; enabled: EvidenceSource[]; loading: boolean; highlighted: string | null;
+  onViewPaper?: (paper: NonNullable<AnalysisRecord["evidence"]>["papers"][number]) => void;
+  onViewProject?: () => void;
   onViewCase?: (caseId: string) => void;
   availableCaseIds?: string[];
   researchFindings?: Finding[];
@@ -25,7 +27,7 @@ export default function EvidencePanel({ evidence, enabled, loading, highlighted,
     {evidence?.warnings.filter((w) => enabled.includes(w.source)).map((warning, index) => <p key={index} role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{warning.message}</p>)}
     {evidence?.projectContext && enabled.includes("project") && <section className="mt-5" aria-label={labels.project}>
       <h4 className="font-semibold text-slate-800">{labels.project}</h4>
-      <p className="mt-2 whitespace-pre-line text-sm text-slate-600">{evidence.projectContext}</p>
+      <details onToggle={event => { if (event.currentTarget.open) onViewProject?.(); }}><summary className="mt-2 cursor-pointer text-sm text-blue-700">{labels.project}</summary><p className="mt-2 whitespace-pre-line text-sm text-slate-600">{evidence.projectContext}</p></details>
     </section>}
     {evidence && enabled.includes("cases") && evidence.cases.length > 0 && <section className="mt-5" aria-label={labels.caseEvidence}>
       <h4 className="font-semibold text-slate-800">{labels.caseEvidence}</h4>
@@ -54,7 +56,7 @@ export default function EvidencePanel({ evidence, enabled, loading, highlighted,
           <p className="text-xs text-blue-700">[{p.sourceId}]</p><h5 className="mt-1 font-semibold">{p.title}</h5>
           <p className="mt-2 text-xs text-slate-600">{p.authors.length ? p.authors.join(", ") : labels.authorUnknown}</p>
           <p className="mt-1 text-xs text-slate-500">{p.year ?? labels.unknown} · {p.journal ?? labels.unknown}</p>
-          <details open={highlighted === p.sourceId ? true : undefined} className="mt-2 text-xs text-slate-500"><summary className="cursor-pointer font-semibold">{labels.paperDetails}</summary>
+          <details onToggle={event => { if (event.currentTarget.open) onViewPaper?.(p); }} open={highlighted === p.sourceId ? true : undefined} className="mt-2 text-xs text-slate-500"><summary className="cursor-pointer font-semibold">{labels.paperDetails}</summary>
           {researchFindings.some((finding) => finding.sourceIds.includes(p.sourceId)) && <section className="mt-3 text-sm text-slate-700">
             <h6 className="font-semibold">{labels.researchFindings}</h6>
             <ul className="mt-1 space-y-2">{researchFindings.filter((finding) => finding.sourceIds.includes(p.sourceId)).map((finding, index) => <li key={index} className="whitespace-pre-line">{finding.text.replace(/\[(?:[CR]:)[^\[\]]+\]/g, "")}</li>)}</ul>

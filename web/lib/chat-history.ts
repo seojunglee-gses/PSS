@@ -10,9 +10,9 @@ export function conversationHistory(value: unknown, stepId?: string): Conversati
   if (!Array.isArray(value)) return [];
   const messages: ConversationMessage[] = [];
   let remaining = 16000;
-  for (const item of value.slice(-24).reverse()) {
+  for (const item of [...value].reverse()) {
     const log = record(item);
-    if (!log || (stepId !== undefined && log.stepId !== stepId)) continue;
+    if (!log || log.activity || (stepId !== undefined && log.stepId !== stepId)) continue;
     const role = log.role ?? log.sender;
     const content = log.content ?? log.text;
     if ((role !== "user" && role !== "assistant") || typeof content !== "string" || !content.trim()) continue;
@@ -42,7 +42,7 @@ const contentKey = (value: unknown): string | undefined => {
   const log = record(value);
   if (!log) return JSON.stringify(value);
   const sender = log.sender === "Planner" ? "user" : log.sender === "ChatGPT" ? "assistant" : log.sender;
-  return JSON.stringify([sender, log.provider, log.text ?? "", log.imageId ?? "", log.imageUrl ?? ""]);
+  return JSON.stringify([sender, log.provider, log.text ?? "", log.imageId ?? "", log.imageUrl ?? "", record(log.activity)?.id ?? ""]);
 };
 
 // Each client submits a snapshot. Retain records from other clients rather than

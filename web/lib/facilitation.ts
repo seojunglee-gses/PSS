@@ -105,7 +105,7 @@ export const evidenceAttributionRules="Distinguish verified evidence, participan
 export function summaryDialogue(value:unknown):{messages:ConversationMessage[];truncated:boolean}{
  if(!Array.isArray(value))return {messages:[],truncated:false};
  const all:ConversationMessage[]=[];let truncated=false;
- for(const item of value){if(!item||typeof item!=='object')continue;const m=item as Record<string,unknown>;let role=m.role??m.sender;if(role==='Planner')role='user';if(role==='ChatGPT')role='assistant';const text=m.content??m.text;if((role!=='user'&&role!=='assistant')||typeof text!=='string'||!text.trim())continue;if(text.length>1500)truncated=true;all.push({role,content:text.trim().slice(0,1500)});}
+ for(const item of value){if(!item||typeof item!=='object')continue;const m=item as Record<string,unknown>;if(m.activity)continue;let role=m.role??m.sender;if(role==='Planner')role='user';if(role==='ChatGPT')role='assistant';const text=m.content??m.text;if((role!=='user'&&role!=='assistant')||typeof text!=='string'||!text.trim())continue;if(text.length>1500)truncated=true;all.push({role,content:text.trim().slice(0,1500)});}
  const chosen=all.length>60?[...all.slice(0,12),...all.slice(-48)]:all;if(all.length>60)truncated=true;
  let remaining=48000;const messages:ConversationMessage[]=[];
  for(const m of chosen){if(remaining<=0){truncated=true;break;}const content=m.content.slice(0,remaining);if(content.length<m.content.length)truncated=true;messages.push({...m,content});remaining-=content.length;}
