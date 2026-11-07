@@ -6,11 +6,11 @@ import { adminDb, adminBucket } from '../firebaseAdmin';
 import { listDatasets, readDataset } from './dataset-server';
 import { datasetLayer } from './datasets';
 import { validateConfig, validateGeoJSON } from './loader';
-import { featureKey, featureCollection, resultFor, isArea } from './engine';
+import { featureKey, featureCollection, resultFor, isArea, touches, createBuffer, intersectionAreas, overlayArea, scorePriority } from './engine';
 import { bbox, bearing, point, booleanPointInPolygon, pointToPolygonDistance, nearestPointOnLine, lineString } from '@turf/turf';
 import type { Identity } from '../membership/server';
-import type { LoadedLayer } from './types';
-import { coordinate, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, isMapReference, featureNames, type Place, type GeoContext, type GeoResult } from './geo-query';
+import type { LoadedLayer, SpatialConfig } from './types';
+import { coordinate, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, spatialToolRequest, isMapReference, featureNames, type Place, type GeoContext, type GeoResult } from './geo-query';
 import { getWalkingRoute, searchBoundaryPlaces } from './kakao-server';
 import { translate, type Locale } from '../i18n';
 const geometryCache = new Map<string, {
@@ -21,6 +21,7 @@ const geometryCache = new Map<string, {
 export async function projectLayers(user: Identity, projectId: string, signal?: AbortSignal) {
     const layers: LoadedLayer[] = [];
     const warnings: string[] = [];
+    let priority: SpatialConfig["priority"];
     // Same project-owned metadata, normalized building files and authorization as the existing map.
     signal?.throwIfAborted();
     const listed = await listDatasets(adminDb(), user, projectId);
@@ -59,6 +60,7 @@ export async function projectLayers(user: Identity, projectId: string, signal?: 
     try {
         signal?.throwIfAborted();
         const config = validateConfig(JSON.parse(await readFile(path.join(process.cwd(), 'public', 'data', 'projects', projectId, 'config.json'), 'utf8')), projectId);
+        priority = config.priority;
         for (const layer of config.layers) {
             try {
                 signal?.throwIfAborted();
@@ -81,7 +83,7 @@ export async function projectLayers(user: Identity, projectId: string, signal?: 
     const active=layers.find(l=>l.config.id===`uploaded-${settings.activeBoundaryDatasetId}`);
     let boundary:ProjectBoundary|undefined;
     if(active){try{boundary=deriveBoundary(boundaryGeoJSON(active.data));}catch{warnings.push('boundary.invalid');}}
-    return { layers, warnings, boundary, settings };
+    return { layers, warnings, boundary, settings, priority };
 }
 function selectedPlace(context: GeoContext, layers: LoadedLayer[]): Place | undefined {
     if (context.selected) {
@@ -137,7 +139,7 @@ export function verifyChoice(token: unknown, binding: string): Place | undefined
         return;
     }
 }
-export async function resolvePlaceReference(name: string, context: GeoContext, layers: LoadedLayer[], search?: (query: string) => Promise<Place[]>) {
+export async function resolvePlaceReference(name: string, context: GeoContext, layers: LoadedLayer[], search?: (query: string) => Promise<Place[]>): Promise<Place[]> {
     if (/^(현재\s*(지도\s*)?중심|map center)$/i.test(name.trim()))
         return context.mapCenter ? [{ id: 'map-center', name: 'gis.mapCenter', coordinate: context.mapCenter, source: 'map' as const }] : [];
     if (isMapReference(name)) {
@@ -147,6 +149,9 @@ export async function resolvePlaceReference(name: string, context: GeoContext, l
     const internal = internalPlaces(name, layers, featureKey);
     if (internal.length)
         return internal;
+    const matchingLayers = layers.filter(layer => layer.config.label.trim().toLowerCase() === name.trim().toLowerCase() || (/^(?:공공시설|주요\s*시설|facilities)$/i.test(name.trim()) && (layer.config.role === "facilities" || layer.config.datasetType === "public_facilities")));
+    const registered = matchingLayers.flatMap(layer => layer.data.features.map((feature,index)=>({id:`${layer.config.id}:${featureKey(feature,index)}`,name:featureNames(feature)[0]??layer.config.label,source:"project" as const,layerId:layer.config.id,featureId:featureKey(feature,index),...representativePoint(feature)})));
+    if (registered.length) return registered;
     return search ? search(name) : [];
 }
 function nearestBoundaryCoordinate(place: Place, boundary: ProjectBoundary) {
@@ -191,17 +196,104 @@ export async function executeGeoQuery(input: {
     context?: unknown;
     choices?: Record<string, string>;
     previousResult?: unknown;
+    history?: import("../chat-history").ConversationMessage[];
     locale?: Locale;
-}, user: Identity, projectId: string, layers: LoadedLayer[], layerWarnings: string[] = [], signal?: AbortSignal, options?:{boundary?:ProjectBoundary;settings?:SpatialSettings}): Promise<GeoResult> {
+}, user: Identity, projectId: string, layers: LoadedLayer[], layerWarnings: string[] = [], signal?: AbortSignal, options?:{boundary?:ProjectBoundary;settings?:SpatialSettings;priority?:SpatialConfig["priority"]}): Promise<GeoResult> {
     const plan = parseGeoPlan(input.question), context = parseGeoContext(input.context), locale = input.locale === 'en' ? 'en' : 'ko';
     const t = (key: string, values?: Record<string, string | number>) => translate(locale, key, values);
     const boundary=options?.boundary,settings=spatialSettings(options?.settings);
     const scopeMeters=context.scopeMeters??settings.defaultNearbyMeters;
-    let origin = plan.origin ? undefined : defaultOrigin(context, options ? layers.filter(l=>l.config.role!=='boundary') : layers);
-    if(!plan.origin&&!context.selected&&!context.point&&boundary)origin={id:'project-center',name:'gis.projectCenter',source:'project',coordinate:boundary.center,approximate:true};
+    let origin: Place | undefined;
     const warnings = layerWarnings.map(w => t(w));
     if(options&&!boundary)warnings.push(t('boundary.noActive'));
     const result: GeoResult = { question: input.question, intent: plan.intent, reply: '', places: [], warnings };
+    const tool = spatialToolRequest(input.question, input.history);
+    if (tool) {
+        result.intent = "EXISTING_GIS_QUERY";
+        const normalize = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+        const signals: Record<string, RegExp> = { boundary: /사업구역|사업\s*경계|대상지|project (?:area|boundary)/i, facilities: /공공시설|생활시설|주요\s*시설|facilities/i, buildings: /건물|건축물|buildings?/i, roads: /도로|roads?/i, green: /녹지|공원|green/i, parcels: /필지|parcels?/i };
+        const match = (text: string) => {
+            const exact = layers.filter(layer => [layer.config.label, layer.config.id].some(name => normalize(name).length > 1 && normalize(text).includes(normalize(name))));
+            const generic = layers.filter(layer => signals[layer.config.role ?? layer.config.datasetType ?? ""]?.test(text) || (layer.config.datasetType === "public_facilities" && signals.facilities.test(text)));
+            const candidates = [...new Map([...exact,...generic].map(layer=>[layer.config.id,layer])).values()];
+            return candidates.filter(layer => !(layer.config.role === "boundary" || layer.config.datasetType === "project_boundary") || exact.includes(layer) || !settings.activeBoundaryDatasetId || layer.config.id === `uploaded-${settings.activeBoundaryDatasetId}`);
+        };
+        let targets = match(input.question);
+        const prior = match(tool.reference);
+        if (!targets.length) targets = prior;
+        else if (targets.length === 1 && prior.length === 1 && /나머지|other/i.test(tool.reference) && prior[0].config.id!==targets[0].config.id) targets=[prior[0],targets[0]];
+        else if (targets.length === 1 && prior.length === 2 && prior.some(layer=>layer.config.id===targets[0].config.id)) targets = prior;
+        const ask = (kind: "layers" | "shape" | "buffer") => {
+            result.reply = kind === "layers" && targets.length === 1 ? t("gis.toolInput.other",{name:targets[0].config.label}) : t(`gis.toolInput.${kind}`, { names: layers.slice(0,6).map(layer=>layer.config.label).join(", ") });
+            return result;
+        };
+        if (tool.operation === "priority") {
+            const priority = options?.priority;
+            const layer = priority ? layers.find(layer=>layer.config.id===priority.layerId) : undefined;
+            if (!priority || !layer) { result.reply=t("gis.toolInput.priority"); return result; }
+            const scores = scorePriority(layer,priority.criteria);
+            result.computedResult = { projectId,type:"priority",timestamp:new Date().toISOString(),layerIds:[layer.config.id],parameters:{criteria:JSON.stringify(priority.criteria)},metrics:{priorityCount:scores.length},priorities:scores.slice(0,20),notes:[t("spatial.priorityNote")] };
+            result.resultGeometry = featureCollection(layer.data.features.filter(isArea));
+            result.reply = t("gis.toolPriority",{count:scores.length})+"\n"+t("spatial.priorityNote");
+        } else if (tool.operation === "overlay") {
+            if (targets.length !== 2) return ask("layers");
+            const [a,b] = targets;
+            if (a.config.type === "polygon" && b.config.type === "polygon") {
+                const shapes = intersectionAreas(a,b);
+                result.computedResult = { projectId, type: "intersection", timestamp: new Date().toISOString(), layerIds: [a.config.id,b.config.id], parameters: { layerA:a.config.id,layerB:b.config.id }, metrics: { intersectionAreaSqm:overlayArea(shapes) }, notes: [t("spatial.overlayNote")] };
+                result.resultGeometry = featureCollection(shapes);
+                result.reply = t("gis.toolOverlay", { first:a.config.label,second:b.config.label,area:Math.round(result.computedResult.metrics.intersectionAreaSqm).toLocaleString() });
+            } else {
+                const region = targets.find(layer=>layer.config.type==="polygon");
+                const objects = targets.find(layer=>layer!==region);
+                if (!region || !objects || region.data.features.length*objects.data.features.length>100000) return ask("shape");
+                const shapes = region.data.features.filter(isArea);
+                if (!shapes.length) return ask("shape");
+                // The same touches() predicate powers the existing area-statistics tool.
+                const matched = objects.data.features.flatMap((feature,index)=>shapes.some(shape=>touches(feature,shape))?[{feature,index}]:[]);
+                const shape = shapes.length === 1 ? shapes[0] : deriveBoundary(featureCollection(shapes)).geometry;
+                result.computedResult = resultFor(projectId,"area",[objects],shape,{layerA:a.config.id,layerB:b.config.id});
+                result.computedResult.layerIds = [a.config.id,b.config.id];
+                result.computedResult.metrics.matchedCount = matched.length;
+                result.places = matched.slice(0,20).map(({feature,index})=>({id:`${objects.config.id}:${featureKey(feature,index)}`,name:featureNames(feature)[0]??objects.config.label,source:"project",layerId:objects.config.id,featureId:featureKey(feature,index),...representativePoint(feature)}));
+                result.resultGeometry = featureCollection(matched.slice(0,20).map(value=>value.feature));
+                result.reply = t("gis.toolFeatureOverlap",{name:objects.config.label,region:region.config.label,count:matched.length,shown:result.places.length});
+            }
+        } else {
+            const named = layers.flatMap(layer=>layer.data.features.flatMap((feature,index)=>featureNames(feature).some(name=>normalize(name).length>1&&normalize(input.question).includes(normalize(name)))?[{layer,feature,index}]:[]));
+            const priorNamed = named.length ? named : layers.flatMap(layer=>layer.data.features.flatMap((feature,index)=>featureNames(feature).some(name=>normalize(name).length>1&&normalize(tool.reference).includes(normalize(name)))?[{layer,feature,index}]:[]));
+            const eligible = priorNamed.filter(value=>!targets.length||targets.some(layer=>layer.config.id===value.layer.config.id));
+            const explicitTarget = targets.length === 1 && targets[0].data.features.length === 1;
+            const selected = !eligible.length && !explicitTarget ? selectedPlace(context,layers) : undefined;
+            const selectedLayer = selected?.layerId ? layers.find(layer=>layer.config.id===selected.layerId) : undefined;
+            const selectedFeature = selectedLayer?.data.features.find((feature,index)=>featureKey(feature,index)===selected?.featureId);
+            const targetInfo = eligible.length === 1 ? eligible[0] : eligible.length ? undefined
+                : targets.length === 1 && targets[0].data.features.length === 1 ? {layer:targets[0],feature:targets[0].data.features[0],index:0}
+                : selectedFeature && selectedLayer && (!targets.length||targets.includes(selectedLayer)) ? {layer:selectedLayer,feature:selectedFeature,index:selectedLayer.data.features.indexOf(selectedFeature)} : undefined;
+            const target = targetInfo?.feature;
+            if (tool.operation === "buffer") {
+                const radius = input.question.match(/(\d+(?:\.\d+)?)\s*(km|m|미터|킬로미터)/i) ?? tool.reference.match(/(\d+(?:\.\d+)?)\s*(km|m|미터|킬로미터)/i);
+                if (target && !radius) { result.reply=t("gis.toolInput.distance",{name:featureNames(target)[0]??selectedLayer?.config.label??t("gis.selectedPoint")}); return result; }
+                if (!target && radius) { result.reply=t("gis.toolInput.target",{distance:Number(radius[1])*(/km|킬로/.test(radius[2])?1000:1)}); return result; }
+                if (!target || !radius) return ask("buffer");
+                const meters = Number(radius[1])*(/km|킬로/.test(radius[2])?1000:1);
+                const shape = createBuffer(target,meters);
+                result.computedResult = resultFor(projectId,"buffer",layers,shape,{distanceMeters:meters,selectedLayerId:targetInfo!.layer.config.id,selectedFeatureId:featureKey(targetInfo!.feature,targetInfo!.index)});
+                result.resultGeometry = featureCollection([shape]);
+                result.reply = t("gis.toolBuffer",{distance:meters,area:Math.round(result.computedResult.metrics.areaSqm).toLocaleString()});
+            } else {
+                if ((target && !isArea(target)) || (!target && targets.length>1)) return ask("shape");
+                const shape = target && isArea(target) ? target : boundary?.geometry;
+                if (!shape) return ask("shape");
+                result.computedResult = resultFor(projectId,"area",layers,shape,targetInfo?{selectedLayerId:targetInfo.layer.config.id,selectedFeatureId:featureKey(targetInfo.feature,targetInfo.index)}:{});
+                result.resultGeometry = featureCollection([shape]);
+                result.reply = t("boundary.area",{area:Math.round(result.computedResult.metrics.areaSqm).toLocaleString()});
+                if(result.computedResult.metrics.facilityCount!==undefined)result.reply+=" "+t("boundary.facilitySummary",{count:result.computedResult.metrics.facilityCount});
+            }
+        }
+        result.reply += "\n"+t("gis.toolMeasuredOnly");
+        return result;
+    }
     const followUp = placeResultFollowUp(input.question);
     if (followUp) {
         const previous = previousPlaces(input.previousResult, user, projectId, layers, boundary);
@@ -227,6 +319,8 @@ export async function executeGeoQuery(input: {
         result.reply += "\n"+t("gis.poiExploration");
         return result;
     }
+    origin = plan.origin ? undefined : defaultOrigin(context, options ? layers.filter(l=>l.config.role!=='boundary') : layers);
+    if(!plan.origin&&!context.selected&&!context.point&&boundary)origin={id:'project-center',name:'gis.projectCenter',source:'project',coordinate:boundary.center,approximate:true};
     let remainingCalls = 16;
     const external = async (query: string) => {
         if (!boundary) { if (!warnings.includes(t('picker.needBoundary'))) warnings.push(t('picker.needBoundary')); return []; }
@@ -255,7 +349,7 @@ export async function executeGeoQuery(input: {
         const token = input.choices && Object.prototype.hasOwnProperty.call(input.choices, name) ? input.choices[name] : undefined;
         let selected: Place | undefined;
         if (token?.startsWith('project:'))
-            selected = internalPlaces(name, layers, featureKey).find(p => 'project:' + p.id === token);
+            selected = (await resolvePlaceReference(name, context, layers)).find(p => 'project:' + p.id === token);
         else
             selected = verifyChoice(token, binding);
         if (selected?.source === 'kakao' && (!boundary || !filterBoundaryPlaces([selected], boundaryScope(boundary, context.scopeMeters === 0 ? 0 : 2000)).length)) throw new Error('gis.choiceExpired');

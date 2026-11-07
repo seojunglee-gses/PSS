@@ -29,7 +29,7 @@ function clipped(feature: Feature, selection: AreaFeature): AreaFeature | null {
     ? intersect(featureCollection([feature, selection]))
     : null;
 }
-function touches(feature: Feature, selection: AreaFeature): boolean {
+export function touches(feature: Feature, selection: AreaFeature): boolean {
   return feature.geometry.type === "Point"
     ? booleanPointInPolygon(feature.geometry.coordinates, selection)
     : booleanIntersects(feature, selection);

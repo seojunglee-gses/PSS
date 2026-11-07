@@ -6,6 +6,7 @@ export const metricLabels: Record<string, string> = {
   greenRatio: "녹지 비율",
   population: "인구",
   facilityCount: "공공시설 수",
+  matchedCount: "교차·포함 대상 수",
   intersectionAreaSqm: "중첩 면적 (m²)",
   priorityCount: "분석 지역 수",
 };

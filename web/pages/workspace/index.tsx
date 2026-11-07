@@ -4,7 +4,7 @@ import { analysisActivities, analysisActivityText, analysisSessionQuestion, pars
 import { mergeStepChatLogs } from "../../lib/chat-history";
 import {isDesignGenerationRequest} from "../../lib/facilitation";
 import { useGeoWorkspace } from "../../lib/spatial/use-geo";
-import { isGeoQuestion, placeResultFollowUp } from "../../lib/spatial/geo-query";
+import { isGeoQuestion, placeResultFollowUp, spatialToolRequest, isSpatialToolExplanation, isSpatialToolCancelled } from "../../lib/spatial/geo-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import SpatialSummary from "../../components/spatial/SpatialSummary";
@@ -1101,7 +1101,8 @@ const handleSend = async (suggestedQuestion?: string) => {
   const history = conversationHistory((chatLogsByStep[stepId] ?? []).map(log=>stepId==="data"&&geoChat?.time===log.createdAt&&geo.result?.question===geoChat.question?{...log,text:geo.result.reply}:log), stepId);
   const sessionQuestion = stepId === "data" ? analysisSessionQuestion(userMessage, analysisActivities(dataLogsRef.current, projectId), activeProject?.workspaceContent.data.cases) : userMessage;
   const placeFollowUp = stepId === "data" && Boolean((geo.result?.places.length || analysisActivities(dataLogsRef.current, projectId).at(-1)?.location?.places.length) && !geo.result?.clarify && placeResultFollowUp(userMessage));
-  const effectiveSources = resolveSources(placeFollowUp ? "공간 분석" : sessionQuestion !== userMessage ? sessionQuestion : sourceRoutingQuestion(userMessage, history), selectedSources, activeProject?.workspaceContent.data.cases, sessionQuestion !== userMessage ? [] : history);
+  const toolRequest = stepId === "data" ? spatialToolRequest(userMessage,history) : undefined;
+  const effectiveSources = resolveSources(placeFollowUp || toolRequest ? "공간 분석" : sessionQuestion !== userMessage ? sessionQuestion : sourceRoutingQuestion(userMessage, history), selectedSources, activeProject?.workspaceContent.data.cases, sessionQuestion !== userMessage ? [] : history);
   setSendingChatScope(chatScope);
   setIsSending(true);
   setErrorMessage(null);
@@ -1129,7 +1130,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     await persistChatLogs(stepId, stepId === "data" ? dataLogsRef.current : nextUserLogs);
     if (!isCurrentConversation()) return;
     if (stepId === "data") {
-      if (effectiveSources.includes("spatial") && !effectiveSources.some(source => source === "cases" || source === "research") && (isGeoQuestion(userMessage) || placeFollowUp)) {
+      if (effectiveSources.includes("spatial") && !effectiveSources.some(source => source === "cases" || source === "research") && !isSpatialToolExplanation(userMessage) && !isSpatialToolCancelled(userMessage) && (isGeoQuestion(userMessage) || placeFollowUp || toolRequest)) {
         setAnalysisView("spatial"); setPanelView("information");
         const result = await geo.run(userMessage,undefined,history);
         if (!isCurrentConversation()) return;

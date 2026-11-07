@@ -52,9 +52,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             res.status(429).json({ error: translate(locale, 'gis.quota') });
             return;
         }
-        const { layers, warnings, boundary, settings } = await projectLayers(context.user, context.projectId, abort.signal);
+        const { layers, warnings, boundary, settings, priority } = await projectLayers(context.user, context.projectId, abort.signal);
         abort.signal.throwIfAborted();
-        const result = await executeGeoQuery(req.body, context.user, context.projectId, layers, warnings, abort.signal,{boundary,settings});
+        const history=conversationHistory(context.stageHistory?.length?context.stageHistory:req.body.history);
+        if(history.at(-1)?.role==="user"&&history.at(-1)?.content===req.body.question)history.pop();
+        const result = await executeGeoQuery({...req.body,history}, context.user, context.projectId, layers, warnings, abort.signal,{boundary,settings,priority});
         abort.signal.throwIfAborted();
         const reflection=gisReflection(req.body.question,policyHistory(context.stageHistory,conversationHistory(req.body.history)),!!(result.route||result.computedResult)&&!result.clarify,locale);
         if(reflection){result.facilitationQuestion=reflection;result.reply+='\n\n'+reflection;}

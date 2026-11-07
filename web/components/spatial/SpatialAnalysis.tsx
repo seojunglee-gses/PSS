@@ -130,7 +130,7 @@ export default function SpatialAnalysis({
     }
     return "";
   }, [config.priority, priorityLayer]);
-  useEffect(()=>{if(geo?.result)setShowResults(true);},[geo?.result]);
+  useEffect(()=>{if(geo?.result){setShowResults(true);setOverlay(geo.result.resultGeometry??featureCollection([]));}},[geo?.result]);
   const execute = (fn: () => void) => {
     setShowResults(true);
     setError("");

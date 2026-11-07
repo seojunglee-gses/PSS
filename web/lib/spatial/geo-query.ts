@@ -1,5 +1,5 @@
 import { centroid, pointOnFeature, distance, point, booleanPointInPolygon } from '@turf/turf';
-import type { Feature, Geometry } from 'geojson';
+import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { LoadedLayer } from './types';
 export type Coordinate = [
     number,
@@ -71,6 +71,7 @@ export type GeoResult = {
     scopeMeters?: number;
     facilitationQuestion?:string;
     computedResult?: import("./types").SpatialResult;
+    resultGeometry?: FeatureCollection;
     resolvedPlaces?: Place[];
 };
 export function coordinate(value: unknown): Coordinate {
@@ -166,6 +167,28 @@ export function parseGeoPlan(question: string): GeoPlan {
     if (/주민.*이용.*시설|이용할.*시설/.test(query)) query = '편의시설';
     if (intent === 'PLACE_SEARCH' && /^(?:공원|녹지|편의시설|생활시설|시설|parks?|amenities)$/i.test(query)) intent = 'NEARBY_SEARCH';
     return { intent, query, ...(origin ? { origin } : {}), ...(destination ? { destination } : {}), radius, limit, walking, ...(minutes ? { minutes: Number(minutes[1]) } : {}), nearby: ['NEAREST_PLACE', 'RADIUS_SEARCH', 'NEARBY_SEARCH', 'CATEGORY_SEARCH'].includes(intent) };
+}
+const toolPatterns = [
+    ["priority", /우선\s*검토|우선\s*지역|우선순위\s*분석|priority.*(?:area|analys)/i],
+    ["overlay", /겹침|중첩|겹치|겹치는|겹쳐|overlay|overlap/i],
+    ["buffer", /영향권|버퍼|buffer/i],
+    ["area", /영역\s*통계|지역의\s*특징\s*보기|area statistics/i],
+] as const;
+const toolOperations = (text: string) => toolPatterns.filter(([,pattern])=>pattern.test(text)).map(([operation])=>operation);
+const toolOperation = (text: string) => { const operations=toolOperations(text); return operations.length===1?operations[0]:undefined; };
+export const isSpatialToolCancelled = (question: string) => toolOperations(question).length > 0 && /하지\s*마|하지\s*말|실행하지|말고|취소|그만|don.?t|do not|cancel/i.test(question);
+export const isSpatialToolExplanation = (question: string) => toolOperations(question).length > 0 && /뭐야|뭔가|무엇|방법|어떤\s*(?:도구|분석|기능)|원리|설명|추천|어떻게\s*(?:쓰|사용|작동)|what\b|why\b|should I|explain|how (?:to|do|does|can)|how.*work/i.test(question) && !/(?:실행|분석|계산)해|\b(?:run|execute)\b/i.test(question);
+export function spatialToolRequest(question: string, history: import("../chat-history").ConversationMessage[] = []) {
+    if (isSpatialToolExplanation(question) || /하지\s*마|하지\s*말|실행하지|말고|취소|그만|don.?t|do not|cancel/i.test(question)) return;
+    const last = history[history.length - 1];
+    const pending = last?.role === "assistant" && /실행할.*(?:자료|대상|거리).*알려|provide.*(?:layers|target|distance).*execute/i.test(last.content);
+    const execute = /확인해|계산해|분석해|실행해|해봐|해볼래|비교해|중첩해|겹쳐줘|해줘|해주세요|찾아(?:줘|주세요)|알아봐|\b(?:run|execute|calculate|check|compare|perform|go ahead)\b/i.test(question);
+    if (!execute && !pending) return;
+    const operation = toolOperation(question);
+    const referential = /그럼|아까|말한|앞서|그\s*분석|그거|그대로|이어서|same|that|suggested|go ahead/i.test(question) || pending;
+    const anchor = [...history].reverse().find(message => toolOperations(message.content).length && (!operation || toolOperations(message.content).includes(operation)));
+    const chosen = operation ?? (referential && anchor ? toolOperation(anchor.content) : undefined);
+    return chosen ? { operation: chosen, reference: anchor?.content ?? "" } : undefined;
 }
 export function placeResultFollowUp(question: string): "distribution" | "boundary-nearest" | undefined {
     if (/논문|연구|사례|\b(?:research|study|case)\b/i.test(question)) return;
