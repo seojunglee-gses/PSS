@@ -65,7 +65,7 @@ async function runRoute(handler, body, method = 'POST') {
   const context = load('lib/project-context-server.js');
   const original = context.loadProjectContext;
   const sourceStore=load('lib/research/case-sources-server.js'),originalRead=sourceStore.readCasePassages;sourceStore.readCasePassages=async()=>[];
-  context.loadProjectContext = async () => ({ projectId: 'fixture', currentMaterial: body.projectContext ?? '', previousSummaries: {}, cases: body.cases ?? [] });
+  context.loadProjectContext = async () => ({ projectId: 'fixture', spatialData: { layers: [], warnings: [] }, currentMaterial: body.projectContext ?? '', previousSummaries: {}, cases: body.cases ?? [] });
   try { await handler({ method, body, headers: {} }, res); }
   finally { context.loadProjectContext = original;sourceStore.readCasePassages=originalRead; }
   return result;
