@@ -5,7 +5,7 @@ import { loadProjectContext } from '../../../lib/project-context-server';
 import { AccessError } from '../../../lib/membership/server';
 import { projectLayers, executeGeoQuery, signGeoResult } from '../../../lib/spatial/geo-server';
 import { KakaoError } from '../../../lib/spatial/kakao-server';
-import { parseGeoContext, parseGeoPlan } from '../../../lib/spatial/geo-query';
+import { parseGeoContext, parseGeoPlan, spatialToolRequest } from '../../../lib/spatial/geo-query';
 import { translate, localizeMessage } from '../../../lib/i18n';
 export const config = { api: { bodyParser: { sizeLimit: '128kb' } } };
 export const maxDuration = 60;
@@ -56,10 +56,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         abort.signal.throwIfAborted();
         const history=conversationHistory(context.stageHistory?.length?context.stageHistory:req.body.history);
         if(history.at(-1)?.role==="user"&&history.at(-1)?.content===req.body.question)history.pop();
-        const result = await executeGeoQuery({...req.body,history}, context.user, context.projectId, layers, warnings, abort.signal,{boundary,settings,priority});
+        const result = await executeGeoQuery({...req.body,history:policyHistory(context.stageHistory,history)}, context.user, context.projectId, layers, warnings, abort.signal,{boundary,settings,priority});
         abort.signal.throwIfAborted();
         const reflection=gisReflection(req.body.question,policyHistory(context.stageHistory,conversationHistory(req.body.history)),!!(result.route||result.computedResult)&&!result.clarify,locale);
-        if(reflection){result.facilitationQuestion=reflection;result.reply+='\n\n'+reflection;}
+        if(reflection&&!spatialToolRequest(req.body.question,history)?.exploratory){result.facilitationQuestion=reflection;result.reply+='\n\n'+reflection;}
         res.status(200).json({ result: signGeoResult(result, context.user, context.projectId) });
     }
     catch (error) {

@@ -218,3 +218,18 @@ test('Data summary keeps layer-view counts in metadata and actual GIS metrics in
  const res={status(n){this.code=n;return this},json(body){this.body=body}};
  await load('pages/api/workspace-summary.js').default({method:'POST',headers:{},body:{projectId:'p',currentStage:'data'}},res);assert.equal(res.code,200);
 });
+
+test('spatial answer guidance leads with feasible actions/results and knows service availability without exposing keys',async t=>{
+ const {spatialPromptContext,spatialAnswerRules}=load('lib/spatial/context.js');
+ const context=spatialPromptContext([],{},[],true,{nearbyPlaces:false,priority:false});
+ const pointContext=spatialPromptContext([],{point:[127,37.5]},[],false,{nearbyPlaces:false,priority:false});assert.deepEqual(pointContext.selectedMapPoint.coordinate,[127,37.5]);assert.equal(pointContext.availableTools.distance,true);
+ assert.equal(context.availableTools.nearbyPlaces,false);assert.equal(context.availableTools.areaStatistics,true);assert.equal(context.availableTools.priority,false);
+ assert.match(spatialAnswerRules,/what this platform can do NOW/);assert.match(spatialAnswerRules,/Do not open with data insufficiency/);assert.match(spatialAnswerRules,/optionally ONE next action/);assert.match(spatialAnswerRules,/A limitation must not outweigh the actual result/);
+ assert.match(spatialAnswerRules,/Never compute or infer distance/);assert.match(spatialAnswerRules,/Activity is not a spatial analysis result/);
+ const project=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');
+ const original=process.env.KAKAO_REST_API_KEY;delete process.env.KAKAO_REST_API_KEY;t.after(()=>original===undefined?delete process.env.KAKAO_REST_API_KEY:process.env.KAKAO_REST_API_KEY=original);
+ mock(t,project,'loadProjectContext',async()=>({projectId:'p',currentMaterial:'대상 가로와 생활공간의 연결',previousSummaries:{problem:'참여자는 보행 불편을 이야기했다.'},cases:[],stageHistory:[],spatialData:{layers:[],boundary:{},warnings:[]}}));
+ let count=0;mock(t,llm,'callLLM',async input=>{count++;const sent=JSON.parse(input.userText);assert.equal(sent.registeredSpatialContext.availableTools.nearbyPlaces,false);assert.match(sent.previousStageSummaries.problem,/참여자/);return JSON.stringify({...response(),summary:'먼저 사업구역의 등록된 공간자료를 함께 확인할 수 있습니다.'})});
+ const res={setHeader(){},status(n){this.code=n;return this},json(body){this.body=body}};
+ await load('pages/api/research/answer.js').default({method:'POST',headers:{},body:{projectId:'p',question:'이 공간 분석이 우리 사업에 어떤 의미가 있어?',selectedSources:['spatial']}},res);assert.equal(res.code,200);assert.equal(count,1);assert.equal(res.body.analysis.answer.format,'direct');
+});
