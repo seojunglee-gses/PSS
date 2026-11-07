@@ -236,3 +236,83 @@ test('explicit boundary radii and named-origin radii retain existing GIS filters
  const local=[{config:{id:'local',label:'등록 시설',type:'point',role:'facilities'},data:{type:'FeatureCollection',features:[point('가좌역',127.005,37.505),point('가까운 카페',127.006,37.505),point('먼 카페',127.03,37.505)]}}];
  const count=requests.length;const cafes=await server.executeGeoQuery({question:'가좌역 반경 500m 카페를 찾아줘'},user,'geo-project',local,[],undefined,{boundary:projectBoundary});assert.equal(requests.length,count);assert.equal(cafes.places.length,1);assert.equal(cafes.places[0].name,'가까운 카페');
 });
+
+test('natural-language tool routing separates execution, explanation, cancellation and contextual follow-ups',()=>{
+ assert.equal(geo.spatialToolRequest('공공시설과 사업구역이 겹치는지 확인해줘.').operation,'overlay');
+ assert.equal(geo.spatialToolRequest('공간 겹침 비교가 뭐야?'),undefined);
+ assert.equal(geo.isSpatialToolExplanation('공간 겹침 비교가 뭐야?'),true);
+ assert.equal(geo.spatialToolRequest('공간 겹침 비교 실행하지 마'),undefined);
+ assert.equal(geo.isSpatialToolCancelled('공간 겹침 비교 실행하지 마'),true);
+ const history=[{role:'assistant',content:'공공시설과 사업구역 경계를 공간 겹침 비교로 확인할 수 있습니다.'}];
+ assert.equal(geo.spatialToolRequest('그럼 너가 말한 공간 겹침 비교해볼래?',history).operation,'overlay');
+ assert.equal(geo.spatialToolRequest('그럼 아까 말한 분석 해봐.',history).operation,'overlay');
+ assert.equal(geo.spatialToolRequest('그럼 아까 말한 분석 해봐.',[]),undefined);
+ assert.equal(geo.spatialToolRequest('그럼 아까 말한 분석 해봐.',[{role:'assistant',content:'공간 겹침 비교와 주변 영향권 보기 중 하나를 선택할 수 있습니다.'}]),undefined);
+});
+test('facility/boundary tool execution uses existing area-statistics predicates, not object counts',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('registered GIS execution must not search Kakao/OpenAlex'));
+ const boundaryLayer={config:{id:'boundary',label:'사업구역',type:'polygon',role:'boundary'},data:{type:'FeatureCollection',features:[projectBoundary.geometry]}};
+ const facilities={config:{id:'facilities',label:'공공시설',type:'point',role:'facilities'},data:{type:'FeatureCollection',features:[point('내부 시설',127.005,37.505),point('외부 시설',127.03,37.505)]}};
+ const result=await server.executeGeoQuery({question:'공공시설과 사업구역이 겹치는지 확인해줘.',context:{selected:{layerId:'deleted',featureId:'old'}}},user,'geo-project',[boundaryLayer,facilities],[],undefined,{boundary:projectBoundary});
+ const engine=load('lib/spatial/engine.js');
+ assert.equal(result.computedResult.metrics.facilityCount,engine.areaStatistics(projectBoundary.geometry,[facilities]).metrics.facilityCount);
+ assert.equal(result.computedResult.metrics.matchedCount,1);assert.equal(result.places[0].name,'내부 시설');assert.equal(result.resultGeometry.features.length,1);assert.match(result.reply,/1개/);assert.doesNotMatch(result.reply,/선택해.*실행|분석 결과를 가져/);
+ const none={...facilities,data:{type:'FeatureCollection',features:[point('외부 시설',127.03,37.505)]}};
+ const empty=await server.executeGeoQuery({question:'공공시설과 사업구역이 겹치는지 확인해줘.'},user,'geo-project',[boundaryLayer,none],[],undefined,{boundary:projectBoundary});assert.equal(empty.computedResult.metrics.matchedCount,0);assert.equal(empty.resultGeometry.features.length,0);
+});
+test('polygon overlap and referential execution reuse the exact existing overlay calculation',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('no external or classification call'));
+ const boundary={config:{id:'boundary',label:'사업구역',type:'polygon',role:'boundary'},data:{type:'FeatureCollection',features:[projectBoundary.geometry]}};
+ const park={config:{id:'green',label:'녹지',type:'polygon',role:'green'},data:{type:'FeatureCollection',features:[projectBoundary.geometry]}};
+ const question='그럼 너가 말한 공간 겹침 비교해볼래?';
+ const result=await server.executeGeoQuery({question,history:[{role:'assistant',content:'녹지와 사업구역을 공간 겹침 비교로 확인할 수 있습니다.'}]},user,'geo-project',[boundary,park],[],undefined,{boundary:projectBoundary});
+ const engine=load('lib/spatial/engine.js');assert.equal(result.computedResult.metrics.intersectionAreaSqm,engine.overlayArea(engine.intersectionAreas(boundary,park)));assert.equal(result.resultGeometry.features.length,1);assert.equal(result.question,question);
+});
+test('missing targets are clarified without computing and a supplied missing layer resumes execution',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('clarification does not search'));
+ const boundary={config:{id:'boundary',label:'사업구역',type:'polygon',role:'boundary'},data:{type:'FeatureCollection',features:[projectBoundary.geometry]}};
+ const facilities={...layers[0],config:{...layers[0].config,label:'공공시설'}};
+ const options={boundary:projectBoundary};
+ const unclear=await server.executeGeoQuery({question:'두 공간이 겹치는지 확인해줘.'},user,'geo-project',[boundary,facilities],[],undefined,options);assert.equal(unclear.computedResult,undefined);assert.match(unclear.reply,/두 자료 이름/);
+ const first=await server.executeGeoQuery({question:'공공시설의 공간 겹침 비교를 실행해줘.'},user,'geo-project',[boundary,facilities],[],undefined,options);assert.match(first.reply,/나머지 자료/);assert.equal(first.computedResult,undefined);
+ const second=await server.executeGeoQuery({question:'사업구역',history:[{role:'user',content:'공공시설의 공간 겹침 비교를 실행해줘.'},{role:'assistant',content:first.reply}]},user,'geo-project',[boundary,facilities],[],undefined,options);assert.ok(second.computedResult);
+});
+test('buffer execution asks only for absent parameters, then reuses the existing buffer/area functions',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('no external search'));
+ const context={selected:{layerId:'facilities',featureId:'회복의 숲 타워'}};
+ const first=await server.executeGeoQuery({question:'주변 영향권 보기를 실행해줘',context},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});assert.equal(first.computedResult,undefined);assert.match(first.reply,/거리\(m\)/);
+ const result=await server.executeGeoQuery({question:'300m',context,history:[{role:'user',content:'주변 영향권 보기를 실행해줘'},{role:'assistant',content:first.reply}]},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ const engine=load('lib/spatial/engine.js');const expected=engine.resultFor('geo-project','buffer',layers,engine.createBuffer(layers[0].data.features[0],300));assert.equal(result.computedResult.metrics.areaSqm,expected.metrics.areaSqm);assert.equal(result.computedResult.parameters.distanceMeters,300);assert.ok(result.resultGeometry.features.length);
+});
+test('configured priority scoring executes unchanged and missing criteria never become invented scores',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('no external search'));
+ const layer={config:{id:'zones',label:'검토 구역',type:'polygon'},data:{type:'FeatureCollection',features:[{...projectBoundary.geometry,id:'a',properties:{heat:2}},{...projectBoundary.geometry,id:'b',properties:{heat:4}}]}};
+ const question='우선 검토 지역 찾기를 실행해줘';const missing=await server.executeGeoQuery({question},user,'geo-project',[layer],[],undefined,{boundary:projectBoundary});assert.equal(missing.computedResult,undefined);assert.match(missing.reply,/기준.*등록되어 있지/);
+ const priority={layerId:'zones',criteria:[{field:'heat',direction:'higher',weight:1}]};const result=await server.executeGeoQuery({question},user,'geo-project',[layer],[],undefined,{boundary:projectBoundary,priority});assert.deepEqual(result.computedResult.priorities,load('lib/spatial/engine.js').scorePriority(layer,priority.criteria));
+});
+test('registered facility-layer distance uses the existing origin and boundary-distance tool',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('registered facility must not become an external POI query'));
+ const one={...layers[0],data:{type:'FeatureCollection',features:[point('시설 하나',127.02,37.505)]}};
+ const result=await server.executeGeoQuery({question:'공공시설에서 사업구역까지 거리를 확인해줘.'},user,'geo-project',[one],[],undefined,{boundary:projectBoundary});assert.ok(result.straightDistanceMeters>0);assert.equal(result.origin.name,'시설 하나');assert.equal(result.destination.boundaryTarget,true);
+});
+
+test('spatial endpoint uses saved stage dialogue for tool parameters instead of contradictory client history',async t=>{
+ const project=load('lib/project-context-server.js');
+ const boundary={config:{id:'boundary',label:'사업구역',type:'polygon',role:'boundary'},data:{type:'FeatureCollection',features:[projectBoundary.geometry]}};
+ const facilities={...layers[0],config:{...layers[0].config,label:'공공시설'}};
+ mock(t,project,'loadProjectContext',async()=>({projectId:'endpoint-tool',user:{uid:'endpoint-tool-user'},stageHistory:[{stepId:'data',sender:'assistant',text:'공공시설과 사업구역의 공간 겹침 비교를 할 수 있습니다.'},{stepId:'data',sender:'user',text:'그럼 아까 말한 분석 해봐.'}]}));
+ mock(t,server,'projectLayers',async()=>({layers:[boundary,facilities],warnings:[],boundary:projectBoundary,settings:{}}));
+ const res={setHeader(){},status(code){this.code=code;return this},json(body){this.body=body}};
+ await load('pages/api/spatial/query.js').default({method:'POST',body:{question:'그럼 아까 말한 분석 해봐.',history:[{role:'assistant',content:'건물과 녹지의 공간 겹침 비교를 하세요.'}]},headers:{}},res);
+ assert.equal(res.code,200);assert.ok(res.body.result.computedResult);assert.deepEqual(res.body.result.computedResult.layerIds,['boundary','facilities']);
+});
+
+test('ambiguous facility-layer distance resumes through the existing authenticated place-choice flow',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('no external search for project dataset choices'));
+ const question='공공시설에서 사업구역까지 거리를 확인해줘.';
+ const first=await server.executeGeoQuery({question},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ assert.equal(first.clarify.reference,'공공시설');assert.equal(first.places.length,2);
+ const chosen=first.places[1];
+ const second=await server.executeGeoQuery({question,choices:{공공시설:'project:'+chosen.id}},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ assert.equal(second.origin.id,chosen.id);assert.equal(second.straightDistanceMeters,0);assert.equal(second.clarify,undefined);
+});
