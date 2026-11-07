@@ -234,7 +234,7 @@ test('explicit boundary radii and named-origin radii retain existing GIS filters
  key(t);const requests=[];mock(t,global,'fetch',async url=>{requests.push(new URL(url));return Response.json({meta:{is_end:true},documents:[place('within1km',127.019),place('outside1km',127.04)]})});
  const result=await run('사업구역 주변 1km에 공원을 보여줘');assert.equal(result.scopeMeters,1000);assert.ok(result.places.some(p=>p.id==='within1km'));assert.ok(!result.places.some(p=>p.id==='outside1km'));
  const local=[{config:{id:'local',label:'등록 시설',type:'point',role:'facilities'},data:{type:'FeatureCollection',features:[point('가좌역',127.005,37.505),point('가까운 카페',127.006,37.505),point('먼 카페',127.03,37.505)]}}];
- const count=requests.length;const cafes=await server.executeGeoQuery({question:'가좌역 반경 500m 카페를 찾아줘'},user,'geo-project',local,[],undefined,{boundary:projectBoundary});assert.equal(requests.length,count);assert.equal(cafes.places.length,1);assert.equal(cafes.places[0].name,'가까운 카페');
+ const count=requests.length;const cafes=await server.executeGeoQuery({question:'가좌역 반경 500m 카페를 찾아줘'},user,'geo-project',local,[],undefined,{boundary:projectBoundary});assert.ok(requests.length>count);assert.ok(requests.slice(count).every(url=>url.pathname.endsWith('/category.json')&&url.searchParams.get('category_group_code')==='CE7'));assert.ok(cafes.places.every(p=>geo.calculateStraightLineDistance([127.005,37.505],p.coordinate)<=500));
 });
 
 test('natural-language tool routing separates execution, explanation, cancellation and contextual follow-ups',()=>{
@@ -353,4 +353,41 @@ test('boundary-only exploration reuses configured Kakao lookup, while missing ke
  await server.executeGeoQuery({question:'공원에서 개선이 필요한 장소는 어디부터 살펴봐야 해?'},user,'geo-project',[region],[],undefined,{boundary:projectBoundary});assert.equal(calls[0].searchParams.get('query'),'공원');
  calls.length=0;delete process.env.KAKAO_REST_API_KEY;
  const local=await server.executeGeoQuery(input,user,'geo-project',[region],[],undefined,{boundary:projectBoundary});assert.equal(calls.length,0);assert.ok(local.computedResult);assert.doesNotMatch(local.reply,/주변 시설을 찾아볼까요/);
+});
+
+
+test('all official categories and natural aliases reuse the category endpoint without swallowing business names',async t=>{
+ key(t);const calls=[];mock(t,global,'fetch',async url=>{calls.push(new URL(url));return Response.json({meta:{is_end:true},documents:[{...place('1'),category_group_code:calls.at(-1).searchParams.get('category_group_code')}]})});
+ const groups={MT1:['대형마트'],CS2:['편의점'],PS3:['어린이집','유치원'],SC4:['학교'],AC5:['학원'],PK6:['주차장'],OL7:['주유소','충전소'],SW8:['지하철','지하철역'],BK9:['은행'],CT1:['문화시설'],AG2:['중개업소'],PO3:['공공기관'],AT4:['관광지','관광명소'],AD5:['숙박'],FD6:['음식점','식당','먹을 곳'],CE7:['카페','커피숍'],HP8:['병원','의료기관'],PM9:['약국']};
+ const {resolveSources}=load('lib/research/routing.js');
+ assert.deepEqual(Object.keys(groups),geo.KAKAO_CATEGORY_CODES);
+ for(const [code,aliases]of Object.entries(groups))for(const term of aliases){
+  const question=`사업구역 주변 ${term} 보여줘.`;
+  assert.equal(geo.placeCategory(question),code,question);assert.ok(geo.isGeoQuestion(question),question);assert.ok(resolveSources(question).includes('spatial'),question);
+  const result=await kakao.searchNearbyPlaces(term,[127,37.5],500);
+  assert.match(calls.at(-1).pathname,/category.json$/);assert.equal(calls.at(-1).searchParams.get('category_group_code'),code);assert.equal(result.places[0].categoryCode,code);
+ }
+ for(const term of ['세탁소','경로당','공방','체육관','중앙약국','가좌역 카페']){
+  assert.equal(geo.genericCategoryCode(term),undefined);await kakao.searchNearbyPlaces(term,[127,37.5],500);assert.match(calls.at(-1).pathname,/keyword.json$/);assert.equal(calls.at(-1).searchParams.get('query'),term);
+ }
+ assert.equal(geo.placeCategory('카페도 보여줘.'),'CE7');assert.equal(geo.parseGeoPlan('병원은 어디에 있어?').intent,'CATEGORY_SEARCH');assert.equal(geo.placeCategory('Show me restaurants'),'FD6');
+ assert.deepEqual(resolveSources('병원 보여줘',['cases']),['cases']);
+ const searched=await run('사업구역 주변 음식점 보여줘.');assert.equal(searched.searchQuery,'음식점');assert.equal(searched.categoryCode,'FD6');assert.ok(searched.places.every(p=>p.categoryCode==='FD6'));
+ assert.ok(server.signGeoResult(searched,user,'geo-project').searchToken);
+ assert.deepEqual(resolveSources('병원 관련 연구를 찾아줘'),['research']);
+});
+
+test('two recent signed searches support transient candidate comparisons including empty results, never inventory conclusions',async t=>{
+ key(t);mock(t,global,'fetch',()=>assert.fail('comparing existing search candidates must not call Kakao or LLM'));
+ const make=(query,code,places)=>server.signGeoResult({question:`${query} 보여줘`,searchQuery:query,categoryCode:code,intent:'CATEGORY_SEARCH',scopeMeters:500,places,reply:'',warnings:[]},user,'geo-project');
+ const first=make('음식점','FD6',[{id:'food',name:'식당 하나',source:'kakao',coordinate:[127.005,37.505]}]);
+ const second=make('카페','CE7',[]);
+ const execute=recentSearches=>server.executeGeoQuery({question:'둘 중 어느 쪽이 더 많아?',recentSearches},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ assert.equal(geo.placeResultFollowUp('둘 중 어느 쪽이 더 많아?'),'search-comparison');
+ const answer=await execute([first,second]);assert.match(answer.reply,/음식점.*1/);assert.match(answer.reply,/카페.*0/);assert.match(answer.reply,/후보/);assert.match(answer.reply,/전체|단정|판단/);assert.equal(answer.searchQuery,'카페');assert.equal(answer.places.length,0);
+ for(const bad of [{...first,places:[]},{...first,searchQuery:'조작'}, {...first,scopeMeters:0},{...first,categoryCode:'CE7'}, {...first,places:first.places.map(p=>({...p,coordinate:[0,0]}))},server.signGeoResult({...first},user,'other-project')]){
+  assert.match((await execute([bad,second])).reply,/다시 검색/);
+ }
+ assert.match((await execute([first])).reply,/다시 검색/);
+ const now=Date.now;mock(t,Date,'now',()=>now()+6*60000);assert.match((await execute([first,second])).reply,/다시 검색/);
 });

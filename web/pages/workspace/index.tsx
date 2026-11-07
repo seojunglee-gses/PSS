@@ -1100,7 +1100,7 @@ const handleSend = async (suggestedQuestion?: string) => {
   const stepId = activeStep.id;
   const history = conversationHistory((chatLogsByStep[stepId] ?? []).map(log=>stepId==="data"&&geoChat?.time===log.createdAt&&geo.result?.question===geoChat.question?{...log,text:geo.result.reply}:log), stepId);
   const sessionQuestion = stepId === "data" ? analysisSessionQuestion(userMessage, analysisActivities(dataLogsRef.current, projectId), activeProject?.workspaceContent.data.cases) : userMessage;
-  const placeFollowUp = stepId === "data" && Boolean((geo.result?.places.length || analysisActivities(dataLogsRef.current, projectId).at(-1)?.location?.places.length) && !geo.result?.clarify && placeResultFollowUp(userMessage));
+  const placeFollowUp = stepId === "data" && Boolean(((placeResultFollowUp(userMessage)==="search-comparison"&&geo.recentSearches.length)||geo.result?.places.length || analysisActivities(dataLogsRef.current, projectId).at(-1)?.location?.places.length) && !geo.result?.clarify && placeResultFollowUp(userMessage));
   const toolRequest = stepId === "data" ? spatialToolRequest(userMessage,history) : undefined;
   const effectiveSources = resolveSources(placeFollowUp || toolRequest ? "공간 분석" : sessionQuestion !== userMessage ? sessionQuestion : sourceRoutingQuestion(userMessage, history), selectedSources, activeProject?.workspaceContent.data.cases, sessionQuestion !== userMessage ? [] : history);
   setSendingChatScope(chatScope);
