@@ -1,4 +1,4 @@
-import { coordinate, calculateStraightLineDistance, genericCategoryCode, type Coordinate, type Place, type GeoResult } from './geo-query';
+import { coordinate, calculateStraightLineDistance, genericCategoryCode, KAKAO_CATEGORY_CODES, type Coordinate, type Place, type GeoResult } from './geo-query';
 export class KakaoError extends Error {
     constructor(public code: string, public status = 503) { super(code); }
 }
@@ -39,7 +39,7 @@ export function normalizePlaces(payload: unknown): Place[] {
         try {
             const url = text(p.place_url);
             const distance = p.distance === '' || p.distance == null ? undefined : Number(p.distance);
-            result.push({ id: String(p.id), name: String(p.place_name), source: 'kakao', approximate: true, coordinate: coordinate([Number(p.x), Number(p.y)]), ...(text(p.category_name) ? { category: text(p.category_name) } : {}), ...(text(p.address_name) ? { address: text(p.address_name) } : {}), ...(text(p.road_address_name) ? { roadAddress: text(p.road_address_name) } : {}), ...(url && /^https?:\/\/(?:place|map)\.kakao\.com\//.test(url) ? { url } : {}), ...(Number.isFinite(distance) && distance! >= 0 ? { distanceMeters: distance } : {}) });
+            result.push({ id: String(p.id), name: String(p.place_name), source: 'kakao', approximate: true, ...(KAKAO_CATEGORY_CODES.includes(p.category_group_code as typeof KAKAO_CATEGORY_CODES[number]) ? { categoryCode: p.category_group_code as typeof KAKAO_CATEGORY_CODES[number] } : {}), coordinate: coordinate([Number(p.x), Number(p.y)]), ...(text(p.category_name) ? { category: text(p.category_name) } : {}), ...(text(p.address_name) ? { address: text(p.address_name) } : {}), ...(text(p.road_address_name) ? { roadAddress: text(p.road_address_name) } : {}), ...(url && /^https?:\/\/(?:place|map)\.kakao\.com\//.test(url) ? { url } : {}), ...(Number.isFinite(distance) && distance! >= 0 ? { distanceMeters: distance } : {}) });
         }
         catch { /* Invalid vendor records are never promoted to evidence. */ }
     }
@@ -58,7 +58,7 @@ export async function searchPlaces(query: string, context: {
     if (context.radius !== undefined && (!center || !Number.isFinite(context.radius) || context.radius < 1 || context.radius > 20000))
         throw new KakaoError('gis.invalidRadius', 400);
     const category = context.category;
-    if (category && !/^(MT1|CS2|SC4|CE7|FD6|PM9|HP8|PO3|CT1|PK6)$/.test(category))
+    if (category && !KAKAO_CATEGORY_CODES.includes(category as typeof KAKAO_CATEGORY_CODES[number]))
         throw new KakaoError('gis.invalidQuestion', 400);
     const params: Record<string, string | number> = { size: Math.min(15, Math.max(1, context.limit ?? 10)), ...(center ? { x: center[0], y: center[1], sort: 'distance' } : { sort: 'accuracy' }), ...(context.radius ? { radius: Math.round(context.radius) } : {}), ...(category ? { category_group_code: category } : { query: query.trim() }) };
     return normalizePlaces(await request(`/v2/local/search/${category ? 'category' : 'keyword'}.json`, params, context.signal));

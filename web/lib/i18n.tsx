@@ -804,6 +804,8 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.exploreFound": "Of {count} registered matches, examples visible on the map are {names}.",
     "gis.exploreNone": "No matching features were found in this area in the registered data.",
     "gis.exploreMeaning": "These confirmed locations can serve as starting points for further review in relation to the project plan.",
+    "gis.compareSearchCandidates": "The recent displayed search candidates are {first}: {firstCount}, and {second}: {secondCount}. These are partial results affected by scope, paging and display limits; they do not establish which type is more common in the area.",
+    "gis.compareSearchesMissing": "Two recent place search results could not be verified. Please search for the places again before comparing.",
   },
   ko: {
     "caseSource.title": "답변 기반 자료",
@@ -1565,6 +1567,8 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.exploreFound": "등록 자료에서 겹치는 대상 {count}개를 확인했으며, 지도에서는 {names} 등을 살펴볼 수 있습니다.",
     "gis.exploreNone": "현재 등록된 자료에서는 해당 영역과 겹치는 대상을 찾지 못했습니다.",
     "gis.exploreMeaning": "확인된 위치는 사업 계획과 연결해 추가로 살펴볼 출발점으로 활용할 수 있습니다.",
+    "gis.compareSearchCandidates": "최근 표시한 검색 후보는 {first} {firstCount}곳, {second} {secondCount}곳입니다. 검색 범위·페이지·표시 상한에 따른 일부 결과이므로, 이 수만으로 어느 종류가 지역에 더 많은지는 판단할 수 없습니다.",
+    "gis.compareSearchesMissing": "비교할 최근 두 장소 검색 결과를 확인할 수 없습니다. 비교할 장소를 다시 검색해주세요.",
   },
   zh: {
     "caseSource.title": "回答依据资料",
@@ -1878,6 +1882,8 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.exploreFound": "在已登记资料中确认{count}个相交对象，地图上可查看的示例包括{names}。",
     "gis.exploreNone": "在当前已登记资料中未找到与该区域相交的对象。",
     "gis.exploreMeaning": "这些已确认地点可作为结合项目规划进一步查看的起点。",
+    "gis.compareSearchCandidates": "最近显示的搜索候选为{first}：{firstCount}处，{second}：{secondCount}处。这些是受范围、分页和显示上限影响的部分结果，不能据此判断区域内哪类设施更多。",
+    "gis.compareSearchesMissing": "无法确认最近两次地点搜索结果，请重新搜索后再比较。",
   },
 };
 

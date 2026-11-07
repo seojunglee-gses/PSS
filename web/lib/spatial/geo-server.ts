@@ -11,7 +11,7 @@ import { featureKey, featureCollection, resultFor, isArea, touches, createBuffer
 import { bbox, bearing, point, booleanPointInPolygon, pointToPolygonDistance, nearestPointOnLine, lineString } from '@turf/turf';
 import type { Identity } from '../membership/server';
 import type { LoadedLayer, SpatialConfig } from './types';
-import { coordinate, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, spatialToolRequest, isMapReference, featureNames, type Place, type GeoContext, type GeoResult } from './geo-query';
+import { coordinate, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, genericCategoryCode, spatialToolRequest, isMapReference, featureNames, type Place, type GeoContext, type GeoResult, type PlaceSearchSnapshot } from './geo-query';
 import { getWalkingRoute, searchBoundaryPlaces } from './kakao-server';
 import { translate, type Locale } from '../i18n';
 const geometryCache = new Map<string, {
@@ -164,13 +164,35 @@ function nearestBoundaryCoordinate(place: Place, boundary: ProjectBoundary) {
 }
 // Reuse the existing signed, expiring place choices for transient follow-up context.
 // No vendor response cache/collection or permanent token storage is introduced.
+function searchSignature(value: Omit<PlaceSearchSnapshot,"searchToken">, expires: number, user: Identity, projectId: string) {
+    const records=value.places.map(p=>[p.id,p.name,p.source,p.coordinate,p.category??null,p.categoryCode??null,p.address??null,p.roadAddress??null,p.url??null,p.distanceMeters??null]);
+    return stamp(JSON.stringify(["search-snapshot",user.uid,projectId,expires,value.question,value.searchQuery,value.categoryCode??null,value.scopeMeters??null,records]));
+}
+function verifiedSearch(value: unknown, user: Identity, projectId: string): PlaceSearchSnapshot | undefined {
+    if (!secret() || !value || typeof value!=="object" || Array.isArray(value)) return;
+    const snapshot=value as PlaceSearchSnapshot;
+    if(typeof snapshot.question!=="string"||snapshot.question.length>1000||typeof snapshot.searchQuery!=="string"||snapshot.searchQuery.length>200||!Array.isArray(snapshot.places)||snapshot.places.length>20||typeof snapshot.searchToken!=="string"||!/^\d{13}\.[A-Za-z0-9_-]{43}$/.test(snapshot.searchToken))return;
+    const [time,signature]=snapshot.searchToken.split('.'),expires=Number(time);
+    if(expires<Date.now()||expires>Date.now()+5*60000)return;
+    try {
+        snapshot.places.forEach(p=>coordinate(p.coordinate));
+        const expected=Buffer.from(searchSignature(snapshot,expires,user,projectId)),actual=Buffer.from(signature);
+        if(actual.length!==expected.length||!timingSafeEqual(actual,expected))return;
+        return snapshot;
+    }catch{return;}
+}
 export function signGeoResult(result: GeoResult, user: Identity, projectId: string): GeoResult {
     if (result.clarify) return result;
-    return { ...result, places: result.places.map(({ choiceToken, ...place }) => {
+    const signed: GeoResult = { ...result, places: result.places.map(({ choiceToken, ...place }) => {
         void choiceToken;
         const token = place.source === "kakao" ? signChoice(place, scope(user.uid, projectId, result.question, `result:${place.id}:${result.scopeMeters ?? ""}`)) : undefined;
         return { ...place, ...(token ? { choiceToken: token } : {}) };
     }) };
+    if(secret() && signed.searchQuery){
+        const expires=Date.now()+5*60000;
+        signed.searchToken=`${expires}.${searchSignature({...signed,searchQuery:signed.searchQuery},expires,user,projectId)}`;
+    }
+    return signed;
 }
 function previousPlaces(value: unknown, user: Identity, projectId: string, layers: LoadedLayer[], boundary?: ProjectBoundary) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return;
@@ -197,6 +219,7 @@ export async function executeGeoQuery(input: {
     context?: unknown;
     choices?: Record<string, string>;
     previousResult?: unknown;
+    recentSearches?: unknown;
     history?: import("../chat-history").ConversationMessage[];
     locale?: Locale;
 }, user: Identity, projectId: string, layers: LoadedLayer[], layerWarnings: string[] = [], signal?: AbortSignal, options?:{boundary?:ProjectBoundary;settings?:SpatialSettings;priority?:SpatialConfig["priority"]}): Promise<GeoResult> {
@@ -322,6 +345,17 @@ export async function executeGeoQuery(input: {
         return result;
     }
     const followUp = placeResultFollowUp(input.question);
+    if (followUp === "search-comparison") {
+        const snapshots=Array.isArray(input.recentSearches)&&input.recentSearches.length===2?input.recentSearches.map(value=>verifiedSearch(value,user,projectId)):[];
+        const [first,second]=snapshots;
+        if(!first||!second){result.reply=t("gis.compareSearchesMissing");return result;}
+        result.places=second.places;
+        result.scopeMeters=second.scopeMeters;
+        result.searchQuery=second.searchQuery;
+        result.categoryCode=second.categoryCode;
+        result.reply=t("gis.compareSearchCandidates",{first:first.searchQuery.slice(0,80),firstCount:first.places.length,second:second.searchQuery.slice(0,80),secondCount:second.places.length});
+        return result;
+    }
     if (followUp) {
         const previous = previousPlaces(input.previousResult, user, projectId, layers, boundary);
         if (!previous || !boundary) { result.reply = t("gis.refreshPlaces"); return result; }
@@ -505,7 +539,7 @@ export async function executeGeoQuery(input: {
         const requestedRadius = /\d+(?:\.\d+)?\s*(?:m|km|미터|킬로미터)/i.test(input.question);
         const projectSearchArea = boundary && origin?.boundaryTarget ? boundaryScope(boundary, requestedRadius ? Math.min(2000, plan.radius) : scopeMeters) : undefined;
         const internal = internalPlaces(plan.query, layers, featureKey).filter(p => projectSearchArea ? filterBoundaryPlaces([p], projectSearchArea).length > 0 : !origin || (!plan.origin && !requestedRadius) || calculateStraightLineDistance(origin.coordinate,p.coordinate) <= plan.radius);
-        const candidates = (internal.length ? internal : await external(plan.query)).map(p => ({...p,distanceMeters:origin?calculateStraightLineDistance(origin.coordinate,p.coordinate):undefined})).sort((a,b)=>(a.distanceMeters??0)-(b.distanceMeters??0));
+        const candidates = (genericCategoryCode(plan.query) ? await external(plan.query) : internal.length ? internal : await external(plan.query)).map(p => ({...p,distanceMeters:origin?calculateStraightLineDistance(origin.coordinate,p.coordinate):undefined})).sort((a,b)=>(a.distanceMeters??0)-(b.distanceMeters??0));
         result.places = candidates.slice(0,plan.limit);
         if (/\d+(?:\.\d+)?\s*(?:m|km|미터|킬로미터)/i.test(input.question)) result.radiusMeters=plan.radius;
         if (plan.intent === 'NEAREST_PLACE') {
@@ -520,6 +554,8 @@ export async function executeGeoQuery(input: {
             }
         }
     }
+    result.searchQuery=plan.query;
+    result.categoryCode=genericCategoryCode(plan.query);
     result.reply = result.places.length ? t('gis.searchSummary', { count: result.places.length }) : t('gis.noPlace', { name: plan.query });
     if (result.places.length) {
         result.reply += "\n"+result.places.map(place => `${place.name}${place.address ? ` · ${place.address}` : ""}`).join("\n");

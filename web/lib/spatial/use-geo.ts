@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth';
 import { useI18n } from '../i18n';
 import { placeResultFollowUp } from './geo-query';
-import type { GeoContext, GeoResult, Place } from './geo-query';
+import type { GeoContext, GeoResult, Place, PlaceSearchSnapshot } from './geo-query';
 export function useGeoWorkspace(projectId: string) {
     const { user } = useAuth();
     const { locale } = useI18n();
     const [context, setContext] = useState<GeoContext>({});
+    const [recentSearches,setRecentSearches]=useState<PlaceSearchSnapshot[]>([]);
     const [result, setResult] = useState<GeoResult | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -16,8 +17,8 @@ export function useGeoWorkspace(projectId: string) {
     const candidateReference = useRef<string | null>(null);
     const abort = useRef<AbortController | null>(null);
     const current = useRef<{question:string;choices:Record<string,string>;history:import('../chat-history').ConversationMessage[];queryContext?:GeoContext}>({question:'',choices:{},history:[]});
-    useEffect(() => { abort.current?.abort(); setContext({}); setResult(null); setLoading(false); setError(''); setHighlighted(null); setChosenPlace(null);setCandidates([]);candidateReference.current=null;current.current = { question: '', choices: {},history:[] }; return () => abort.current?.abort(); }, [projectId, user?.uid]);
-    const clear = useCallback(() => { abort.current?.abort(); setResult(null); setLoading(false); setError(''); setHighlighted(null);setChosenPlace(null);setCandidates([]);candidateReference.current=null; current.current = { question: '', choices: {},history:[] }; }, []);
+    useEffect(() => { abort.current?.abort(); setContext({}); setResult(null);setRecentSearches([]); setLoading(false); setError(''); setHighlighted(null); setChosenPlace(null);setCandidates([]);candidateReference.current=null;current.current = { question: '', choices: {},history:[] }; return () => abort.current?.abort(); }, [projectId, user?.uid]);
+    const clear = useCallback(() => { abort.current?.abort(); setResult(null);setRecentSearches([]); setLoading(false); setError(''); setHighlighted(null);setChosenPlace(null);setCandidates([]);candidateReference.current=null; current.current = { question: '', choices: {},history:[] }; }, []);
     const run = useCallback(async (question: string, choice?: {
         reference: string;
         token: string;
@@ -39,13 +40,18 @@ export function useGeoWorkspace(projectId: string) {
             const token = await user.getIdToken();
             if (controller.signal.aborted)
                 return;
-            const response = await fetch('/api/spatial/query', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, signal: controller.signal, body: JSON.stringify({ projectId, question, context:queryContext, ...(placeResultFollowUp(question) && result && !result.clarify ? { previousResult: { question: result.question, places: result.places, scopeMeters: result.scopeMeters } } : {}), choices, locale,history:current.current.history }) });
+            const response = await fetch('/api/spatial/query', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, signal: controller.signal, body: JSON.stringify({ projectId, question, context:queryContext, ...(placeResultFollowUp(question)==="search-comparison"?{recentSearches}:{}), ...(placeResultFollowUp(question) && result && !result.clarify ? { previousResult: { question: result.question, places: result.places, scopeMeters: result.scopeMeters } } : {}), choices, locale,history:current.current.history }) });
             const payload = await response.json();
             if (controller.signal.aborted)
                 return;
             if (!response.ok)
                 throw new Error(payload.error ?? 'gis.failed');
             setResult(payload.result);
+            const next=payload.result as GeoResult;
+            if(next.searchQuery&&next.searchToken&&!next.clarify&&!next.computedResult&&placeResultFollowUp(question)!=="search-comparison"){
+                const snapshot: PlaceSearchSnapshot={question:next.question,searchQuery:next.searchQuery,searchToken:next.searchToken,places:next.places.map(({choiceToken,...place})=>{void choiceToken;return place;}),...(next.categoryCode?{categoryCode:next.categoryCode}:{}),...(next.scopeMeters!==undefined?{scopeMeters:next.scopeMeters}:{})};
+                setRecentSearches(previous=>[...previous.filter(item=>item.searchQuery!==snapshot.searchQuery||item.scopeMeters!==snapshot.scopeMeters),snapshot].slice(-2));
+            }
             if (payload.result.clarify) {
                 setCandidates(payload.result.clarify.options);
                 if (candidateReference.current !== payload.result.clarify.reference) { setChosenPlace(null);setHighlighted(null); }
@@ -61,12 +67,12 @@ export function useGeoWorkspace(projectId: string) {
             if (!controller.signal.aborted)
                 setLoading(false);
         }
-    }, [context, locale, projectId, user, result]);
+    }, [context, locale, projectId, user, result, recentSearches]);
     const choosePlace = (place: Place) => {
         setChosenPlace(place);setHighlighted(place.id);
         setContext(previous=>({scopeMeters:previous.scopeMeters,mapCenter:previous.mapCenter,...(place.source==='project'&&place.layerId&&place.featureId?{selected:{layerId:place.layerId,featureId:place.featureId}}:{point:place.coordinate})}));
         if (candidateReference.current && place.choiceToken && result) void run(result.question, {reference:candidateReference.current,token:place.choiceToken});
     };
-    return { context, setContext, result, loading, error, highlighted, setHighlighted, chosenPlace, candidates, choosePlace, run, clear };
+    return { context, setContext, result, recentSearches, loading, error, highlighted, setHighlighted, chosenPlace, candidates, choosePlace, run, clear };
 }
 export type GeoWorkspace = ReturnType<typeof useGeoWorkspace>;
