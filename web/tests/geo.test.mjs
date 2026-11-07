@@ -175,3 +175,64 @@ test('location hierarchy uses selected feature before boundary, boundary before 
  r=await query('현재 지도 중심에서 카페 찾아줘',{selected:{layerId:'facilities',featureId:'removed'},mapCenter:[128,38]});assert.deepEqual(r.origin.coordinate,[128,38]);
  const empty=await server.executeGeoQuery({question:'근처 카페 찾아줘'},user,'geo-project',[]);assert.match(empty.reply,/기준 위치/);
 });
+
+test('Korean conversational place requests become concise Kakao queries without changing proper names',()=>{
+ for(const [question,query]of [
+  ['사업구역 주변에 공원이 어디 있어?','공원'],['근처 병원을 지도에 보여줘.','병원'],['주변 학교를 찾아줘.','학교'],['이 근처에 주민들이 이용할 만한 시설이 뭐가 있어?','편의시설'],['가좌역 주변 카페를 보여줘.','카페']
+ ]){const plan=geo.parseGeoPlan(question);assert.equal(plan.query,query,question);assert.equal(plan.nearby,true,question)}
+ assert.equal(geo.parseGeoPlan('가좌역 주변 카페를 보여줘.').origin,'가좌역');
+ assert.equal(geo.parseGeoPlan('사업구역 주변 1km까지 보여줘').radius,1000);
+ assert.equal(geo.parseGeoPlan('사업구역 주변 1km까지 보여줘').query,'편의시설');
+ assert.equal(geo.parseGeoPlan('가좌역 반경 500m를 분석해줘').origin,'가좌역');
+ assert.equal(geo.parseGeoPlan('가좌역 반경 500m를 분석해줘').query,'편의시설');
+ assert.equal(geo.parseGeoPlan('이 근처에 주민들이 이용할 만한 시설이 뭐가 있어?').origin,undefined);
+ assert.equal(geo.parseGeoPlan('새빛 베이커리를 지도에 보여줘.').query,'새빛 베이커리');
+ assert.equal(geo.placeResultFollowUp('어느 쪽에 많이 모여 있어?'),'distribution');
+ assert.equal(geo.placeResultFollowUp('이 중 사업구역에서 가장 가까운 곳은 어디야?'),'boundary-nearest');
+ assert.equal(geo.placeResultFollowUp('가장 가까운 사례를 비교해줘'),undefined);
+});
+test('existing Kakao boundary search returns parks and safe factual place explanations',async t=>{
+ key(t);const calls=[];
+ mock(t,global,'fetch',async url=>{const u=new URL(url);calls.push(u);return Response.json({meta:{is_end:true},documents:[place('park',127.006)]})});
+ const result=await run('사업구역 주변에 공원이 어디 있어?');
+ assert.equal(calls[0].searchParams.get('query'),'공원');assert.ok(calls.every(url=>url.searchParams.has('rect')));
+ assert.equal(result.places[0].id,'park');assert.match(result.reply,/검색 시설 park/);assert.match(result.reply,/판단할 수는 없습니다/);
+ assert.doesNotMatch(result.reply,/이 지역은.*시설이 부족/);
+});
+test('signed transient result context supports distribution and boundary distance with no Kakao or LLM requests',async t=>{
+ key(t);mock(t,global,'fetch',()=>assert.fail('follow-ups use current verified results, not another search'));
+ const seed=server.signGeoResult({question:'사업구역 주변 공원',intent:'NEARBY_SEARCH',reply:'검색',scopeMeters:500,places:[{id:'near',name:'가까운 공원',source:'kakao',coordinate:[127.011,37.505],address:'near address'},{id:'far',name:'먼 공원',source:'kakao',coordinate:[127.02,37.505]}],warnings:[]},user,'geo-project');
+ const options={boundary:projectBoundary,settings:{defaultNearbyMeters:500}};
+ const distribution=await server.executeGeoQuery({question:'어느 쪽에 많이 모여 있어?',previousResult:seed},user,'geo-project',layers,[],undefined,options);
+ assert.equal(distribution.places.length,2);assert.match(distribution.reply,/동쪽 2곳/);assert.match(distribution.reply,/현재 표시된/);
+ const chained=server.signGeoResult(distribution,user,'geo-project');
+ const closest=await server.executeGeoQuery({question:'이 중 사업구역에서 가장 가까운 곳은 어디야?',previousResult:chained},user,'geo-project',layers,[],undefined,options);
+ assert.equal(closest.places[0].id,'near');assert.ok(closest.places[0].boundaryDistanceMeters>0);assert.ok(closest.places[0].boundaryDistanceMeters<100);assert.match(closest.reply,/가까운 공원/);
+ assert.equal(closest.places[0].address,'near address');
+ assert.ok(server.signGeoResult(closest,user,'geo-project').places.every(p=>p.choiceToken.length<5000));
+});
+test('follow-up context rejects tampered signatures, mismatched projects, fabricated metadata and expired choices',async t=>{
+ key(t);mock(t,global,'fetch',()=>assert.fail('untrusted follow-up context must not trigger external search'));
+ const base={question:'공원',intent:'NEARBY_SEARCH',scopeMeters:500,reply:'',warnings:[],places:[{id:'park',name:'원본 공원',source:'kakao',coordinate:[127.011,37.505]}]};
+ const signed=server.signGeoResult(base,user,'geo-project');
+ const execute=previousResult=>server.executeGeoQuery({question:'어느 쪽에 많이 모여 있어?',previousResult},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ for(const bad of [base,{...signed,question:'다른 검색'},{...signed,scopeMeters:2000},{...signed,places:signed.places.map(p=>({...p,choiceToken:p.choiceToken+'bad'}))},server.signGeoResult(base,user,'other-project')]){
+  const result=await execute(bad);assert.equal(result.places.length,0);assert.match(result.reply,/다시 검색/);
+ }
+ const fake={...signed,places:signed.places.map(p=>({...p,name:'조작된 이름',coordinate:[0,0]}))};
+ const restored=await execute(fake);assert.equal(restored.places[0].name,'원본 공원');assert.deepEqual(restored.places[0].coordinate,[127.011,37.505]);
+ const now=Date.now;mock(t,Date,'now',()=>now()+6*60000);assert.equal((await execute(signed)).places.length,0);
+});
+test('current project geometry is re-read for result follow-ups and equal inside-boundary distances remain ties',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('project features need no external lookup'));
+ const previous={question:'주요 시설',places:layers[0].data.features.map((feature,index)=>({id:'client',name:'fake',source:'project',layerId:'facilities',featureId:String(feature.id),coordinate:[0,0]}))};
+ const result=await server.executeGeoQuery({question:'이 중 사업구역에서 가장 가까운 곳은 어디야?',previousResult:previous},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ assert.equal(result.places.length,2);assert.ok(result.places.every(p=>p.boundaryDistanceMeters===0));assert.match(result.reply,/회복의 숲 타워/);assert.match(result.reply,/회복의 숲 전파기지/);
+});
+
+test('explicit boundary radii and named-origin radii retain existing GIS filters',async t=>{
+ key(t);const requests=[];mock(t,global,'fetch',async url=>{requests.push(new URL(url));return Response.json({meta:{is_end:true},documents:[place('within1km',127.019),place('outside1km',127.04)]})});
+ const result=await run('사업구역 주변 1km에 공원을 보여줘');assert.equal(result.scopeMeters,1000);assert.ok(result.places.some(p=>p.id==='within1km'));assert.ok(!result.places.some(p=>p.id==='outside1km'));
+ const local=[{config:{id:'local',label:'등록 시설',type:'point',role:'facilities'},data:{type:'FeatureCollection',features:[point('가좌역',127.005,37.505),point('가까운 카페',127.006,37.505),point('먼 카페',127.03,37.505)]}}];
+ const count=requests.length;const cafes=await server.executeGeoQuery({question:'가좌역 반경 500m 카페를 찾아줘'},user,'geo-project',local,[],undefined,{boundary:projectBoundary});assert.equal(requests.length,count);assert.equal(cafes.places.length,1);assert.equal(cafes.places[0].name,'가까운 카페');
+});

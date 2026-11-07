@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth';
 import { useI18n } from '../i18n';
+import { placeResultFollowUp } from './geo-query';
 import type { GeoContext, GeoResult, Place } from './geo-query';
 export function useGeoWorkspace(projectId: string) {
     const { user } = useAuth();
@@ -38,7 +39,7 @@ export function useGeoWorkspace(projectId: string) {
             const token = await user.getIdToken();
             if (controller.signal.aborted)
                 return;
-            const response = await fetch('/api/spatial/query', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, signal: controller.signal, body: JSON.stringify({ projectId, question, context:queryContext, choices, locale,history:current.current.history }) });
+            const response = await fetch('/api/spatial/query', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, signal: controller.signal, body: JSON.stringify({ projectId, question, context:queryContext, ...(placeResultFollowUp(question) && result && !result.clarify ? { previousResult: { question: result.question, places: result.places, scopeMeters: result.scopeMeters } } : {}), choices, locale,history:current.current.history }) });
             const payload = await response.json();
             if (controller.signal.aborted)
                 return;
@@ -60,7 +61,7 @@ export function useGeoWorkspace(projectId: string) {
             if (!controller.signal.aborted)
                 setLoading(false);
         }
-    }, [context, locale, projectId, user]);
+    }, [context, locale, projectId, user, result]);
     const choosePlace = (place: Place) => {
         setChosenPlace(place);setHighlighted(place.id);
         setContext(previous=>({scopeMeters:previous.scopeMeters,mapCenter:previous.mapCenter,...(place.source==='project'&&place.layerId&&place.featureId?{selected:{layerId:place.layerId,featureId:place.featureId}}:{point:place.coordinate})}));

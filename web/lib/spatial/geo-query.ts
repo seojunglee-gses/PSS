@@ -107,11 +107,11 @@ export function genericCategoryCode(query: string) {
 }
 const reference = /^(?:지금\s*)?(여기|거기|이곳|이\s*건물|이\s*필지|선택한.*|선택된.*|현재\s*(지도\s*)?중심|here|this (building|parcel)|selected.*|map center)$/i;
 export const isMapReference = (name: string) => reference.test(name.trim());
-function clean(text: string) { return text.trim().replace(/[?.!]+$/g, '').replace(/(?:은|는|이|가)?\s*어디(?:야|인가요|에\s*있(?:어|나요))$/,'').replace(/(?:을|를)?\s*(?:찾아(?:줘|주세요)?|검색(?:해줘|해주세요)?|알려(?:줘|주세요)?|보여(?:줘|주세요)?|어디(?:야|인가요)?|있(?:어|나요)|있을까|search|find|show)(?:[?.!\s]*)$/i, '').trim(); }
+function clean(text: string) { return text.trim().replace(/(?:을|를)?\s*(?:지도(?:에|에서)\s*)?(?:보여(?:줘|주세요)|찾아(?:줘|주세요)|검색(?:해줘|해주세요)|(?:분석|확인)(?:해줘|해주세요))\s*[?.!]*$/i, '').replace(/(?:은|는|이|가)?\s*어디(?:에)?\s*있(?:어|나요|니|을까)?[?.!]*$/, '').replace(/[?.!]+$/g, '').replace(/(?:은|는|이|가)?\s*어디(?:야|인가요|에\s*있(?:어|나요))$/,'').replace(/(?:을|를)?\s*(?:찾아(?:줘|주세요)?|검색(?:해줘|해주세요)?|알려(?:줘|주세요)?|보여(?:줘|주세요)?|어디(?:야|인가요)?|있(?:어|나요)|있을까|search|find|show)(?:[?.!\s]*)$/i, '').trim(); }
 export function parseGeoPlan(question: string): GeoPlan {
     if (typeof question !== 'string' || !question.trim() || question.length > 1000)
         throw new Error('gis.invalidQuestion');
-    const q = question.trim();
+    const q = question.trim().replace(/^이\s*(근처|주변)/, '$1');
     const route = q.match(/^(.+?)(?:에서|부터)\s*(.+?)(?:까지|(?:으)?로(?=\s|$))\s*(.*)$/);
     const englishRoute = q.match(/(?:from)\s+(.+?)\s+to\s+(.+?)(?:\?|$)/i);
     const walking = /도보|걸어|걸리|걸려|몇\s*분|walking|\bwalk\b/i.test(q);
@@ -129,7 +129,7 @@ export function parseGeoPlan(question: string): GeoPlan {
     let intent: GeoIntent = 'PLACE_SEARCH';
     let origin: string | undefined;
     let destination: string | undefined;
-    const proximity = q.match(/^(.+?)(?:에서|주변(?:에|의)?|근처(?:에|의)?)\s*(.*)$/);
+    const proximity = q.match(/^(.+?)(?:에서|주변(?:에|의)?|근처(?:에|의)?|반경(?:에|의)?)\s*(.*)$/);
     if (route || englishRoute) {
         origin = clean((route ?? englishRoute)![1]);
         destination = clean((route ?? englishRoute)![2]);
@@ -156,13 +156,21 @@ export function parseGeoPlan(question: string): GeoPlan {
     let query = clean(destination ?? (proximity?.[2] || q));
     query = query.replace(/(?:가장\s*가까운|가까운|선택한\s*(?:필지|건물)|지금\s*선택한\s*건물|이\s*필지|이\s*건물|여기서|여기|주변|근처|반경|이내|시설을|몇\s*미터야|얼마나\s*걸려|nearby|nearest|closest|within|from here|this building)/gi, ' ').replace(/\d+(?:\.\d+)?\s*(?:km|m|미터|개|곳|분)/gi, ' ').replace(/^\s*(?:에서|에|서)\s+/, '').replace(/^(카페|커피|약국|병원|학교|편의점|음식점|식당|마트|시설)(?:은|는|이|가|을|를)$/, '$1').replace(/\s+/g, ' ').trim();
     query = query.replace(/^(?:where is|what is|show|find|search(?: for)?)\s+/i, '').replace(/\b(?:the|of|to|from|a)\b/gi, ' ').replace(/this (?:building|parcel)/gi, '').replace(/(?:걸어서|도보로?|걸어)/g,'').replace(/\s+/g,' ').trim();
+    query = query.replace(/^(?:까지|를|을)$/, '').trim();
     if (!query && !destination)
         query = '편의시설';
     if (intent === 'CATEGORY_SEARCH' && !genericCategoryCode(query))
         intent = 'PLACE_SEARCH';
     if(/주요\s*(?:사업)?시설|공간\s*구조|사업구역.*(?:면적|건물)|타워.*전파기지.*어디|key\s*(?:project\s*)?facilit|spatial\s*structure|where.*tower.*station/i.test(q))intent='EXISTING_GIS_QUERY';
-    query=query.replace(/^(?:어떤|어디에|무슨)\s*/,'').replace(/^(?:생활시설|편의시설|시설)(?:이|가|은|는)?$/,'편의시설');
+    query=query.replace(/^(?:에|의)\s*/, '').replace(/^(?:어떤|어디에|무슨)\s*/,'').replace(/^(?:생활시설|편의시설|시설)(?:이|가|은|는)?$/,'편의시설');
+    if (/주민.*이용.*시설|이용할.*시설/.test(query)) query = '편의시설';
+    if (intent === 'PLACE_SEARCH' && /^(?:공원|녹지|편의시설|생활시설|시설|parks?|amenities)$/i.test(query)) intent = 'NEARBY_SEARCH';
     return { intent, query, ...(origin ? { origin } : {}), ...(destination ? { destination } : {}), radius, limit, walking, ...(minutes ? { minutes: Number(minutes[1]) } : {}), nearby: ['NEAREST_PLACE', 'RADIUS_SEARCH', 'NEARBY_SEARCH', 'CATEGORY_SEARCH'].includes(intent) };
+}
+export function placeResultFollowUp(question: string): "distribution" | "boundary-nearest" | undefined {
+    if (/논문|연구|사례|\b(?:research|study|case)\b/i.test(question)) return;
+    if (/(?:이|그)\s*중|중에서|검색(?:한|된)\s*(?:장소|결과)|\b(?:these|those|results|among)\b/i.test(question) && /가장\s*가까|nearest|closest/i.test(question) && /사업구역|대상지|project (?:area|boundary)/i.test(question)) return "boundary-nearest";
+    if (/어느\s*(?:쪽|방향).*모|(?:이|그)\s*(?:결과|장소|시설).*분포|어디.*모여|which (?:side|direction)|(?:these|those|results).*distribut/i.test(question)) return "distribution";
 }
 export function isGeoQuestion(question: string) {
     return /key\s*(?:project\s*)?facilit|spatial\s*structure|주요\s*(?:사업)?시설|공간\s*구조|면적|건물\s*수|위치|어디(?:야|인가요|에\s*있)|\b(?:find|search|where (?:is|are))\b|(?:검색|찾아)(?:해)?(?:줘|주세요)|주변|근처|카페|약국|마트|음식점|식당|편의점|병원|학교|버스\s*정류장|공원|도보|걸어|몇\s*미터|가장\s*가까|지도\s*중심|까지.*거리|에서.*까지|nearby|nearest|walking|\bfrom\b.*\bto\b|\b(cafe|pharmacy|restaurant|supermarket)\b/i.test(question);
