@@ -166,7 +166,6 @@ export default function SpatialAnalysis({
   const scopeControl = (<label className="text-xs">{t("boundary.scope")} <select aria-label={t("boundary.scope")} className="min-h-11 rounded border px-2" value={geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500} onChange={e=>geo?.setContext(prev=>({...prev,scopeMeters:Number(e.target.value) as 0|500|1000}))}>{[0,500,1000].map(n=><option key={n} value={n}>{t(`boundary.scope.${n}`)}</option>)}</select></label>);
   return (
     <div className="spatial-analysis space-y-3 p-4 sm:p-6">
-      <h3 className="text-lg font-semibold">{t("boundary.explore")}</h3>
       <p className="text-sm text-slate-500">{t("spatial.exploreIntro")}</p>
       {!loading&&<>
         {!boundary&&<p role="status" className="text-xs text-amber-800">{t("boundary.noActive")}</p>}
