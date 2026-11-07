@@ -16,6 +16,7 @@ export type AnalysisRequest = {
   history?: ConversationMessage[];
   searchQuestion?: string;
   spatialContext?: SpatialResult;
+  registeredSpatialContext?: import("../spatial/context").SpatialPromptContext;
   selectedSources: EvidenceSource[];
   cases: CaseMaterial[];
   projectContext: string;
@@ -71,7 +72,7 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
     if (request.projectContext.trim()) evidence.projectContext = request.projectContext;
     else evidence.warnings.push({ source: "project", message: "이 사업에 등록된 자료가 없습니다." });
   }
-  if (request.selectedSources.includes("spatial") && !request.spatialContext) evidence.warnings.push({ source: "spatial", message: "공간 분석 결과가 없습니다. 공간 분석에서 질문에 필요한 분석을 먼저 실행해주세요." });
+  if (request.selectedSources.includes("spatial") && !request.spatialContext && !request.registeredSpatialContext?.registeredLayers.length) evidence.warnings.push({ source: "spatial", message: "공간 분석 결과가 없습니다. 공간 분석에서 질문에 필요한 분석을 먼저 실행해주세요." });
   let researchQuery=request.searchQuestion ?? request.question;
   let needsResearch=request.selectedSources.includes('research');
   const focused=namedCases(request.searchQuestion ?? request.question,request.cases,request.history);

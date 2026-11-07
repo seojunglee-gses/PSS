@@ -1,3 +1,5 @@
+import { spatialPromptContext } from "../../../lib/spatial/context";
+import { projectLayers } from "../../../lib/spatial/geo-server";
 import { canonicalBuildingContext } from "../../../lib/spatial/building-use-server";
 import { analysisActivities, analysisSessionContext, analysisSessionQuestion } from "../../../lib/analysis-session";
 import {policyHistory} from "../../../lib/facilitation";
@@ -30,6 +32,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if(!Array.isArray(req.body.selectedSources)||!req.body.selectedSources.length)request.selectedSources=resolveSources(request.searchQuestion,[],context.cases,contextual?[]:request.history);
     request.analysisSession=analysisSessionContext(context.stageHistory,context.projectId,context.cases,request.selectedSources);
     if(request.selectedSources.includes("spatial") && !request.spatialContext)request.spatialContext=canonicalBuildingContext([...activities].reverse().find(a=>a.type==="spatial")?.result);
+    if(request.selectedSources.includes("spatial")) {
+      const data=context.spatialData??await projectLayers(context.user,context.projectId);
+      request.registeredSpatialContext=spatialPromptContext(data.layers,req.body.spatialSelection,activities,!!data.boundary);
+    }
     if(request.selectedSources.includes('cases')){
       const focused=namedCases(request.searchQuestion,context.cases,contextual?[]:request.history);
       request.casePassages=await readCasePassages(context.projectId,focused.length?focused:context.cases);

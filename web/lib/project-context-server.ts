@@ -29,12 +29,14 @@ export async function loadProjectContext(req: NextApiRequest, stage: string, inc
   const current = content?.[stage as keyof typeof content];
   const ownReview=reviewContext(privateData?.data()?.analysisReview);
   let currentMaterial = [project.projectName, current && typeof current === "object" && "title" in current ? current.title : "", plain(typeof current === "string" ? current : current?.text), stage !== "problem" ? plain(typeof content?.problem === "string" ? content.problem : content?.problem?.text) : "", background.data()?.curatedText,ownReview].filter(Boolean).join("\n\n");
+  let spatialData: Awaited<ReturnType<typeof import("./spatial/geo-server").projectLayers>> | undefined;
   if(stage==="data"&&req.body?.spatialSelection?.selected){
     const {parseGeoContext,representativePoint,featureNames}=await import('./spatial/geo-query');
     const {featureKey}=await import('./spatial/engine');
     const {projectLayers}=await import('./spatial/geo-server');
     const selection=parseGeoContext(req.body.spatialSelection).selected!;
-    const {layers}=await projectLayers(user,projectId);
+    spatialData=await projectLayers(user,projectId);
+    const {layers}=spatialData;
     const layer=layers.find(l=>l.config.id===selection.layerId),feature=layer?.data.features.find((f,i)=>featureKey(f,i)===selection.featureId);
     if(!layer||!feature)throw new AccessError(409,"gis.selectionChanged");
     currentMaterial+='\nCurrent map selection from authorized project dataset (location only; no inference of safety, demand, accessibility or consensus): '+JSON.stringify({dataset:layer.config.id,featureId:selection.featureId,name:featureNames(feature)[0]??layer.config.label,...representativePoint(feature)});
@@ -47,6 +49,6 @@ export async function loadProjectContext(req: NextApiRequest, stage: string, inc
   const savedDialogue=includeStageHistory?(stage==='data'?privateData:await db.doc(`users_${projectId}/${user.uid}/steps/${stage}`).get()):undefined;
   const stageHistory=Array.isArray(savedDialogue?.data()?.logs)?savedDialogue!.data()!.logs:[];
 
-  return { projectId, user, project, currentMaterial, previousSummaries, stageHistory,
+  return { projectId, user, project, currentMaterial, previousSummaries, stageHistory, spatialData,
     cases: (Array.isArray(content?.data?.cases) ? content.data.cases : []).filter((c) => c && typeof c.id === "string" && typeof c.text === "string").map((c) => ({ id: c.id, label: c.label, title: c.title, text: plain(c.text), ...(Array.isArray(c.aliases)?{aliases:c.aliases.filter((a):a is string=>typeof a==='string').slice(0,20)}:{}) })) };
 }
