@@ -316,3 +316,41 @@ test('ambiguous facility-layer distance resumes through the existing authenticat
  const second=await server.executeGeoQuery({question,choices:{공공시설:'project:'+chosen.id}},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
  assert.equal(second.origin.id,chosen.id);assert.equal(second.straightDistanceMeters,0);assert.equal(second.clarify,undefined);
 });
+
+test('exploratory planning questions route to one existing preliminary tool without hijacking definitions or literature',()=>{
+ const question='개선이 필요한 장소를 찾으려면 어떤 자료부터 확인해야 해?';
+ assert.equal(geo.spatialToolRequest(question).exploratory,true);
+ assert.equal(geo.spatialToolRequest('개선이 필요한 장소를 찾으려면 어디부터 봐야 해?').exploratory,true);
+ assert.equal(geo.spatialToolRequest('공간 겹침 비교가 뭐야?'),undefined);
+ assert.equal(geo.spatialToolRequest('개선이 필요한 장소를 찾은 사례를 찾아줘'),undefined);
+ assert.equal(geo.spatialToolRequest('개선이 필요한 장소에 관한 논문을 찾아줘'),undefined);
+ assert.equal(geo.spatialToolRequest('공공시설과 사업구역이 겹치는지 확인해줘').exploratory,false);
+});
+test('exploration starts with registered facilities and a real boundary comparison, not an ideal-data checklist',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('available project data must be used before outside lookup'));
+ const region={config:{id:'boundary',label:'사업구역',type:'polygon',role:'boundary'},data:{type:'FeatureCollection',features:[projectBoundary.geometry]}};
+ const facilities={config:{id:'facilities',label:'공공시설',type:'point',role:'facilities'},data:{type:'FeatureCollection',features:[point('중앙 주민센터',127.005,37.505),point('구역 밖 시설',127.03,37.505)]}};
+ const result=await server.executeGeoQuery({question:'개선이 필요한 장소를 찾으려면 어떤 자료부터 확인해야 해?'},user,'geo-project',[region,facilities],[],undefined,{boundary:projectBoundary});
+ assert.equal(result.computedResult.metrics.matchedCount,1);assert.equal(result.places[0].name,'중앙 주민센터');
+ assert.match(result.reply,/공간 겹침 비교를 실행/);assert.match(result.reply,/중앙 주민센터/);
+ assert.doesNotMatch(result.reply,/공식 관리자료|보행량|차량 속도|현장조사.*수집|직접 실행/);
+ assert.equal((result.reply.match(/\?/g)??[]).length,1);assert.match(result.reply,/우선순위가 정해진 것은 아닙니다/);
+ const concise=await server.executeGeoQuery({question:'개선이 필요한 장소를 찾으려면 어떤 자료부터 확인해야 해?',history:[{role:'user',content:'no follow-up questions'}]},user,'geo-project',[region,facilities],[],undefined,{boundary:projectBoundary});assert.equal((concise.reply.match(/\?/g)??[]).length,0);assert.equal(concise.computedResult.metrics.matchedCount,1);
+});
+test('exploration uses the boundary for an existing area review when multiple layer inputs are ambiguous',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('registered material is sufficient for an area review'));
+ const region={config:{id:'boundary',label:'사업구역',type:'polygon',role:'boundary'},data:{type:'FeatureCollection',features:[projectBoundary.geometry]}};
+ const result=await server.executeGeoQuery({question:'개선이 필요한 장소는 어디부터 살펴봐야 해?',context:{selected:{layerId:'deleted',featureId:'old'}}},user,'geo-project',[region,layers[0],{...layers[0],config:{...layers[0].config,id:'more',label:'추가 시설'}}],[],undefined,{boundary:projectBoundary});
+ assert.equal(result.computedResult.type,'area');assert.ok(result.computedResult.metrics.areaSqm>0);assert.match(result.reply,/먼저 분석 가능한 영역/);assert.doesNotMatch(result.reply,/자료 이름을 알려/);
+});
+test('boundary-only exploration reuses configured Kakao lookup, while missing keys never cause a service call',async t=>{
+ key(t);const calls=[];mock(t,global,'fetch',async url=>{calls.push(new URL(url));return Response.json({meta:{is_end:true},documents:[place('local',127.005)]})});
+ const region={config:{id:'boundary',label:'사업구역',type:'polygon',role:'boundary'},data:{type:'FeatureCollection',features:[projectBoundary.geometry]}};
+ const input={question:'개선이 필요한 장소를 찾으려면 어디부터 봐야 해?'};
+ const looked=await server.executeGeoQuery(input,user,'geo-project',[region],[],undefined,{boundary:projectBoundary});assert.ok(calls.length>0);assert.ok(calls.every(url=>url.searchParams.has('rect')));assert.ok(looked.places.length);assert.equal(looked.question,input.question);assert.match(looked.reply,/먼저 현재 사업구역 주변/);
+ const scoped=await server.executeGeoQuery({question:'개선이 필요한 장소를 찾으려면 사업구역 주변 1km에서 어떤 자료부터 확인해야 해?'},user,'geo-project',[region],[],undefined,{boundary:projectBoundary});assert.equal(scoped.scopeMeters,1000);
+ calls.length=0;
+ await server.executeGeoQuery({question:'공원에서 개선이 필요한 장소는 어디부터 살펴봐야 해?'},user,'geo-project',[region],[],undefined,{boundary:projectBoundary});assert.equal(calls[0].searchParams.get('query'),'공원');
+ calls.length=0;delete process.env.KAKAO_REST_API_KEY;
+ const local=await server.executeGeoQuery(input,user,'geo-project',[region],[],undefined,{boundary:projectBoundary});assert.equal(calls.length,0);assert.ok(local.computedResult);assert.doesNotMatch(local.reply,/주변 시설을 찾아볼까요/);
+});

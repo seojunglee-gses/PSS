@@ -1,3 +1,4 @@
+import { followUpPolicy } from "../facilitation";
 import {deriveBoundary,boundaryGeoJSON,boundaryScope,spatialSettings,type ProjectBoundary,type SpatialSettings,filterBoundaryPlaces} from "./boundary";
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -207,7 +208,23 @@ export async function executeGeoQuery(input: {
     const warnings = layerWarnings.map(w => t(w));
     if(options&&!boundary)warnings.push(t('boundary.noActive'));
     const result: GeoResult = { question: input.question, intent: plan.intent, reply: '', places: [], warnings };
-    const tool = spatialToolRequest(input.question, input.history);
+    let tool = spatialToolRequest(input.question, input.history);
+    const exploring = tool?.exploratory;
+    const offerNext = followUpPolicy(input.question,input.history??[],"data").mode!=="none";
+    let explorationTargets: LoadedLayer[] = [];
+    const nearbyAvailable = !!boundary && !!process.env.KAKAO_REST_API_KEY;
+    if (exploring) {
+        const regions = layers.filter(layer => settings.activeBoundaryDatasetId ? layer.config.id === `uploaded-${settings.activeBoundaryDatasetId}` : layer.config.role === "boundary" || layer.config.datasetType === "project_boundary");
+        const role = /녹지|공원|green|park/i.test(input.question) ? "green" : /건물|건축|building/i.test(input.question) ? "buildings" : "facilities";
+        const subjects = layers.filter(layer => layer.config.role === role || (role === "facilities" && layer.config.datasetType === "public_facilities"));
+        if (regions.length === 1 && subjects.length === 1 && subjects[0] !== regions[0]) {
+            explorationTargets = [subjects[0],regions[0]];
+            tool = { operation: "overlay", reference: "", exploratory: true };
+        } else if (nearbyAvailable && role !== "buildings" && !layers.some(layer => layer.config.role !== "boundary" && layer.config.datasetType !== "project_boundary" && layer.data.features.length)) {
+            // Reuse the existing bounded place lookup when there is only a boundary to work with.
+            tool = undefined; plan.intent="NEARBY_SEARCH"; plan.query=role==="green"?"공원":"편의시설"; plan.nearby=true; plan.origin=/여기|이곳|이\s*장소|선택한|here|this place/i.test(input.question)?undefined:"사업구역"; plan.destination=undefined; plan.locations=undefined; result.intent=plan.intent;
+        }
+    }
     if (tool) {
         result.intent = "EXISTING_GIS_QUERY";
         const normalize = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
@@ -218,7 +235,7 @@ export async function executeGeoQuery(input: {
             const candidates = [...new Map([...exact,...generic].map(layer=>[layer.config.id,layer])).values()];
             return candidates.filter(layer => !(layer.config.role === "boundary" || layer.config.datasetType === "project_boundary") || exact.includes(layer) || !settings.activeBoundaryDatasetId || layer.config.id === `uploaded-${settings.activeBoundaryDatasetId}`);
         };
-        let targets = match(input.question);
+        let targets = explorationTargets.length ? explorationTargets : match(input.question);
         const prior = match(tool.reference);
         if (!targets.length) targets = prior;
         else if (targets.length === 1 && prior.length === 1 && /나머지|other/i.test(tool.reference) && prior[0].config.id!==targets[0].config.id) targets=[prior[0],targets[0]];
@@ -260,17 +277,18 @@ export async function executeGeoQuery(input: {
                 result.reply = t("gis.toolFeatureOverlap",{name:objects.config.label,region:region.config.label,count:matched.length,shown:result.places.length});
             }
         } else {
+            const explorationRegion = exploring ? boundary?.geometry : undefined;
             const named = layers.flatMap(layer=>layer.data.features.flatMap((feature,index)=>featureNames(feature).some(name=>normalize(name).length>1&&normalize(input.question).includes(normalize(name)))?[{layer,feature,index}]:[]));
             const priorNamed = named.length ? named : layers.flatMap(layer=>layer.data.features.flatMap((feature,index)=>featureNames(feature).some(name=>normalize(name).length>1&&normalize(tool.reference).includes(normalize(name)))?[{layer,feature,index}]:[]));
             const eligible = priorNamed.filter(value=>!targets.length||targets.some(layer=>layer.config.id===value.layer.config.id));
             const explicitTarget = targets.length === 1 && targets[0].data.features.length === 1;
-            const selected = !eligible.length && !explicitTarget ? selectedPlace(context,layers) : undefined;
+            const selected = !explorationRegion && !eligible.length && !explicitTarget ? selectedPlace(context,layers) : undefined;
             const selectedLayer = selected?.layerId ? layers.find(layer=>layer.config.id===selected.layerId) : undefined;
             const selectedFeature = selectedLayer?.data.features.find((feature,index)=>featureKey(feature,index)===selected?.featureId);
             const targetInfo = eligible.length === 1 ? eligible[0] : eligible.length ? undefined
                 : targets.length === 1 && targets[0].data.features.length === 1 ? {layer:targets[0],feature:targets[0].data.features[0],index:0}
                 : selectedFeature && selectedLayer && (!targets.length||targets.includes(selectedLayer)) ? {layer:selectedLayer,feature:selectedFeature,index:selectedLayer.data.features.indexOf(selectedFeature)} : undefined;
-            const target = targetInfo?.feature;
+            const target = explorationRegion ?? targetInfo?.feature;
             if (tool.operation === "buffer") {
                 const radius = input.question.match(/(\d+(?:\.\d+)?)\s*(km|m|미터|킬로미터)/i) ?? tool.reference.match(/(\d+(?:\.\d+)?)\s*(km|m|미터|킬로미터)/i);
                 if (target && !radius) { result.reply=t("gis.toolInput.distance",{name:featureNames(target)[0]??selectedLayer?.config.label??t("gis.selectedPoint")}); return result; }
@@ -285,13 +303,22 @@ export async function executeGeoQuery(input: {
                 if ((target && !isArea(target)) || (!target && targets.length>1)) return ask("shape");
                 const shape = target && isArea(target) ? target : boundary?.geometry;
                 if (!shape) return ask("shape");
-                result.computedResult = resultFor(projectId,"area",layers,shape,targetInfo?{selectedLayerId:targetInfo.layer.config.id,selectedFeatureId:featureKey(targetInfo.feature,targetInfo.index)}:{});
+                result.computedResult = resultFor(projectId,"area",layers,shape,!explorationRegion&&targetInfo?{selectedLayerId:targetInfo.layer.config.id,selectedFeatureId:featureKey(targetInfo.feature,targetInfo.index)}:{});
                 result.resultGeometry = featureCollection([shape]);
                 result.reply = t("boundary.area",{area:Math.round(result.computedResult.metrics.areaSqm).toLocaleString()});
                 if(result.computedResult.metrics.facilityCount!==undefined)result.reply+=" "+t("boundary.facilitySummary",{count:result.computedResult.metrics.facilityCount});
             }
         }
-        result.reply += "\n"+t("gis.toolMeasuredOnly");
+        if (exploring) {
+            const start = explorationTargets.length ? t("gis.exploreStart", { first: explorationTargets[0].config.label, second: explorationTargets[1].config.label }) : t("gis.exploreArea");
+            const matched = result.computedResult?.metrics.matchedCount;
+            const facts = matched !== undefined ? result.places.length ? t("gis.exploreFound", { count: matched, names: result.places.slice(0,3).map(place=>place.name).join(", ") }) : t("gis.exploreNone") : result.reply;
+            result.reply = start+"\n"+facts;
+            if (result.places.length) result.reply += "\n"+t("gis.exploreMeaning");
+            result.reply += "\n"+t("gis.exploreLimit");
+            if (result.places.length && offerNext) result.reply += "\n"+t("gis.exploreNext");
+            else if (!result.places.length && nearbyAvailable && offerNext) result.reply += "\n"+t("gis.exploreNearbyNext");
+        }
         return result;
     }
     const followUp = placeResultFollowUp(input.question);
@@ -498,6 +525,10 @@ export async function executeGeoQuery(input: {
         result.reply += "\n"+result.places.map(place => `${place.name}${place.address ? ` · ${place.address}` : ""}`).join("\n");
         if (result.scopeMeters !== undefined) result.reply += "\n"+(result.scopeMeters === 0 ? t("boundary.scope.0") : t("gis.searchScope", { meters: result.scopeMeters }));
         if (result.places.some(place => place.source === "kakao")) result.reply += "\n"+t("gis.poiExploration");
+    }
+    if (exploring) {
+        result.reply=t("gis.explorePlaces")+"\n"+result.reply;
+        if(result.places.length&&offerNext)result.reply+="\n"+t("gis.exploreNext");
     }
     if (result.ranking)
         result.reply += ' ' + t(result.ranking === 'walking' ? 'gis.rankWalking' : 'gis.rankStraight');

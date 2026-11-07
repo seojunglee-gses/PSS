@@ -34,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if(request.selectedSources.includes("spatial") && !request.spatialContext)request.spatialContext=canonicalBuildingContext([...activities].reverse().find(a=>a.type==="spatial")?.result);
     if(request.selectedSources.includes("spatial")) {
       const data=context.spatialData??await projectLayers(context.user,context.projectId);
-      request.registeredSpatialContext=spatialPromptContext(data.layers,req.body.spatialSelection,activities,!!data.boundary);
+      request.registeredSpatialContext=spatialPromptContext(data.layers,req.body.spatialSelection,activities,!!data.boundary,{nearbyPlaces:!!data.boundary&&!!process.env.KAKAO_REST_API_KEY,priority:!!data.priority});
     }
     if(request.selectedSources.includes('cases')){
       const focused=namedCases(request.searchQuestion,context.cases,contextual?[]:request.history);

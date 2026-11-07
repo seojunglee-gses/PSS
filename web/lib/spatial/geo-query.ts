@@ -178,8 +178,13 @@ const toolOperations = (text: string) => toolPatterns.filter(([,pattern])=>patte
 const toolOperation = (text: string) => { const operations=toolOperations(text); return operations.length===1?operations[0]:undefined; };
 export const isSpatialToolCancelled = (question: string) => toolOperations(question).length > 0 && /하지\s*마|하지\s*말|실행하지|말고|취소|그만|don.?t|do not|cancel/i.test(question);
 export const isSpatialToolExplanation = (question: string) => toolOperations(question).length > 0 && /뭐야|뭔가|무엇|방법|어떤\s*(?:도구|분석|기능)|원리|설명|추천|어떻게\s*(?:쓰|사용|작동)|what\b|why\b|should I|explain|how (?:to|do|does|can)|how.*work/i.test(question) && !/(?:실행|분석|계산)해|\b(?:run|execute)\b/i.test(question);
-export function spatialToolRequest(question: string, history: import("../chat-history").ConversationMessage[] = []) {
+export function spatialToolRequest(question: string, history: import("../chat-history").ConversationMessage[] = []): { operation: typeof toolPatterns[number][0]; reference: string; exploratory: boolean } | undefined {
     if (isSpatialToolExplanation(question) || /하지\s*마|하지\s*말|실행하지|말고|취소|그만|don.?t|do not|cancel/i.test(question)) return;
+    const exploration = !toolOperations(question).length && !/논문|학술|연구|사례|\b(?:research|literature|study|cases?)\b/i.test(question)
+        && /개선|문제|후보|improv|problem|candidate/i.test(question)
+        && /장소|지역|공간|대상지|가로|시설|places?|sites?|areas?/i.test(question)
+        && /어디부터|무엇부터|어떤\s*(?:자료|곳|분석)|자료부터|찾으려면|찾아|살펴|확인|where.*start|what.*(?:check|first)|identify/i.test(question);
+    if (exploration) return { operation: "area", reference: "", exploratory: true };
     const last = history[history.length - 1];
     const pending = last?.role === "assistant" && /실행할.*(?:자료|대상|거리).*알려|provide.*(?:layers|target|distance).*execute/i.test(last.content);
     const execute = /확인해|계산해|분석해|실행해|해봐|해볼래|비교해|중첩해|겹쳐줘|해줘|해주세요|찾아(?:줘|주세요)|알아봐|\b(?:run|execute|calculate|check|compare|perform|go ahead)\b/i.test(question);
@@ -188,7 +193,7 @@ export function spatialToolRequest(question: string, history: import("../chat-hi
     const referential = /그럼|아까|말한|앞서|그\s*분석|그거|그대로|이어서|same|that|suggested|go ahead/i.test(question) || pending;
     const anchor = [...history].reverse().find(message => toolOperations(message.content).length && (!operation || toolOperations(message.content).includes(operation)));
     const chosen = operation ?? (referential && anchor ? toolOperation(anchor.content) : undefined);
-    return chosen ? { operation: chosen, reference: anchor?.content ?? "" } : undefined;
+    return chosen ? { operation: chosen, reference: anchor?.content ?? "", exploratory: false } : undefined;
 }
 export function placeResultFollowUp(question: string): "distribution" | "boundary-nearest" | undefined {
     if (/논문|연구|사례|\b(?:research|study|case)\b/i.test(question)) return;
