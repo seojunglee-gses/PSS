@@ -179,3 +179,35 @@ test('all five summary stages retain the JSON contract and natural prose with op
   assert.match(current.input,/not stereotypes/);assert.match(current.input,/not independently revalidated evidence/);
  }
 });
+
+test('shared clarification behavior covers all conversation stages without overriding schemas or reflective cadence',()=>{
+ for(const stage of ['problem','data','alternatives','evaluation','report']){
+  const prompt=facilitationInstructions(stage,'어떤 안이 제일 좋아?');
+  assert.equal(prompt.split('Shared conversation behavior:').length,2);assert.match(prompt,/Understand → Clarify if necessary → Act → Explain → Continue/);assert.match(prompt,/ONE short, user-friendly clarification/);assert.match(prompt,/recover the ORIGINAL task/);assert.match(prompt,/Clear requests need no clarification/);assert.match(prompt,/not an independent new question/);assert.match(prompt,/does not grant tools to a text-only endpoint/);assert.match(prompt,/preserve|Preserve/);assert.match(prompt,/Activity ≠ Analysis Result/);
+ }
+});
+
+test('known material ambiguity asks once before search; clear context and direct execution stay unblocked',()=>{
+ const {requestClarification}=load('lib/facilitation.js');
+ const question='외국인 대상 가게가 몇 개 있어?';
+ assert.match(requestClarification(question),/외국 음식점/);
+ const h=[user(question),assistant(requestClarification(question))];
+ assert.equal(requestClarification('음식점이나 식료품점 같은 거.',h),undefined);
+ assert.equal(requestClarification('사업구역 안 음식점을 보여줘.'),undefined);
+ assert.match(requestClarification('이런 사업이 효과가 있다는 연구 찾아줘.'),/어떤 효과/);
+ assert.equal(requestClarification('이런 사업이 효과가 있다는 연구 찾아줘.',[user('보행환경 개선 효과를 알고 싶어요.')]),undefined);
+ assert.equal(requestClarification('이런 사업이 효과가 있다는 연구 찾아줘.',[],'현재 사업은 보행환경 개선을 목표로 합니다.'),undefined);
+ assert.match(requestClarification('이런 사업이 효과가 있다는 연구 찾아줘.',[],'보행환경과 지역상권, 녹지 개선을 검토합니다.'),/어떤 효과/);
+});
+
+test('all generic chat stages receive shared behavior through their existing single model response',async t=>{
+ const context=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');const calls=[];
+ mock(t,context,'loadProjectContext',async()=>({currentMaterial:'현재 사업 자료',previousSummaries:{problem:'보행 편의를 중요하게 생각함'},stageHistory:[]}));
+ mock(t,llm,'callLLM',async input=>{calls.push(input);return '어떤 두 지역을 비교할까요?'});
+ for(const stepId of ['problem','data','alternatives','evaluation','report']){
+  const res={status(n){this.code=n;return this},json(body){this.body=body}};
+  await load('pages/api/chat.js').default({method:'POST',body:{stepId,message:'두 지역의 접근성을 비교해줘.',history:[]},headers:{}},res);
+  assert.equal(res.code,200);assert.equal(res.body.reply,'어떤 두 지역을 비교할까요?');assert.match(calls.at(-1).systemText,/Shared conversation behavior/);assert.match(calls.at(-1).userText,/보행 편의/);
+ }
+ assert.equal(calls.length,5);
+});

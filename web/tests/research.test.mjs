@@ -160,7 +160,7 @@ test('synthesis prompt uses abstract scope, project context and only usable pape
     assert.match(input.systemText, /Return limitations=""/);
     assert.match(input.systemText, /alongside the affected claim/);
     assert.match(input.systemText, /one natural, concrete next question OR a short offer of help/);
-    assert.match(input.systemText, /If the policy is NONE, omit both/);
+    assert.match(input.systemText, /If the policy is NONE, omit optional/);
     const payload = JSON.parse(input.userText);
     assert.equal(payload.papers.length, 1);
     assert.equal(payload.projectContext, 'Seoul project');
@@ -377,4 +377,25 @@ test('concurrent research requests share conversion, one OpenAlex call and at mo
 test('duplicate OpenAlex records with the same title or DOI do not crowd the first five papers',()=>{
  const result=selectPapers([work(),work({id:'https://openalex.org/W2'}),work({id:'https://openalex.org/W3',display_name:'Different title',doi:'https://doi.org/10.same/one'}),work({id:'https://openalex.org/W4',display_name:'Other version',doi:'https://doi.org/10.same/one'})]);
  assert.deepEqual(result.map(p=>p.sourceId),['R:W1','R:W3']);
+});
+
+test('ambiguous research effects clarify before retrieval, then restore the original research request',async t=>{
+ let calls=0;mockFetch(t,async url=>{calls++;assert.ok(String(url).includes('api.openalex.org/works'));return Response.json({results:[work()]})});
+ const question='이런 사업이 효과가 있다는 연구 찾아줘.';
+ const request=parseAnalysisRequest({question,selectedSources:['research']});
+ const first=await retrieveEvidence(request);assert.equal(calls,0);
+ const clarification=await answerFromEvidence(request,first);assert.match(clarification.summary,/어떤 효과/);assert.deepEqual(clarification.researchFindings,[]);assert.deepEqual(clarification.sources,[]);
+ const {sourceRoutingQuestion,resolveSources}=load('lib/research/routing.js');
+ const history=[{role:'user',content:question},{role:'assistant',content:clarification.summary}];
+ const next=parseAnalysisRequest({question:'보행 증가요.',history});
+ assert.deepEqual(resolveSources(sourceRoutingQuestion(next.question,history)),['research']);assert.match(next.searchQuestion,/이런 사업.*연구/);
+ mockLLM(t,async()=> 'walkability outcomes urban regeneration clarification fixture');
+ const retrieved=await retrieveEvidence(next);assert.equal(calls,1);assert.equal(retrieved.papers[0].sourceId,'R:W1');assert.equal(next.question,'보행 증가요.');assert.equal(next.clarification,undefined);
+});
+
+test('missing evidence uses the existing response call to clarify the task without invented findings',async t=>{
+ let count=0;mockLLM(t,async input=>{count++;assert.match(input.systemText,/essential input remains unresolved/);return JSON.stringify({summary:'어떤 두 지역을 비교할까요?',caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'',projectImplications:[],limitations:''})});
+ const request=parseAnalysisRequest({question:'두 지역의 접근성을 비교해줘.'});
+ const result=await answerFromEvidence(request,{question:request.question,selectedSources:request.selectedSources,cases:[],papers:[],warnings:[]});
+ assert.equal(count,1);assert.equal(result.summary,'어떤 두 지역을 비교할까요?');assert.deepEqual(result.sources,[]);
 });

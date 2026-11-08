@@ -1,4 +1,4 @@
-import { followUpPolicy } from "../facilitation";
+import { followUpPolicy, requestClarification } from "../facilitation";
 import {deriveBoundary,boundaryGeoJSON,boundaryScope,spatialSettings,type ProjectBoundary,type SpatialSettings,filterBoundaryPlaces} from "./boundary";
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -11,7 +11,7 @@ import { featureKey, featureCollection, resultFor, isArea, touches, createBuffer
 import { bbox, bearing, point, booleanPointInPolygon, pointToPolygonDistance, nearestPointOnLine, lineString } from '@turf/turf';
 import type { Identity } from '../membership/server';
 import type { LoadedLayer, SpatialConfig } from './types';
-import { coordinate, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, genericCategoryCode, spatialToolRequest, isMapReference, featureNames, type Place, type GeoContext, type GeoResult, type PlaceSearchSnapshot } from './geo-query';
+import { coordinate, spatialConversationQuestion, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, genericCategoryCode, spatialToolRequest, isMapReference, featureNames, type Place, type GeoContext, type GeoResult, type PlaceSearchSnapshot } from './geo-query';
 import { getWalkingRoute, searchBoundaryPlaces } from './kakao-server';
 import { translate, type Locale } from '../i18n';
 const geometryCache = new Map<string, {
@@ -223,6 +223,9 @@ export async function executeGeoQuery(input: {
     history?: import("../chat-history").ConversationMessage[];
     locale?: Locale;
 }, user: Identity, projectId: string, layers: LoadedLayer[], layerWarnings: string[] = [], signal?: AbortSignal, options?:{boundary?:ProjectBoundary;settings?:SpatialSettings;priority?:SpatialConfig["priority"]}): Promise<GeoResult> {
+    const originalQuestion=input.question;
+    const clarification=requestClarification(input.question,input.history??[],"",input.locale);
+    input={...input,question:spatialConversationQuestion(input.question,input.history)};
     const plan = parseGeoPlan(input.question), context = parseGeoContext(input.context), locale = input.locale === 'en' ? 'en' : 'ko';
     const t = (key: string, values?: Record<string, string | number>) => translate(locale, key, values);
     const boundary=options?.boundary,settings=spatialSettings(options?.settings);
@@ -230,7 +233,8 @@ export async function executeGeoQuery(input: {
     let origin: Place | undefined;
     const warnings = layerWarnings.map(w => t(w));
     if(options&&!boundary)warnings.push(t('boundary.noActive'));
-    const result: GeoResult = { question: input.question, intent: plan.intent, reply: '', places: [], warnings };
+    const result: GeoResult = { question: originalQuestion, intent: plan.intent, reply: '', places: [], warnings };
+    if(clarification){result.reply=clarification;return result;}
     let tool = spatialToolRequest(input.question, input.history);
     const exploring = tool?.exploratory;
     const offerNext = followUpPolicy(input.question,input.history??[],"data").mode!=="none";
@@ -264,7 +268,7 @@ export async function executeGeoQuery(input: {
         else if (targets.length === 1 && prior.length === 1 && /나머지|other/i.test(tool.reference) && prior[0].config.id!==targets[0].config.id) targets=[prior[0],targets[0]];
         else if (targets.length === 1 && prior.length === 2 && prior.some(layer=>layer.config.id===targets[0].config.id)) targets = prior;
         const ask = (kind: "layers" | "shape" | "buffer") => {
-            result.reply = kind === "layers" && targets.length === 1 ? t("gis.toolInput.other",{name:targets[0].config.label}) : t(`gis.toolInput.${kind}`, { names: layers.slice(0,6).map(layer=>layer.config.label).join(", ") });
+            result.reply = kind === "layers" && targets.length === 1 ? t("gis.toolInput.other",{name:targets[0].config.label}) : t(`gis.toolInput.${kind === "buffer" ? "shape" : kind}`, { names: layers.slice(0,6).map(layer=>layer.config.label).join(", ") });
             return result;
         };
         if (tool.operation === "priority") {

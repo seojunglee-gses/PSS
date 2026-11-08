@@ -2,6 +2,7 @@ import { spatialPromptContext } from "../../../lib/spatial/context";
 import { projectLayers } from "../../../lib/spatial/geo-server";
 import { canonicalBuildingContext } from "../../../lib/spatial/building-use-server";
 import { analysisActivities, analysisSessionContext, analysisSessionQuestion } from "../../../lib/analysis-session";
+import { clarificationExchange } from "../../../lib/chat-history";
 import {policyHistory} from "../../../lib/facilitation";
 import { loadProjectContext } from "../../../lib/project-context-server";
 import { AccessError } from "../../../lib/membership/server";
@@ -26,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     request.previousSummaries = context.previousSummaries;
     request.cases = context.cases;
     const activities=analysisActivities(context.stageHistory,context.projectId);
-    request.searchQuestion=analysisSessionQuestion(request.question,activities,context.cases);
+    request.searchQuestion=clarificationExchange(request.question,request.history)?sourceRoutingQuestion(request.question,request.history??[]):analysisSessionQuestion(request.question,activities,context.cases);
     const contextual=request.searchQuestion!==request.question;
     if(!contextual)request.searchQuestion=sourceRoutingQuestion(request.question,request.history??[]);
     if(!Array.isArray(req.body.selectedSources)||!req.body.selectedSources.length)request.selectedSources=resolveSources(request.searchQuestion,[],context.cases,contextual?[]:request.history);

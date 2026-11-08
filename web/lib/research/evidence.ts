@@ -1,3 +1,4 @@
+import { requestClarification } from "../facilitation";
 import { parseSpatialResult } from "../spatial/context";
 import { canonicalBuildingContext } from "../spatial/building-use-server";
 import type { SpatialResult } from "../spatial/types";
@@ -13,6 +14,7 @@ export type AnalysisRequest = {
   analysisSession?: import("../analysis-session").AnalysisActivity[];
   facilitationHistory?: ConversationMessage[];
   question: string;
+  clarification?: string;
   history?: ConversationMessage[];
   searchQuestion?: string;
   spatialContext?: SpatialResult;
@@ -68,6 +70,8 @@ export function selectCases(question: string, cases: CaseMaterial[]): CaseEviden
 
 export async function retrieveEvidence(request: AnalysisRequest): Promise<EvidenceBundle> {
   const evidence: EvidenceBundle = { question: request.question, selectedSources: request.selectedSources, cases: [], papers: [], warnings: [] };
+  request.clarification=requestClarification(request.searchQuestion??request.question,request.history,request.projectContext,/[가-힣]/.test(request.question)?"ko":"en");
+  if(request.clarification)return evidence;
   if (request.selectedSources.includes("project")) {
     if (request.projectContext.trim()) evidence.projectContext = request.projectContext;
     else evidence.warnings.push({ source: "project", message: "이 사업에 등록된 자료가 없습니다." });
