@@ -124,7 +124,7 @@ export async function findNearestPlaces(query: string, origin: Place, radius: nu
 export async function searchBoundaryPlaces(query:string,geometry:import('./boundary').BoundaryFeature,signal?:AbortSignal,maxCalls=6){
   const {searchWindows,filterBoundaryPlaces}=await import('./boundary');
   const windows=searchWindows(geometry),found=new Map<string,Place>();
-  const queries=/^(?:편의시설|생활시설|시설|amenities)$/i.test(query)?['편의점','약국','병원','카페','주민센터']:[query];
+  const queries=/^(?:편의시설|생활시설|시설|amenities)$/i.test(query)?['편의점','약국','병원','카페','주민센터']:/^외국\s*음식점\s*(?:[·,/]|이나|또는|및|과)\s*(?:외국\s*)?식료품점$/.test(query.trim())?['외국 음식점','외국 식료품점']:[query];
   const pending=queries.flatMap(query=>windows.map(rect=>({rect,page:1,query})));let calls=0;
   while(pending.length&&calls<Math.min(6,maxCalls)){
     const {rect,page,query:term}=pending.shift()!;signal?.throwIfAborted();

@@ -426,3 +426,67 @@ test('a clarification about comparison criteria does not become an unrelated pla
  const history=[{role:'user',content:'두 지역의 접근성을 비교해줘.'},{role:'assistant',content:'어떤 두 지역을 비교할까요?'}];
  assert.equal(geo.spatialConversationQuestion('역 주변과 시장 주변이요.',history),'역 주변과 시장 주변이요.');
 });
+
+test('the reported this-street clarification resumes bounded searches for both requested shop types',async t=>{
+ key(t);const calls=[];mock(t,global,'fetch',async url=>{const u=new URL(url);calls.push(u);const query=u.searchParams.get('query');return Response.json({meta:{is_end:true},documents:[{...place(query==='외국 음식점'?'food':'grocery',127.005),y:'37.505'}]})});
+ const question='이 거리에서 외국인대상 가게들이 많던데 몇개나 있어?';
+ const first=await run(question);assert.match(first.reply,/말씀하시는 건가요/);assert.equal(calls.length,0);
+ const answer='외국 음식점·식료품점 같은 곳';
+ const history=[{role:'user',content:question},{role:'assistant',content:first.reply}];
+ assert.equal(geo.spatialConversationQuestion(answer,history),'이 거리 주변 외국 음식점·식료품점 보여줘');
+ const result=await server.executeGeoQuery({question:answer,history},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ assert.equal(result.question,answer);assert.deepEqual(result.places.map(p=>p.id).sort(),['food','grocery']);
+ assert.ok(calls.every(u=>u.searchParams.has('rect')));assert.deepEqual([...new Set(calls.map(u=>u.searchParams.get('query')))].sort(),['외국 식료품점','외국 음식점'].sort());
+ assert.match(result.reply,/전체 시설 수를 뜻하지 않습니다/);assert.ok(result.warnings.some(w=>/등록된 사업구역/.test(w)));assert.doesNotMatch(result.reply,/찾지 못|실행할 수 없/);
+});
+
+test('a street correction after the reported failed lookup preserves the criterion and re-enters the real spatial endpoint',async t=>{
+ key(t);const context=load('lib/project-context-server.js');const calls=[];
+ mock(t,global,'fetch',async url=>{const u=new URL(url);calls.push(u);return Response.json({meta:{is_end:true},documents:[{...place(u.searchParams.get('query'),127.005),y:'37.505'}]})});
+ const original='이 거리에서 외국인대상 가게들이 많던데 몇개나 있어?',criterion='외국 음식점·식료품점 같은 곳',correction='이 거리는 당연히 회복의 숲 길이지';
+ const history=[{role:'user',content:original},{role:'assistant',content:'‘외국인 대상 가게’는 외국 음식점·식료품점 같은 곳인가요, 아니면 외국인 이용이 많은 가게 전반을 말씀하시는 건가요?'},{role:'user',content:criterion},{role:'assistant',content:'‘이 거리’에 해당하는 장소를 찾지 못했습니다. 위치나 이름을 더 구체적으로 입력해주세요.'}];
+ assert.equal(geo.projectStreetCorrection(correction),'회복의 숲 길');assert.equal(geo.projectStreetCorrection(original),undefined);
+ const reconstructed=geo.spatialConversationQuestion(correction,history);assert.equal(reconstructed,'이 거리 주변 외국 음식점·식료품점 보여줘');
+ const routing=load('lib/research/routing.js');assert.ok(routing.resolveSources(routing.sourceRoutingQuestion(correction,history)).includes('spatial'));assert.ok(geo.isGeoQuestion(reconstructed));
+ const road={config:{id:'street',label:'대상 가로',role:'roads',type:'line'},data:{type:'FeatureCollection',features:[{type:'Feature',id:'road-1',properties:{name:'회복의 숲 길'},geometry:{type:'LineString',coordinates:[[127.003,37.504],[127.008,37.506]]}}]}};
+ mock(t,context,'loadProjectContext',async()=>({projectId:'geo-project',user,stageHistory:[...history,{role:'user',content:correction}]}));
+ mock(t,server,'projectLayers',async()=>({layers:[...layers,road],warnings:[],boundary:projectBoundary,settings:{defaultNearbyMeters:500}}));
+ const res={headers:{},setHeader(k,v){this.headers[k]=v},status(n){this.code=n;return this},json(body){this.body=body}};
+ await load('pages/api/spatial/query.js').default({method:'POST',body:{projectId:'geo-project',question:correction,history},headers:{}},res);
+ assert.equal(res.code,200);assert.equal(res.body.result.origin.featureId,'road-1');assert.equal(res.body.result.question,correction);assert.equal(res.body.result.places.length,2);
+ assert.ok(calls.length>=2);assert.ok(calls.every(u=>['외국 음식점','외국 식료품점'].includes(u.searchParams.get('query'))));
+ assert.doesNotMatch(res.body.result.reply,/실행할 수 없|찾지 못/);
+});
+
+test('deictic streets never query literal references nationally and explicit unrelated places retain normal lookup',async t=>{
+ key(t);const queries=[];mock(t,global,'fetch',async url=>{const u=new URL(url);queries.push(u.searchParams.get('query'));return Response.json({meta:{is_end:true},documents:[]})});
+ await run('이 거리 주변 카페를 보여줘');assert.ok(queries.every(q=>q===null));
+ const count=queries.length;
+ await server.executeGeoQuery({question:'이 거리 주변 카페를 보여줘'},user,'geo-project',layers);assert.equal(queries.length,count);
+ await run('미등록문화관 주변 카페를 보여줘');assert.ok(queries.includes('미등록문화관'));
+});
+
+test('an empty scoped shop search refines the search rather than asking for the already known street again',async t=>{
+ key(t);mock(t,global,'fetch',async()=>Response.json({meta:{is_end:true},documents:[]}));
+ const result=await run('이 거리 주변 외국 음식점·식료품점 보여줘');
+ assert.equal(result.places.length,0);assert.match(result.reply,/조회되지 않았습니다/);assert.match(result.reply,/없다는 뜻은 아닙니다/);assert.match(result.reply,/등록된 사업구역/);assert.doesNotMatch(result.reply,/위치나 이름을 더 구체적으로/);
+});
+
+test('retrying after the reported text-only refusal resumes the already clarified street search',async t=>{
+ key(t);const queries=[];mock(t,global,'fetch',async url=>{queries.push(new URL(url).searchParams.get('query'));return Response.json({meta:{is_end:true},documents:[{...place(String(queries.length),127.005),y:'37.505'}]})});
+ const history=[{role:'user',content:'이 거리에서 외국인대상 가게들이 많던데 몇개나 있어?'},{role:'assistant',content:'‘외국인 대상 가게’는 외국 음식점·식료품점 같은 곳인가요, 아니면 외국인 이용이 많은 가게 전반을 말씀하시는 건가요?'},{role:'user',content:'외국 음식점·식료품점 같은 곳'},{role:'assistant',content:'‘이 거리’에 해당하는 장소를 찾지 못했습니다. 위치나 이름을 더 구체적으로 입력해주세요.'},{role:'user',content:'이 거리는 당연히 회복의 숲 길이지'},{role:'assistant',content:'대상과 집계 기준은 분명하지만 이 응답에서는 검색을 실행할 수 없어, 개수는 아직 확인되지 않았습니다.'}];
+ const question='그럼 검색해봐';assert.equal(geo.spatialConversationQuestion(question,history),'이 거리 주변 외국 음식점·식료품점 보여줘');
+ const result=await server.executeGeoQuery({question,history},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ assert.equal(result.question,question);assert.ok(queries.includes('외국 음식점'));assert.ok(queries.includes('외국 식료품점'));assert.ok(result.places.length>0);
+ assert.equal(geo.spatialConversationQuestion('카페를 보여줘',history),'카페를 보여줘');
+});
+
+test('project-street candidate choices validate against authorized road features and resume search',async t=>{
+ key(t);mock(t,global,'fetch',async()=>Response.json({meta:{is_end:true},documents:[{...place('shop',127.005),y:'37.505'}]}));
+ const road={config:{id:'roads',label:'대상 가로',role:'roads',type:'line'},data:{type:'FeatureCollection',features:[0,1].map(i=>({type:'Feature',id:String(i),properties:{name:'선택할 숲길'},geometry:{type:'LineString',coordinates:[[127.003,37.504],[127.008,37.506]]}}))}};
+ const question='이 거리는 당연히 선택할 숲길이지';
+ const history=[{role:'user',content:'이 거리에서 외국인 대상 가게가 몇 개 있어?'},{role:'assistant',content:'외국 음식점·식료품점 같은 곳인가요, 아니면 외국인 이용이 많은 가게 전반을 말씀하시는 건가요?'},{role:'user',content:'외국 음식점·식료품점 같은 곳'},{role:'assistant',content:'‘이 거리’에 해당하는 장소를 찾지 못했습니다. 위치나 이름을 더 구체적으로 입력해주세요.'}];
+ const first=await server.executeGeoQuery({question,history},user,'geo-project',[road],[],undefined,{boundary:projectBoundary});assert.equal(first.clarify.options.length,2);
+ const selected=first.clarify.options[0];const second=await server.executeGeoQuery({question,history,choices:{[first.clarify.reference]:selected.choiceToken}},user,'geo-project',[road],[],undefined,{boundary:projectBoundary});
+ assert.equal(second.origin.id,selected.id);assert.equal(second.clarify,undefined);assert.ok(second.places.length>0);
+});

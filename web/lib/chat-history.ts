@@ -30,9 +30,9 @@ export function conversationHistory(value: unknown, stepId?: string): Conversati
 export function clarificationExchange(question: string, history: ConversationMessage[] = []): { request: string; answers: string[] } | undefined {
   if (!question.trim() || question.length > 500 || /취소|그만|다른\s*(?:질문|주제)|그(?:건|거|것)(?:은)?\s*말고|대신|cancel|forget that|new topic|instead|^(?:네|예|응|ok|thanks|감사합니다)[.!?\s]*$/i.test(question)
     || /(?:보여|찾아|검색해|생성해|그려|실행해|계산해|분석해|비교해)(?:줘|주세요)?[.!?\s]*$|\b(?:find|search|generate|draw|show)\b/i.test(question)) return;
-  const pending = (text: string) => text.length < 700 && /[?？]|알려주세요|provide/i.test(text) && (
+  const pending = (text: string) => text.length < 700 && (/장소를 찾지 못했습니다[\s\S]*위치나 이름|No places were found[\s\S]*(?:location|name)/i.test(text) || /[?？]|알려주세요|provide/i.test(text) && (
     /어떤\s*(?:두\s*)?(?:지역|장소|위치|대상|자료|시설|종류|효과|기준|부분|점|방향|변화|대안).*(?:볼까요|비교할|확인하고|찾고|중요|개선하고|말씀|알려)|어느\s*(?:두\s*)?(?:지역|장소|위치)|말씀하시는\s*(?:건가요|뜻)|실행할.*(?:자료|대상|거리).*알려|실행할.*나머지.*알려/i.test(text)
-    || /which (?:two |other )?(?:areas?|places?|locations?|targets?|effects?|criteria|facilities)|what (?:kind|type|effect)|do you mean|provide.*(?:layers|target|distance).*execute/i.test(text));
+    || /which (?:two |other )?(?:areas?|places?|locations?|targets?|effects?|criteria|facilities)|what (?:kind|type|effect)|do you mean|provide.*(?:layers|target|distance).*execute/i.test(text)));
   let index = history.length - 1;
   const answers = [question.trim()];
   let request: string | undefined;

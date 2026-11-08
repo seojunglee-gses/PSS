@@ -11,7 +11,7 @@ import { featureKey, featureCollection, resultFor, isArea, touches, createBuffer
 import { bbox, bearing, point, booleanPointInPolygon, pointToPolygonDistance, nearestPointOnLine, lineString } from '@turf/turf';
 import type { Identity } from '../membership/server';
 import type { LoadedLayer, SpatialConfig } from './types';
-import { coordinate, spatialConversationQuestion, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, genericCategoryCode, spatialToolRequest, isMapReference, featureNames, type Place, type GeoContext, type GeoResult, type PlaceSearchSnapshot } from './geo-query';
+import { coordinate, spatialConversationQuestion, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, genericCategoryCode, spatialToolRequest, isMapReference, isProjectStreetReference, projectStreetCorrection, featureNames, type Place, type GeoContext, type GeoResult, type PlaceSearchSnapshot } from './geo-query';
 import { getWalkingRoute, searchBoundaryPlaces } from './kakao-server';
 import { translate, type Locale } from '../i18n';
 const geometryCache = new Map<string, {
@@ -408,13 +408,31 @@ export async function executeGeoQuery(input: {
         return [];
     };
     const resolve = async (name: string, role: 'origin' | 'destination' | 'place') => {
+        let streetOptions: Place[] | undefined;
+        if(isProjectStreetReference(name)) {
+            const correctedName=projectStreetCorrection(originalQuestion);
+            streetOptions=correctedName?internalPlaces(correctedName,layers,featureKey):[];
+            const roadLayers=layers.filter(layer=>layer.config.role==='roads'||layer.config.datasetType==='roads');
+            if(!streetOptions.length&&context.selected&&roadLayers.some(layer=>layer.config.id===context.selected!.layerId)){
+                const selected=selectedPlace(context,layers);if(selected)streetOptions=[selected];
+            }
+            if(!streetOptions.length){
+                const roads=roadLayers.flatMap(layer=>layer.data.features.map((feature,index)=>({id:`${layer.config.id}:${featureKey(feature,index)}`,name:featureNames(feature)[0]??layer.config.label,source:'project' as const,layerId:layer.config.id,featureId:featureKey(feature,index),...representativePoint(feature)})));
+                if(roads.length===1)streetOptions=roads;
+            }
+            if(!streetOptions.length&&boundary){
+                warnings.push(t('gis.projectStreetScope'));
+                return {id:'project-boundary',name:t('upload.boundary'),source:'project' as const,coordinate:boundary.center,approximate:true,boundaryTarget:true};
+            }
+            if(!streetOptions.length&&!boundary){result.reply=t('picker.needBoundary');return;}
+        }
         if (/^(?:이\s*)?(?:사업구역|사업\s*경계|대상지|project (?:area|boundary))$/i.test(name) && boundary)
             return { id: 'project-boundary', name: t('upload.boundary'), source: 'project' as const, coordinate: boundary.center, approximate: true, boundaryTarget: true };
         const binding = scope(user.uid, projectId, input.question, name);
         const token = input.choices && Object.prototype.hasOwnProperty.call(input.choices, name) ? input.choices[name] : undefined;
         let selected: Place | undefined;
         if (token?.startsWith('project:'))
-            selected = (await resolvePlaceReference(name, context, layers)).find(p => 'project:' + p.id === token);
+            selected = (streetOptions ?? await resolvePlaceReference(name, context, layers)).find(p => 'project:' + p.id === token);
         else
             selected = verifyChoice(token, binding);
         if (selected?.source === 'kakao' && (!boundary || !filterBoundaryPlaces([selected], boundaryScope(boundary, context.scopeMeters === 0 ? 0 : 2000)).length)) throw new Error('gis.choiceExpired');
@@ -422,7 +440,7 @@ export async function executeGeoQuery(input: {
             return selected;
         if (token)
             throw new Error('gis.choiceExpired');
-        const options = await resolvePlaceReference(name, context, layers, external);
+        const options = streetOptions ?? await resolvePlaceReference(name, context, layers, external);
         const ambiguousGeneric = /^(경로당|주민센터|건강생활지원센터)$/.test(name.trim());
         if (options.length === 1 && !ambiguousGeneric)
             return options[0];
@@ -560,12 +578,13 @@ export async function executeGeoQuery(input: {
     }
     result.searchQuery=plan.query;
     result.categoryCode=genericCategoryCode(plan.query);
-    result.reply = result.places.length ? t('gis.searchSummary', { count: result.places.length }) : t('gis.noPlace', { name: plan.query });
+    result.reply = result.places.length ? t('gis.searchSummary', { count: result.places.length }) : !boundary ? t('picker.needBoundary') : t('gis.noSearchCandidates', { name: plan.query });
     if (result.places.length) {
         result.reply += "\n"+result.places.map(place => `${place.name}${place.address ? ` · ${place.address}` : ""}`).join("\n");
         if (result.scopeMeters !== undefined) result.reply += "\n"+(result.scopeMeters === 0 ? t("boundary.scope.0") : t("gis.searchScope", { meters: result.scopeMeters }));
         if (result.places.some(place => place.source === "kakao")) result.reply += "\n"+t("gis.poiExploration");
     }
+    if(warnings.includes(t('gis.projectStreetScope')))result.reply+='\n'+t('gis.projectStreetScope');
     if (exploring) {
         result.reply=t("gis.explorePlaces")+"\n"+result.reply;
         if(result.places.length&&offerNext)result.reply+="\n"+t("gis.exploreNext");
