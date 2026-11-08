@@ -1,5 +1,5 @@
 import { isGeoQuestion } from "../spatial/geo-query";
-import { contextualQuestion, type ConversationMessage } from "../chat-history";
+import { clarificationExchange, contextualQuestion, type ConversationMessage } from "../chat-history";
 import type { EvidenceSource } from "./types";
 
 export function namedCases<T extends {id:string;title:string;label:string;aliases?:string[]}>(question:string,cases:T[],history:ConversationMessage[]=[]){
@@ -27,6 +27,7 @@ export function resolveSources(question: string, selected: EvidenceSource[] = []
 }
 
 export function sourceRoutingQuestion(question: string, history: ConversationMessage[]) {
+  if(clarificationExchange(question,history))return contextualQuestion(question,history);
   // A concrete new project/spatial question must not inherit an earlier literature/case search.
   if (!/논문|연구|학술|사례|research|stud(?:y|ies)|cases?/i.test(question) && (/도로\s*폭|면적|필지|토지\s*이용|주요\s*문제|위치|어디|사업\s*(배경|목표)|대상지\s*확인|주변|근처|도보|가장\s*가까|카페|약국|마트|병원|학교|nearby|nearest|walking|에서.*까지/i.test(question) || /(?:검색|찾아)(?:해)?(?:줘|주세요)/.test(question))) return question;
   return contextualQuestion(question, history);

@@ -74,3 +74,14 @@ test('follow-up retrieval carries its subject forward without changing a new top
   assert.equal(contextualQuestion('도로폭이 얼마야?',history),'도로폭이 얼마야?');
   assert.equal(contextualQuestion('그 논문은?',[]),'그 논문은?');
 });
+
+test('explicit clarification replies recover the pending task, while new tasks and reflective questions do not',()=>{
+ const {clarificationExchange}=compiled(path.join(process.env.PSS_TEST_BUILD,'lib/chat-history.js'));
+ const history=[{role:'user',content:'이런 사업이 효과가 있다는 연구 찾아줘.'},{role:'assistant',content:'어떤 효과를 확인하고 싶으세요? 예를 들어 보행 증가, 지역상권, 주민 만족도 등이 있습니다.'}];
+ assert.match(contextualQuestion('보행 증가요.',history),/^이런 사업.*\n보행 증가요\.$/);
+ assert.deepEqual(clarificationExchange('보행 증가요.',history),{request:history[0].content,answers:['보행 증가요.']});
+ for(const q of ['카페를 보여줘','취소할게요','다른 질문인데요','그건 말고 학교요','네'])assert.equal(clarificationExchange(q,history),undefined,q);
+ assert.equal(clarificationExchange('저녁에 이용해요',[{role:'user',content:'쉼터가 필요해요'},{role:'assistant',content:'어떤 변화가 가장 의미 있을까요?'}]),undefined);
+ const chain=[...history,{role:'user',content:'보행 증가요.'},{role:'assistant',content:'어떤 두 지역을 비교할까요?'}];
+ assert.deepEqual(clarificationExchange('시장과 역 주변이요.',chain),{request:history[0].content,answers:['보행 증가요.','시장과 역 주변이요.']});
+});

@@ -1,3 +1,4 @@
+import { clarificationExchange } from "../chat-history";
 import { centroid, pointOnFeature, distance, point, booleanPointInPolygon } from '@turf/turf';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { LoadedLayer } from './types';
@@ -202,6 +203,23 @@ const toolOperations = (text: string) => toolPatterns.filter(([,pattern])=>patte
 const toolOperation = (text: string) => { const operations=toolOperations(text); return operations.length===1?operations[0]:undefined; };
 export const isSpatialToolCancelled = (question: string) => toolOperations(question).length > 0 && /하지\s*마|하지\s*말|실행하지|말고|취소|그만|don.?t|do not|cancel/i.test(question);
 export const isSpatialToolExplanation = (question: string) => toolOperations(question).length > 0 && /뭐야|뭔가|무엇|방법|어떤\s*(?:도구|분석|기능)|원리|설명|추천|어떻게\s*(?:쓰|사용|작동)|what\b|why\b|should I|explain|how (?:to|do|does|can)|how.*work/i.test(question) && !/(?:실행|분석|계산)해|\b(?:run|execute)\b/i.test(question);
+// Resolve an explicit clarification answer without changing the visible/saved user message.
+export function spatialConversationQuestion(question: string, history: import("../chat-history").ConversationMessage[] = []): string {
+    const exchange=clarificationExchange(question,history);
+    if(!exchange)return question;
+    if(toolOperations(exchange.request).length)return [exchange.request,...exchange.answers].join("\n");
+    if(!isGeoQuestion(exchange.request)&&!/외국인.*(?:가게|상점)/.test(exchange.request))return question;
+    if(!/보여|찾아|검색|어디|show|find|search|where|외국인.*(?:가게|상점)/i.test(exchange.request))return question;
+    let target=exchange.answers.join(' ').replace(/(?:같은\s*(?:거|것|곳)|말하는\s*(?:거|것)|말씀드린\s*(?:거|것)|이요|요)[.!?\s]*$/,'').trim();
+    if(/외국인.*(?:가게|상점)/.test(exchange.request)){
+        if(/음식점|식료품/.test(target)&&!/(?:이용|손님|고객)/.test(target))target='외국 '+target;
+        else return question; // Visitor demographics cannot be determined by a Kakao place keyword.
+    }
+    const plan=parseGeoPlan(exchange.request);
+    if(plan.destination||plan.intent==='STRAIGHT_DISTANCE'||plan.intent==='WALKING_ROUTE'||plan.intent==='EXISTING_GIS_QUERY')return question;
+    if(!genericCategoryCode(target)&&target.length>120)return question;
+    return `${plan.origin?plan.origin+' 주변 ':''}${plan.radius&&/\d+\s*(?:km|m|미터)/i.test(exchange.request)?plan.radius+'m 이내 ':''}${target} 보여줘`;
+}
 export function spatialToolRequest(question: string, history: import("../chat-history").ConversationMessage[] = []): { operation: typeof toolPatterns[number][0]; reference: string; exploratory: boolean } | undefined {
     if (isSpatialToolExplanation(question) || /하지\s*마|하지\s*말|실행하지|말고|취소|그만|don.?t|do not|cancel/i.test(question)) return;
     const exploration = !toolOperations(question).length && !/논문|학술|연구|사례|\b(?:research|literature|study|cases?)\b/i.test(question)
@@ -210,7 +228,7 @@ export function spatialToolRequest(question: string, history: import("../chat-hi
         && /어디부터|무엇부터|어떤\s*(?:자료|곳|분석)|자료부터|찾으려면|찾아|살펴|확인|where.*start|what.*(?:check|first)|identify/i.test(question);
     if (exploration) return { operation: "area", reference: "", exploratory: true };
     const last = history[history.length - 1];
-    const pending = last?.role === "assistant" && /실행할.*(?:자료|대상|거리).*알려|provide.*(?:layers|target|distance).*execute/i.test(last.content);
+    const pending = !!clarificationExchange(question,history) || (last?.role === "assistant" && /실행할.*(?:자료|대상|거리).*알려|provide.*(?:layers|target|distance).*execute/i.test(last.content));
     const execute = /확인해|계산해|분석해|실행해|해봐|해볼래|비교해|중첩해|겹쳐줘|해줘|해주세요|찾아(?:줘|주세요)|알아봐|\b(?:run|execute|calculate|check|compare|perform|go ahead)\b/i.test(question);
     if (!execute && !pending) return;
     const operation = toolOperation(question);

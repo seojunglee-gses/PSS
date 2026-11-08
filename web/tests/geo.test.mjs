@@ -391,3 +391,38 @@ test('two recent signed searches support transient candidate comparisons includi
  assert.match((await execute([first])).reply,/다시 검색/);
  const now=Date.now;mock(t,Date,'now',()=>now()+6*60000);assert.match((await execute([first,second])).reply,/다시 검색/);
 });
+
+test('ambiguous place definitions pause before Kakao and resume the original bounded search after one answer',async t=>{
+ key(t);const requests=[];mock(t,global,'fetch',async url=>{requests.push(new URL(url));return Response.json({meta:{is_end:true},documents:[place('clarified-shop')]})});
+ const question='외국인 대상 가게가 몇 개 있어?';const first=await run(question);assert.equal(requests.length,0);assert.equal(first.places.length,0);assert.match(first.reply,/말씀하시는 건가요/);
+ const history=[{role:'user',content:question},{role:'assistant',content:first.reply}];
+ const reply='음식점이나 식료품점 같은 거.';
+ assert.match(geo.spatialConversationQuestion(reply,history),/외국 음식점이나 식료품점/);
+ const answer=await server.executeGeoQuery({question:reply,history},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ assert.ok(requests.length>0);assert.ok(requests.every(url=>url.pathname.endsWith('/keyword.json')&&url.searchParams.has('rect')));assert.equal(answer.question,reply);assert.equal(answer.places[0].id,'clarified-shop');
+});
+
+test('essential clarification does not turn visitor demographics into a place-search category',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('Kakao does not provide visitor nationality'));
+ const first=await run('외국인 대상 가게가 몇 개 있어?');
+ const history=[{role:'user',content:'외국인 대상 가게가 몇 개 있어?'},{role:'assistant',content:first.reply}];
+ const answer=await server.executeGeoQuery({question:'외국인 손님이 많은 음식점 전반이요.',history},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ assert.equal(answer.places.length,0);assert.match(answer.reply,/국적 정보/);assert.match(answer.reply,/대신/);
+});
+
+test('two missing buffer inputs are requested one at a time and existing GIS resumes from the dialogue',async t=>{
+ mock(t,global,'fetch',()=>assert.fail('registered buffer execution uses no external request'));
+ const question='주변 영향권 보기를 실행해줘.';
+ const first=await run(question);assert.equal(first.computedResult,undefined);assert.match(first.reply,/대상/);assert.doesNotMatch(first.reply,/대상과 거리/);
+ const history=[{role:'user',content:question},{role:'assistant',content:first.reply}];
+ const second=await server.executeGeoQuery({question:'공공시설의 회복의 숲 타워',history},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ assert.equal(second.computedResult,undefined);assert.match(second.reply,/거리/);
+ const third=await server.executeGeoQuery({question:'300m',history:[...history,{role:'user',content:'공공시설의 회복의 숲 타워'},{role:'assistant',content:second.reply}]},user,'geo-project',layers,[],undefined,{boundary:projectBoundary});
+ assert.equal(third.computedResult.type,'buffer');assert.equal(third.computedResult.parameters.distanceMeters,300);
+});
+
+
+test('a clarification about comparison criteria does not become an unrelated place search',()=>{
+ const history=[{role:'user',content:'두 지역의 접근성을 비교해줘.'},{role:'assistant',content:'어떤 두 지역을 비교할까요?'}];
+ assert.equal(geo.spatialConversationQuestion('역 주변과 시장 주변이요.',history),'역 주변과 시장 주변이요.');
+});
