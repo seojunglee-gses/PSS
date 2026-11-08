@@ -1,0 +1,32 @@
+{
+  "projectId": "project-1773405285635",
+  "boundaryLayerId": "gajwa1-boundary",
+  "placeSearch": {
+    "roadLayerId": "gajwa-target-roads",
+    "radiusMeters": 500,
+    "regionName": "인천 가좌1동",
+    "roadNames": [
+      "건지로284번길",
+      "가정로126번길"
+    ]
+  },
+  "attribution": "경계: 통계청 SGIS(공공누리 제1유형), 가공 vuski/admdongkor(CC BY 4.0). 도로: © OpenStreetMap 기여자(ODbL).",
+  "layers": [
+    {
+      "id": "gajwa1-boundary",
+      "label": "사업구역 · 인천 가좌1동",
+      "type": "polygon",
+      "role": "boundary",
+      "source": "/data/projects/project-1773405285635/gajwa1-boundary.geojson",
+      "color": "#2563eb"
+    },
+    {
+      "id": "gajwa-target-roads",
+      "label": "기준 도로 · 건지로284번길·가정로126번길",
+      "type": "line",
+      "role": "roads",
+      "source": "/data/projects/project-1773405285635/target-roads.geojson",
+      "color": "#db2777"
+    }
+  ]
+}

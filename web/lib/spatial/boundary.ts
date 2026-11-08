@@ -1,4 +1,4 @@
-import { area, bbox, buffer, centroid, pointOnFeature, booleanPointInPolygon, booleanValid, kinks, union, point, toWgs84 } from '@turf/turf';
+import { area, bbox, buffer, centroid, pointOnFeature, booleanPointInPolygon, booleanValid, kinks, union, point, toWgs84, featureCollection, intersect } from '@turf/turf';
 import type { Feature, FeatureCollection, Polygon, MultiPolygon } from 'geojson';
 import { validateGeoJSON } from './loader';
 import type { Coordinate, Place } from './geo-query';
@@ -129,4 +129,15 @@ export function searchWindows(geometry: BoundaryFeature): [
             result.push(b);
     }
     return result.slice(0, 4);
+}
+
+// The configured road vicinity is always clipped to the actual administrative boundary.
+export function roadSearchScope(boundary: ProjectBoundary, roads: FeatureCollection, meters: number): BoundaryFeature {
+    if(!Number.isFinite(meters)||meters<1||meters>2000)throw new Error('gis.referenceUnavailable');
+    const expanded=buffer(roads,meters,{units:'meters'});
+    if(!expanded?.features.length)throw new Error('gis.referenceUnavailable');
+    const combined=expanded.features.length===1?expanded.features[0]:union(expanded);
+    const clipped=combined?intersect(featureCollection([boundary.geometry,combined])):undefined;
+    if(!clipped)throw new Error('gis.referenceUnavailable');
+    return clipped;
 }
