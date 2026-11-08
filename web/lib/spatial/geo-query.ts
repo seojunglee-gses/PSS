@@ -129,6 +129,10 @@ export const categories: [RegExp,KakaoCategoryCode][] = [
 export function categoryCode(query: string) { return categories.find(([pattern]) => pattern.test(query.trim()))?.[1]; }
 export function genericCategoryCode(query: string) { return categoryCode(query); }
 export function placeCategory(question: string) { try { return genericCategoryCode(parseGeoPlan(question).query); } catch { return undefined; } }
+export const isProjectStreetReference = (name: string) => /^(?:(?:이|그|해당|대상|현재|사업)\s*(?:거리|가로|길)|this street|project street)$/i.test(name.trim());
+export function projectStreetCorrection(question: string): string | undefined {
+    return question.match(/^(?:이|그|해당)\s*(?:거리|가로|길)(?:는|은)\s*(?:당연히\s*)?(.+?)(?:이지|이죠|이에요|입니다|이야|야|요)?[.!?\s]*$/)?.[1]?.trim();
+}
 const reference = /^(?:지금\s*)?(여기|거기|이곳|이\s*건물|이\s*필지|선택한.*|선택된.*|현재\s*(지도\s*)?중심|here|this (building|parcel)|selected.*|map center)$/i;
 export const isMapReference = (name: string) => reference.test(name.trim());
 function clean(text: string) { return text.trim().replace(/(?:을|를)?\s*(?:지도(?:에|에서)\s*)?(?:보여(?:줘|주세요)|찾아(?:줘|주세요)|검색(?:해줘|해주세요)|(?:분석|확인)(?:해줘|해주세요))\s*[?.!]*$/i, '').replace(/(?:은|는|이|가)?\s*어디(?:에)?\s*있(?:어|나요|니|을까)?[?.!]*$/, '').replace(/[?.!]+$/g, '').replace(/(?:은|는|이|가)?\s*어디(?:야|인가요|에\s*있(?:어|나요))$/,'').replace(/(?:을|를)?\s*(?:찾아(?:줘|주세요)?|검색(?:해줘|해주세요)?|알려(?:줘|주세요)?|보여(?:줘|주세요)?|어디(?:야|인가요)?|있(?:어|나요)|있을까|search|find|show)(?:[?.!\s]*)$/i, '').trim(); }
@@ -206,13 +210,24 @@ export const isSpatialToolExplanation = (question: string) => toolOperations(que
 // Resolve an explicit clarification answer without changing the visible/saved user message.
 export function spatialConversationQuestion(question: string, history: import("../chat-history").ConversationMessage[] = []): string {
     const exchange=clarificationExchange(question,history);
-    if(!exchange)return question;
+    if(!exchange){
+        const last=history[history.length-1],correction=history[history.length-2];
+        // Recover the reported failed task when the participant retries after a false text-only hand-off.
+        if(/^(?:그럼|그러면|다시|이어서)?\s*(?:검색해봐|검색해줘|검색해주세요|찾아봐|찾아줘|찾아주세요|확인해봐)[.!?\s]*$/.test(question.trim())
+          && last?.role==='assistant'&&/검색.{0,20}(?:실행할 수 없|수행할 수 없)|cannot.*(?:search|execute)/i.test(last.content)
+          && correction?.role==='user'&&projectStreetCorrection(correction.content)){
+            return spatialConversationQuestion(correction.content,history.slice(0,-2));
+        }
+        return question;
+    }
     if(toolOperations(exchange.request).length)return [exchange.request,...exchange.answers].join("\n");
     if(!isGeoQuestion(exchange.request)&&!/외국인.*(?:가게|상점)/.test(exchange.request))return question;
     if(!/보여|찾아|검색|어디|show|find|search|where|외국인.*(?:가게|상점)/i.test(exchange.request))return question;
-    let target=exchange.answers.join(' ').replace(/(?:같은\s*(?:거|것|곳)|말하는\s*(?:거|것)|말씀드린\s*(?:거|것)|이요|요)[.!?\s]*$/,'').trim();
+    const targetAnswers=exchange.answers.filter(answer=>!projectStreetCorrection(answer));
+    if(!targetAnswers.length)return question;
+    let target=targetAnswers.join(' ').replace(/(?:같은\s*(?:거|것|곳)|말하는\s*(?:거|것)|말씀드린\s*(?:거|것)|이요|요)[.!?\s]*$/,'').trim();
     if(/외국인.*(?:가게|상점)/.test(exchange.request)){
-        if(/음식점|식료품/.test(target)&&!/(?:이용|손님|고객)/.test(target))target='외국 '+target;
+        if(/음식점|식료품/.test(target)&&!/(?:이용|손님|고객)/.test(target))target=/^외국\s*/.test(target)?target:'외국 '+target;
         else return question; // Visitor demographics cannot be determined by a Kakao place keyword.
     }
     const plan=parseGeoPlan(exchange.request);

@@ -211,3 +211,10 @@ test('all generic chat stages receive shared behavior through their existing sin
  }
  assert.equal(calls.length,5);
 });
+
+test('known clarification questions render as direct dialogue without report headings or invented evidence',async()=>{
+ const research=load('lib/research/evidence.js'),answer=load('lib/research/answer.js');
+ const request=research.parseAnalysisRequest({question:'이 거리에서 외국인대상 가게들이 많던데 몇개나 있어?'});
+ const evidence=await research.retrieveEvidence(request);const result=await answer.answerFromEvidence(request,evidence);
+ assert.equal(result.format,'direct');assert.deepEqual(result.sources,[]);assert.deepEqual(result.projectImplications,[]);assert.equal(evidence.projectContext,undefined);
+});

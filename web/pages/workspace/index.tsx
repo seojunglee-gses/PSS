@@ -1103,7 +1103,7 @@ const handleSend = async (suggestedQuestion?: string) => {
   const sessionQuestion = stepId === "data" ? (clarificationExchange(userMessage,history) ? sourceRoutingQuestion(userMessage,history) : analysisSessionQuestion(userMessage, analysisActivities(dataLogsRef.current, projectId), activeProject?.workspaceContent.data.cases)) : userMessage;
   const placeFollowUp = stepId === "data" && Boolean(((placeResultFollowUp(userMessage)==="search-comparison"&&geo.recentSearches.length)||geo.result?.places.length || analysisActivities(dataLogsRef.current, projectId).at(-1)?.location?.places.length) && !geo.result?.clarify && placeResultFollowUp(userMessage));
   const toolRequest = stepId === "data" ? spatialToolRequest(spatialQuestion,history) : undefined;
-  const effectiveSources = resolveSources(placeFollowUp || toolRequest ? "공간 분석" : sessionQuestion !== userMessage ? sessionQuestion : sourceRoutingQuestion(userMessage, history), selectedSources, activeProject?.workspaceContent.data.cases, sessionQuestion !== userMessage ? [] : history);
+  const effectiveSources = resolveSources(placeFollowUp || toolRequest || (spatialQuestion!==userMessage&&isGeoQuestion(spatialQuestion)) ? "공간 분석" : sessionQuestion !== userMessage ? sessionQuestion : sourceRoutingQuestion(userMessage, history), selectedSources, activeProject?.workspaceContent.data.cases, sessionQuestion !== userMessage ? [] : history);
   setSendingChatScope(chatScope);
   setIsSending(true);
   setErrorMessage(null);

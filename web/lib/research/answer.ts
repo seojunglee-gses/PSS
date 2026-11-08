@@ -51,7 +51,7 @@ export async function answerFromEvidence(request: AnalysisRequest, evidence: Evi
   const directSpatial=spatialAnswer&&!request.selectedSources.some(source=>source==="cases"||source==="research");
   const directCases=request.selectedSources.includes('cases');
   const clarification=request.clarification??requestClarification(request.searchQuestion??request.question,request.history,request.projectContext,/[가-힣]/.test(request.question)?"ko":"en");
-  if(clarification)return {summary:clarification,caseFindings:[],researchFindings:[],agreement:"",differences:"",integratedInterpretation:"",projectImplications:[],limitations:"",sources:[]};
+  if(clarification)return {format:'direct',summary:clarification,caseFindings:[],researchFindings:[],agreement:"",differences:"",integratedInterpretation:"",projectImplications:[],limitations:"",sources:[]};
   // Unusable title-only retrieval must still never be turned into research findings.
   if(evidence.papers.length&&!evidenceCitations(evidence).length&&!request.spatialContext&&!request.registeredSpatialContext&&!evidence.projectContext&&!request.history?.length){
     return {summary:/[가-힣]/.test(request.question)?"검색된 논문에 초록이 없어 내용을 확인하기 어렵습니다. 다른 검색어로 논문을 찾아볼까요?":"The retrieved papers have no abstracts to support an answer. Would you like to try a different search term?",caseFindings:[],researchFindings:[],agreement:"",differences:"",integratedInterpretation:"",projectImplications:[],limitations:evidence.warnings.map(w=>w.message).join(' '),sources:[]};
