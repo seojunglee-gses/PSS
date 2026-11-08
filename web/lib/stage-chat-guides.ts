@@ -64,7 +64,7 @@ const suggestedQuestions: Record<Locale, Record<ChatStage, Record<RoleId, StageC
       government: [
         { label: "운영의 핵심 과제", prompt: "사업을 추진하고 운영할 때 가장 먼저 해결해야 할 문제는 무엇일까요?" },
         { label: "기존 사업·시설과 연계", prompt: "기존 사업이나 시설과 연계해 운영 효과를 높일 방법은 없을까요?" },
-        { label: "주민과 운영진의 목표", prompt: "주민의 요구와 운영진의 목표가 다른 부분은 무엇일까요?" },
+        { label: "주민과 실무진의 목표", prompt: "주민의 요구와 실무진의 목표가 다른 부분은 무엇일까요?" },
       ],
     },
     data: {

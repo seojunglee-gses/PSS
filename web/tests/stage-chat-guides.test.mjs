@@ -43,9 +43,9 @@ test('changing stage, stakeholder or locale selects the corresponding questions 
 });
 
 test('Korean operations-team role retains legacy government selections and stage-specific suggestions',()=>{
- for(const stage of stages)for(const role of ['운영진','공무원','정부','Government'])assert.deepEqual(stageChatGuide(stage,'ko',role),stageChatGuide(stage,'ko','government'));
- assert.ok(stageChatGuide('problem','ko','운영진').suggestedQuestions.some(q=>q.prompt.includes('운영진')));
- assert.ok(stageChatGuide('data','ko','운영진').suggestedQuestions.some(q=>q.prompt.includes('운영 성과')));
+ for(const stage of stages)for(const role of ['실무진','운영진','공무원','정부','Government'])assert.deepEqual(stageChatGuide(stage,'ko',role),stageChatGuide(stage,'ko','government'));
+ assert.ok(stageChatGuide('problem','ko','실무진').suggestedQuestions.some(q=>q.prompt.includes('실무진')));
+ assert.ok(stageChatGuide('data','ko','실무진').suggestedQuestions.some(q=>q.prompt.includes('운영 성과')));
 });
 
 test('Data Analysis context questions are deterministic, localized triples and do not change the existing stage/role questions', () => {
