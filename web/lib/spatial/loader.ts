@@ -89,6 +89,12 @@ export function validateConfig(
       ))
   )
     throw new Error("우선순위 기준을 확인해주세요.");
+  if(c.boundaryLayerId!==undefined&&!c.layers.some(l=>l.id===c.boundaryLayerId&&l.role==='boundary'))throw new Error("기준 사업구역 레이어를 확인해주세요.");
+  if(c.placeSearch){
+    const search=c.placeSearch;
+    if(!c.boundaryLayerId||!c.layers.some(l=>l.id===search.roadLayerId&&l.role==='roads'&&l.type==='line')||!Number.isFinite(search.radiusMeters)||search.radiusMeters<1||search.radiusMeters>2000||typeof search.regionName!=='string'||!search.regionName.trim()||search.regionName.length>100||!Array.isArray(search.roadNames)||!search.roadNames.length||search.roadNames.length>8||search.roadNames.some(name=>typeof name!=='string'||!name.trim()||name.length>100))throw new Error("장소 검색 기준을 확인해주세요.");
+  }
+  if(c.attribution!==undefined&&(typeof c.attribution!=='string'||c.attribution.length>1000))throw new Error("지도 자료 출처를 확인해주세요.");
   return c;
 }
 export function validateGeoJSON(

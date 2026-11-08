@@ -52,11 +52,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             res.status(429).json({ error: translate(locale, 'gis.quota') });
             return;
         }
-        const { layers, warnings, boundary, settings, priority } = await projectLayers(context.user, context.projectId, abort.signal);
+        const { layers, warnings, boundary, settings, priority, boundaryLayerId, placeSearch } = await projectLayers(context.user, context.projectId, abort.signal);
         abort.signal.throwIfAborted();
         const history=conversationHistory(context.stageHistory?.length?context.stageHistory:req.body.history);
         if(history.at(-1)?.role==="user"&&history.at(-1)?.content===req.body.question)history.pop();
-        const result = await executeGeoQuery({...req.body,history:policyHistory(context.stageHistory,history)}, context.user, context.projectId, layers, warnings, abort.signal,{boundary,settings,priority});
+        const result = await executeGeoQuery({...req.body,history:policyHistory(context.stageHistory,history)}, context.user, context.projectId, layers, warnings, abort.signal,{boundary,settings,priority,boundaryLayerId,placeSearch});
         abort.signal.throwIfAborted();
         const reflection=gisReflection(req.body.question,policyHistory(context.stageHistory,conversationHistory(req.body.history)),!!(result.route||result.computedResult)&&!result.clarify,locale);
         if(reflection&&!spatialToolRequest(req.body.question,history)?.exploratory){result.facilitationQuestion=reflection;result.reply+='\n\n'+reflection;}

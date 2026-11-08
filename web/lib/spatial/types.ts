@@ -27,6 +27,9 @@ export type Criterion = {
   weight: number;
 };
 export type SpatialConfig = {
+  boundaryLayerId?: string;
+  placeSearch?: { roadLayerId: string; radiusMeters: number; regionName: string; roadNames: string[] };
+  attribution?: string;
   spatialSettings?: import("./boundary").SpatialSettings;
   datasetWarnings?: string[];
   projectId: string;

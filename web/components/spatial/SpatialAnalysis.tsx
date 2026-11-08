@@ -111,8 +111,8 @@ export default function SpatialAnalysis({
     };
   }, [projectId, user]);
   useEffect(() => {
-    setVisible(spatialCategoryLayerIds(layers.map(layer => layer.config), category, config.spatialSettings?.activeBoundaryDatasetId));
-  }, [layers, category, config.spatialSettings?.activeBoundaryDatasetId]);
+    setVisible([...new Set([...spatialCategoryLayerIds(layers.map(layer => layer.config), category, config.spatialSettings?.activeBoundaryDatasetId, config.boundaryLayerId),...(config.placeSearch?[config.placeSearch.roadLayerId]:[])])]);
+  }, [layers, category, config.spatialSettings?.activeBoundaryDatasetId, config.boundaryLayerId, config.placeSearch]);
   const polygons = useMemo(
     () => layers.filter((l) => l.config.type === "polygon"),
     [layers],
@@ -155,14 +155,15 @@ export default function SpatialAnalysis({
       featureCollection([feature]),
     );
   };
-  const boundary=useMemo(()=>{const layer=layers.find(l=>l.config.id===`uploaded-${config.spatialSettings?.activeBoundaryDatasetId}`);if(!layer)return;try{return deriveBoundary(boundaryGeoJSON(layer.data));}catch{return;}},[layers,config.spatialSettings]);
+  const boundaryLayerId=config.boundaryLayerId??(config.spatialSettings?.activeBoundaryDatasetId?`uploaded-${config.spatialSettings.activeBoundaryDatasetId}`:undefined);
+  const boundary=useMemo(()=>{const layer=layers.find(l=>l.config.id===boundaryLayerId);if(!layer)return;try{return deriveBoundary(boundaryGeoJSON(layer.data));}catch{return;}},[layers,boundaryLayerId]);
   const activeLayers = layers;
   const mapResult = useMemo(()=>showResults && geo?.result ? { ...geo.result,
     places: geo.candidates.length ? geo.candidates : geo.result.places,
     resolvedPlaces: [...(geo.result.resolvedPlaces ?? []), ...geo.result.places.filter(p => !geo.candidates.some(candidate => candidate.id === p.id))],
   } : null,[showResults,geo?.result,geo?.candidates]);
   const hasMapResult = !!mapResult;
-  const mapVisible = useMemo(()=>hasMapResult && config.spatialSettings?.activeBoundaryDatasetId ? [...new Set([...visible, `uploaded-${config.spatialSettings.activeBoundaryDatasetId}`])] : visible,[visible,config.spatialSettings?.activeBoundaryDatasetId,hasMapResult]);
+  const mapVisible = useMemo(()=>hasMapResult && boundaryLayerId ? [...new Set([...visible, boundaryLayerId])] : visible,[visible,boundaryLayerId,hasMapResult]);
   const scopeControl = (<label className="text-xs">{t("boundary.scope")} <select aria-label={t("boundary.scope")} className="min-h-11 rounded border px-2" value={geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500} onChange={e=>geo?.setContext(prev=>({...prev,scopeMeters:Number(e.target.value) as 0|500|1000}))}>{[0,500,1000].map(n=><option key={n} value={n}>{t(`boundary.scope.${n}`)}</option>)}</select></label>);
   return (
     <div className="spatial-analysis space-y-3 p-4 sm:p-6">
@@ -174,6 +175,7 @@ export default function SpatialAnalysis({
           onPoint={(coordinate)=>{setSelected(null);setOverlay(featureCollection([{type:"Feature",properties:{},geometry:{type:"Point",coordinates:coordinate}}]));geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter,point:coordinate}));}}
           onCenter={(mapCenter)=>geo?.setContext(prev=>({...prev,mapCenter}))} geoResult={mapResult} highlightedPlaceId={geo?.highlighted} selectedPlaceId={geo?.chosenPlace?.id} onPlace={place=>geo?.setHighlighted(place.id)}/>
         </SpatialEntityPicker>
+        {config.attribution&&<p className="text-xs text-slate-500">{config.attribution}</p>}
         {geo&&<NaturalLanguageGIS geo={geo}/>}
 
       </>}

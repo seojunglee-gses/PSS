@@ -490,3 +490,38 @@ test('project-street candidate choices validate against authorized road features
  const selected=first.clarify.options[0];const second=await server.executeGeoQuery({question,history,choices:{[first.clarify.reference]:selected.choiceToken}},user,'geo-project',[road],[],undefined,{boundary:projectBoundary});
  assert.equal(second.origin.id,selected.id);assert.equal(second.clarify,undefined);assert.ok(second.places.length>0);
 });
+
+test('Gajwa project reference data uses a real administrative polygon and both named roads without changing other projects',async t=>{
+ const fs=await import('node:fs');const dir=new URL('../public/data/projects/project-1773405285635/',import.meta.url);const read=name=>JSON.parse(fs.readFileSync(new URL(name,dir),'utf8'));
+ const loader=load('lib/spatial/loader.js'),boundaryTools=load('lib/spatial/boundary.js'),goals=load('lib/spatial/goals.js');
+ const config=loader.validateConfig(read('config.json'),'project-1773405285635');
+ assert.throws(()=>loader.validateConfig(read('config.json'),'other-project'));
+ const configured=config.layers.map(layer=>({config:layer,data:loader.validateGeoJSON(read(layer.source.split('/').at(-1)),layer)}));
+ const boundary=boundaryTools.deriveBoundary(configured.find(l=>l.config.id===config.boundaryLayerId).data),roads=configured.find(l=>l.config.id===config.placeSearch.roadLayerId);
+ assert.ok(boundary.bbox[0]>126&&boundary.bbox[2]<127);assert.deepEqual(roads.data.features.map(f=>f.properties.name).sort(),['가정로126번길','건지로284번길'].sort());
+ const near={id:'near',name:'기준 도로 근처',source:'kakao',coordinate:[126.6734,37.4934]},far={id:'industrial',name:'가좌1동 서쪽',source:'kakao',coordinate:[126.66,37.49]},seoul={id:'seoul',name:'다른 지역',source:'kakao',coordinate:[127,37.5]};
+ const corridor=boundaryTools.roadSearchScope(boundary,roads.data,500);
+ assert.deepEqual(boundaryTools.filterBoundaryPlaces([near,far,seoul],boundary.geometry).map(p=>p.id),['near','industrial']);assert.deepEqual(boundaryTools.filterBoundaryPlaces([near,far,seoul],corridor).map(p=>p.id),['near']);
+ assert.deepEqual(goals.spatialCategoryLayerIds([...config.layers,{id:'uploaded-old',label:'예전 경계',type:'polygon',role:'boundary',source:''}],null,'old',config.boundaryLayerId),[config.boundaryLayerId]);
+ key(t);const calls=[];mock(t,global,'fetch',async url=>{const u=new URL(url);calls.push(u);return Response.json({meta:{is_end:true},documents:[near,far,seoul].map(p=>({id:p.id,place_name:p.name,x:String(p.coordinate[0]),y:String(p.coordinate[1]),category_group_code:'CE7'}))})});
+ const options={boundary,boundaryLayerId:config.boundaryLayerId,placeSearch:config.placeSearch};
+ const run=q=>server.executeGeoQuery({question:q},user,config.projectId,configured,[],undefined,options);
+ const local=await run('이 거리 주변 카페를 보여줘');assert.deepEqual(local.places.map(p=>p.id),['near']);assert.match(local.reply,/건지로284번길·가정로126번길 주변 500m/);assert.doesNotMatch(local.reply,/정확한 구간을 특정하지 못해/);
+ const region=await run('가좌1동 전체 카페를 보여줘');assert.deepEqual(new Set(region.places.map(p=>p.id)),new Set(['near','industrial']));assert.match(region.reply,/인천 가좌1동 전체/);
+ const inside=await run('사업구역 안 카페를 보여줘');assert.deepEqual(new Set(inside.places.map(p=>p.id)),new Set(['near','industrial']));
+ const nearest=await run('이 거리에서 가장 가까운 카페가 어디야?');assert.equal(nearest.intent,'NEAREST_PLACE');
+ assert.ok(calls.every(url=>{const b=url.searchParams.get('rect').split(',').map(Number);return b[0]>=boundary.bbox[0]-.000001&&b[2]<=boundary.bbox[2]+.000001}));assert.ok(calls.every(url=>url.searchParams.get('category_group_code')==='CE7'));
+});
+
+test('project reference selection is shared by uploaded-layer loading and the server, and never leaks to other projects',async t=>{
+ const fs=await import('node:fs');const config=JSON.parse(fs.readFileSync(new URL('../public/data/projects/project-1773405285635/config.json',import.meta.url),'utf8'));
+ const admin=load('lib/firebaseAdmin.js'),datasets=load('lib/spatial/dataset-server.js'),loader=load('lib/spatial/loader.js');
+ const uploaded={projectId:config.projectId,datasetId:'existing-facility',revisionId:'reference-test-revision',name:'기존 업로드 자료',type:'public_facilities',geometryType:'point'};
+ const data={type:'FeatureCollection',features:[point('기존 시설',126.6734,37.4934)]};const before=JSON.stringify(data);
+ mock(t,admin,'adminDb',()=>({}));mock(t,admin,'adminBucket',()=>({}));mock(t,datasets,'listDatasets',async()=>({datasets:[uploaded],spatialSettings:{activeBoundaryDatasetId:'old-boundary',defaultNearbyMeters:500}}));mock(t,datasets,'readDataset',async()=>({data}));
+ const result=await server.projectLayers(user,config.projectId);assert.equal(result.boundaryLayerId,config.boundaryLayerId);assert.equal(result.placeSearch.roadLayerId,config.placeSearch.roadLayerId);assert.ok(result.boundary.bbox[2]<127);assert.ok(result.layers.some(l=>l.config.id==='uploaded-existing-facility'));assert.equal(JSON.stringify(data),before);
+ mock(t,global,'fetch',async url=>String(url).includes('/api/projects/spatial-datasets?')?Response.json({datasets:[uploaded],spatialSettings:{activeBoundaryDatasetId:'old-boundary',defaultNearbyMeters:500}}):Response.json(config));
+ const client=await loader.loadSpatialConfig(config.projectId,undefined,'fixture-token');assert.equal(client.boundaryLayerId,result.boundaryLayerId);assert.equal(client.placeSearch.roadLayerId,result.placeSearch.roadLayerId);assert.ok(client.layers.some(l=>l.id==='uploaded-existing-facility'));
+ mock(t,datasets,'listDatasets',async()=>({datasets:[],spatialSettings:{activeBoundaryDatasetId:null}}));const other=await server.projectLayers(user,'unrelated-project-reference-test');assert.equal(other.boundary,undefined);assert.equal(other.placeSearch,undefined);assert.equal(other.boundaryLayerId,undefined);
+ assert.throws(()=>loader.validateConfig({...config,placeSearch:{...config.placeSearch,radiusMeters:50000}},config.projectId));assert.throws(()=>loader.validateConfig({...config,boundaryLayerId:'missing'},config.projectId));
+});
