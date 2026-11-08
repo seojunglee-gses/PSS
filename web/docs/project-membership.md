@@ -16,7 +16,7 @@ Firebase Authentication, 기존 `ppssProjects` 문서, 이메일 기반 시스�
 {"projectId":"project-1","role":"participant","joinedAt":"Firestore server timestamp"}
 ```
 
-`joinedAt`은 실제 Firestore Timestamp입니다. 원본 코드·입력한 코드·코드 해시는 참여 기록에 저장하지 않습니다. 참여자의 관점 선택(일반 시민/사업자/도시계획가/운영진)과 관리 권한은 기존 체계를 유지하며, 참여 코드가 관리자 권한을 부여하지 않습니다.
+`joinedAt`은 실제 Firestore Timestamp입니다. 원본 코드·입력한 코드·코드 해시는 참여 기록에 저장하지 않습니다. 참여자의 관점 선택(일반 시민/사업자/도시계획가/실무진)과 관리 권한은 기존 체계를 유지하며, 참여 코드가 관리자 권한을 부여하지 않습니다.
 
 `users/{uid}`에는 `lastProjectId`, `lastOpenedAt`을 병합 저장합니다. 잘못된 코드 시도는 `joinAttempt`에 최근 시작 시각·횟수·사업 ID만 기록합니다. 원본 코드는 기록하지 않습니다. 참여 정보와 최근 사업은 서버가 저장하고, 클라이언트는 자신의 정보를 읽을 수만 있습니다.
 
