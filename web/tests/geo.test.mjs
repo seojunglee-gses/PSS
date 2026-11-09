@@ -491,14 +491,14 @@ test('project-street candidate choices validate against authorized road features
  assert.equal(second.origin.id,selected.id);assert.equal(second.clarify,undefined);assert.ok(second.places.length>0);
 });
 
-test('Gajwa project reference data uses a real administrative polygon and both named roads without changing other projects',async t=>{
+test('Gajwa project reference data uses a real administrative polygon and only Gajeong-ro 126beon-gil without changing other projects',async t=>{
  const fs=await import('node:fs');const dir=new URL('../public/data/projects/project-1773405285635/',import.meta.url);const read=name=>JSON.parse(fs.readFileSync(new URL(name,dir),'utf8'));
  const loader=load('lib/spatial/loader.js'),boundaryTools=load('lib/spatial/boundary.js'),goals=load('lib/spatial/goals.js');
  const config=loader.validateConfig(read('config.json'),'project-1773405285635');
- assert.throws(()=>loader.validateConfig(read('config.json'),'other-project'));
+ assert.throws(()=>loader.validateConfig(read('config.json'),'other-project'));assert.deepEqual(config.placeSearch.roadNames,['가정로126번길']);
  const configured=config.layers.map(layer=>({config:layer,data:loader.validateGeoJSON(read(layer.source.split('/').at(-1)),layer)}));
  const boundary=boundaryTools.deriveBoundary(configured.find(l=>l.config.id===config.boundaryLayerId).data),roads=configured.find(l=>l.config.id===config.placeSearch.roadLayerId);
- assert.ok(boundary.bbox[0]>126&&boundary.bbox[2]<127);assert.deepEqual(roads.data.features.map(f=>f.properties.name).sort(),['가정로126번길','건지로284번길'].sort());
+ assert.ok(boundary.bbox[0]>126&&boundary.bbox[2]<127);assert.deepEqual(roads.data.features.map(f=>f.properties.name).sort(),['가정로126번길']);
  const near={id:'near',name:'기준 도로 근처',source:'kakao',coordinate:[126.6734,37.4934]},far={id:'industrial',name:'가좌1동 서쪽',source:'kakao',coordinate:[126.66,37.49]},seoul={id:'seoul',name:'다른 지역',source:'kakao',coordinate:[127,37.5]};
  const corridor=boundaryTools.roadSearchScope(boundary,roads.data,500);
  assert.deepEqual(boundaryTools.filterBoundaryPlaces([near,far,seoul],boundary.geometry).map(p=>p.id),['near','industrial']);assert.deepEqual(boundaryTools.filterBoundaryPlaces([near,far,seoul],corridor).map(p=>p.id),['near']);
@@ -506,7 +506,7 @@ test('Gajwa project reference data uses a real administrative polygon and both n
  key(t);const calls=[];mock(t,global,'fetch',async url=>{const u=new URL(url);calls.push(u);return Response.json({meta:{is_end:true},documents:[near,far,seoul].map(p=>({id:p.id,place_name:p.name,x:String(p.coordinate[0]),y:String(p.coordinate[1]),category_group_code:'CE7'}))})});
  const options={boundary,boundaryLayerId:config.boundaryLayerId,placeSearch:config.placeSearch};
  const run=q=>server.executeGeoQuery({question:q},user,config.projectId,configured,[],undefined,options);
- const local=await run('이 거리 주변 카페를 보여줘');assert.deepEqual(local.places.map(p=>p.id),['near']);assert.match(local.reply,/건지로284번길·가정로126번길 주변 500m/);assert.doesNotMatch(local.reply,/정확한 구간을 특정하지 못해/);
+ const local=await run('이 거리 주변 카페를 보여줘');assert.deepEqual(local.places.map(p=>p.id),['near']);assert.match(local.reply,/가정로126번길 주변 500m/);assert.doesNotMatch(local.reply,/정확한 구간을 특정하지 못해/);
  const region=await run('가좌1동 전체 카페를 보여줘');assert.deepEqual(new Set(region.places.map(p=>p.id)),new Set(['near','industrial']));assert.match(region.reply,/인천 가좌1동 전체/);
  const inside=await run('사업구역 안 카페를 보여줘');assert.deepEqual(new Set(inside.places.map(p=>p.id)),new Set(['near','industrial']));
  const nearest=await run('이 거리에서 가장 가까운 카페가 어디야?');assert.equal(nearest.intent,'NEAREST_PLACE');

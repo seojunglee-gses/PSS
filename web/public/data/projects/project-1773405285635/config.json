@@ -6,7 +6,6 @@
     "radiusMeters": 500,
     "regionName": "인천 가좌1동",
     "roadNames": [
-      "건지로284번길",
       "가정로126번길"
     ]
   },
@@ -14,7 +13,7 @@
   "layers": [
     {
       "id": "gajwa1-boundary",
-      "label": "사업구역 · 인천 가좌1동",
+      "label": "사업구역 경계",
       "type": "polygon",
       "role": "boundary",
       "source": "/data/projects/project-1773405285635/gajwa1-boundary.geojson",
@@ -22,7 +21,7 @@
     },
     {
       "id": "gajwa-target-roads",
-      "label": "기준 도로 · 건지로284번길·가정로126번길",
+      "label": "기준 도로",
       "type": "line",
       "role": "roads",
       "source": "/data/projects/project-1773405285635/target-roads.geojson",

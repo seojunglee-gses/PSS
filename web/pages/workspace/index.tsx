@@ -284,6 +284,7 @@ function AuthorizedWorkspace() {
   const composerInputRef = useRef<HTMLInputElement>(null);
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
   const [inspectedSpatial, setInspectedSpatial] = useState<SpatialResult | null>(null);
+  const [inspectedCaseFindings, setInspectedCaseFindings] = useState<Finding[]>([]);
   const [inspectedResearchFindings, setInspectedResearchFindings] = useState<Finding[]>([]);
   const [inspectedEvidence, setInspectedEvidence] = useState<AnalysisRecord["evidence"] | null>(null);
   const [spatialCategory, setSpatialCategory] = useState<number | null>(null);
@@ -353,6 +354,7 @@ function AuthorizedWorkspace() {
     setSelectedSources([]);
     setInspectedEvidence(null);
     setInspectedResearchFindings([]);
+    setInspectedCaseFindings([]);
     setInspectedSpatial(null);
     setHighlightedEvidence(null);
     setAnalysisView("cases");
@@ -1146,6 +1148,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       }
       setInspectedEvidence(null);
       setInspectedResearchFindings([]);
+      setInspectedCaseFindings([]);
       setInspectedSpatial(null);
       setHighlightedEvidence(null);
       const controller = new AbortController();
@@ -1827,14 +1830,13 @@ const handleSend = async (suggestedQuestion?: string) => {
               {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} additionalSources={[...(message.analysis.evidence.projectContext ? ["project" as const] : []), ...(message.analysis.spatialContext ? ["spatial" as const] : [])]} onViewEvidence={(sourceId) => {
                 setInspectedEvidence(usedAnswerEvidence(message.analysis!));
                 setInspectedResearchFindings(message.analysis!.answer.researchFindings);
+                setInspectedCaseFindings(message.analysis!.answer.caseFindings);
                 setInspectedSpatial(message.analysis!.spatialContext ?? null);
                 setAnalysisView("answer");
                 setPanelView("information");
                 setHighlightedEvidence(sourceId ?? null);
                 if (sourceId) window.setTimeout(() => {
                   const target = document.getElementById(`evidence-${sourceId}`);
-                  const details = target?.querySelector("details");
-                  if (details) details.open = true;
                   const panel = target?.closest<HTMLElement>(".workspace-information");
                   if (target && panel) panel.scrollTo({ top: panel.scrollTop + target.getBoundingClientRect().top - panel.getBoundingClientRect().top - 12, behavior: "smooth" });
                 }, 0);
@@ -1871,7 +1873,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.7-1.5 1.6-1.5 3.5h-4c0-1.9-.6-2.8-1.5-3.5Z" /></svg>
         </button>
         {expandedStarterScope === chatScope && <div id="workspace-starter-prompts" className="workspace-help-popover max-h-36 overflow-y-auto overscroll-contain">
-          <StageChatEmptyState guide={guide} showFullPrompts disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} />
+          <StageChatEmptyState guide={guide} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} />
         </div>}
       </div>}
 
@@ -2056,14 +2058,14 @@ const handleSend = async (suggestedQuestion?: string) => {
 
       {activeStep.id === "data" && (
         <WorkspacePanels navigation={stageNavigation} stageTitle={t(activeStep.titleKey)} completionControl={renderStageCompletion("header")} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
-          <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
+          <div className="workspace-analysis rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div className="workspace-stage-heading border-b border-slate-200 px-5 py-4">
               <h3 className="text-lg font-semibold text-slate-900">{t("boundary.dataTitle")}</h3>
               <p className="mt-1 text-sm text-slate-500">{t("boundary.dataIntro")}</p>
 
 
             </div>
-            <div role="tablist" aria-label={`${t("cases.heading")} / ${t("workspace.goal.spatial")} / ${analysisLabels.answerEvidence}`} className="flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
+            <div role="tablist" aria-label={`${t("cases.heading")} / ${t("workspace.goal.spatial")} / ${analysisLabels.answerEvidence}`} className="workspace-analysis-tabs flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
               {(["cases", "spatial", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
                 id={`analysis-${view}-tab`} aria-controls={`analysis-${view}-panel`} aria-selected={analysisView === view}
                 tabIndex={analysisView === view ? 0 : -1}
@@ -2078,7 +2080,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                   }
                 }}
                 className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold ${analysisView === view ? "bg-white text-[var(--primary)] shadow-sm" : "text-slate-500 hover:bg-white/60"}`}>
-                {view === "cases" ? t("cases.heading") : view === "spatial" ? t("workspace.goal.spatial") : analysisLabels.answerEvidence}
+                {view === "cases" ? (locale === "ko" ? "실제 사례" : locale === "zh" ? "实际案例" : "Real cases") : view === "spatial" ? t("workspace.goal.spatial") : analysisLabels.answerEvidence}
               </button>)}
             </div>
             {analysisView === "spatial" && <div role="tabpanel" id="analysis-spatial-panel" aria-labelledby="analysis-spatial-tab">
@@ -2094,6 +2096,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                 <SpatialSummary result={answerSpatial} />
               </section>}
               <EvidencePanel evidence={analysisEvidence} enabled={analysisEvidence?.selectedSources ?? DEFAULT_SOURCES} loading={isSending} highlighted={highlightedEvidence}
+                caseFindings={inspectedEvidence ? inspectedCaseFindings : latestAnalysis?.answer.caseFindings ?? []}
                 researchFindings={inspectedEvidence ? inspectedResearchFindings : latestAnalysis?.answer.researchFindings ?? []}
                 availableCaseIds={(activeProject?.workspaceContent.data.cases ?? []).map((item) => item.id)}
                 onViewCase={(caseId) => { setActiveTab(caseId); setAnalysisView("cases"); recordCaseView(caseId); }}
@@ -2101,20 +2104,8 @@ const handleSend = async (suggestedQuestion?: string) => {
                 onViewProject={() => recordAnalysisActivity({ type: "project", referenceId: "project-material", title: analysisLabels.project })} />
             </div>}
             <div role="tabpanel" id="analysis-cases-panel" aria-labelledby="analysis-cases-tab" hidden={analysisView !== "cases"}>
-            <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-lg font-semibold text-slate-900">{t("cases.heading")}</h3>
-                {canEditContent && <div className="flex items-center gap-2">
-                  <button type="button" className={`rounded-full border px-3 py-1 text-xs font-semibold ${editingStageId === "data" ? "border-[var(--primary)] text-[var(--primary)]" : "border-slate-200"}`} disabled={imageUploading || isSavingContent} onClick={() => editingStageId === "data" ? cancelEditStage() : beginEditStage("data")}>{t(editingStageId === "data" ? "workspace.editing" : "workspace.edit")}</button>
-                  {editingStageId === "data" && <>
-                    <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" disabled={imageUploading || isSavingContent} onClick={cancelEditStage}>{t("workspace.cancel")}</button>
-                    <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" disabled={imageUploading || isSavingContent} onClick={() => { void saveEditStage(); }}>{t(isSavingContent ? "common.saving" : "workspace.save")}</button>
-                  </>}
-                </div>}
-              </div>
-              <p className="mt-1 text-sm text-slate-500">{analysisLabels.caseIntro}</p>
-              {activeProject?.workspaceContent.data.text && <ContentText value={localizeDefaultContent(locale, activeProject.workspaceContent.data.text)} />}
-              <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="border-b border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center gap-2">
                 {(editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases ?? []).map((tab) => (
                   <div key={tab.id} className="flex min-w-0 items-center gap-1">
                     <button type="button" disabled={isSavingContent || imageUploading} className={`max-w-full rounded-full px-4 py-2 text-xs font-semibold ${activeTab === tab.id ? "bg-[var(--primary)] text-white" : "border bg-white text-slate-600"}`}
@@ -2135,14 +2126,20 @@ const handleSend = async (suggestedQuestion?: string) => {
                   </div>
                 ))}
                 {canEditContent && editingStageId === "data" && <button type="button" aria-label={t("cases.add")} className="min-h-11 rounded-full border border-blue-200 px-4 text-sm font-semibold text-blue-700" disabled={isSavingContent || imageUploading} onClick={addCase}>{t("cases.addButton")}</button>}
+                {canEditContent && <div className="ml-auto flex items-center gap-2">
+                  <button type="button" className={`rounded-full border px-3 py-1 text-xs font-semibold ${editingStageId === "data" ? "border-[var(--primary)] text-[var(--primary)]" : "border-slate-200"}`} disabled={imageUploading || isSavingContent} onClick={() => editingStageId === "data" ? cancelEditStage() : beginEditStage("data")}>{t(editingStageId === "data" ? "workspace.editing" : "workspace.edit")}</button>
+                  {editingStageId === "data" && <>
+                    <button type="button" className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold" disabled={imageUploading || isSavingContent} onClick={cancelEditStage}>{t("workspace.cancel")}</button>
+                    <button type="button" className="rounded-full bg-[var(--primary)] px-3 py-1 text-xs font-semibold text-white" disabled={imageUploading || isSavingContent} onClick={() => { void saveEditStage(); }}>{t(isSavingContent ? "common.saving" : "workspace.save")}</button>
+                  </>}
+                </div>}
               </div>
+              {activeProject?.workspaceContent.data.text && <ContentText value={localizeDefaultContent(locale, activeProject.workspaceContent.data.text)} />}
             </div>
-            <div className="p-6">
+            <div className="p-4">
               {contentSaveError && <p role="alert" className="mb-3 text-sm text-rose-600">{localize(contentSaveError, "common.requestFailed")}</p>}
               {contentSaveNotice && <p role="status" className="mb-3 text-sm text-emerald-700">{localize(contentSaveNotice)}</p>}
-              <div className="pr-1">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="mt-4 space-y-2 text-sm text-slate-600">
+                  <div className="space-y-2 text-sm text-slate-600">
                   {(() => {
                     const cases = editingStageId === "data" ? dataDraft.cases : activeProject?.workspaceContent.data.cases;
                     const activeCase = cases?.find((item) => item.id === activeTab) ?? cases?.[0];
@@ -2169,8 +2166,6 @@ const handleSend = async (suggestedQuestion?: string) => {
                     );
                   })()}
                   </div>
-                </div>
-              </div>
             </div>
             </div>
           </div>

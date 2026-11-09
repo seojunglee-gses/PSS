@@ -111,7 +111,8 @@ export default function SpatialAnalysis({
     };
   }, [projectId, user]);
   useEffect(() => {
-    setVisible([...new Set([...spatialCategoryLayerIds(layers.map(layer => layer.config), category, config.spatialSettings?.activeBoundaryDatasetId, config.boundaryLayerId),...(config.placeSearch?[config.placeSearch.roadLayerId]:[])])]);
+    const categoryLayers = spatialCategoryLayerIds(layers.map(layer => layer.config), category, config.spatialSettings?.activeBoundaryDatasetId, config.boundaryLayerId).filter(id => id !== config.placeSearch?.roadLayerId);
+    setVisible(category === null ? categoryLayers.filter(id => layers.some(layer => layer.config.id === id && (layer.config.role === "boundary" || layer.config.datasetType === "project_boundary"))) : categoryLayers);
   }, [layers, category, config.spatialSettings?.activeBoundaryDatasetId, config.boundaryLayerId, config.placeSearch]);
   const polygons = useMemo(
     () => layers.filter((l) => l.config.type === "polygon"),
@@ -167,7 +168,6 @@ export default function SpatialAnalysis({
   const scopeControl = (<label className="text-xs">{t("boundary.scope")} <select aria-label={t("boundary.scope")} className="min-h-11 rounded border px-2" value={geo?.context.scopeMeters??config.spatialSettings?.defaultNearbyMeters??500} onChange={e=>geo?.setContext(prev=>({...prev,scopeMeters:Number(e.target.value) as 0|500|1000}))}>{[0,500,1000].map(n=><option key={n} value={n}>{t(`boundary.scope.${n}`)}</option>)}</select></label>);
   return (
     <div className="spatial-analysis space-y-3 p-4 sm:p-6">
-      <p className="text-sm text-slate-500">{t("spatial.exploreIntro")}</p>
       {!loading&&<>
         {!boundary&&<p role="status" className="text-xs text-amber-800">{t("boundary.noActive")}</p>}
         <SpatialEntityPicker entities={showResults?(geo?.candidates??[]):[]} selected={showResults?(geo?.chosenPlace??null):null} highlighted={geo?.highlighted??null} onHighlight={id=>geo?.setHighlighted(id)} onChoose={place=>geo?.choosePlace(place)} busy={geo?.loading??false} reference={showResults?geo?.result?.clarify?.reference:undefined}>
@@ -175,7 +175,6 @@ export default function SpatialAnalysis({
           onPoint={(coordinate)=>{setSelected(null);setOverlay(featureCollection([{type:"Feature",properties:{},geometry:{type:"Point",coordinates:coordinate}}]));geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter,point:coordinate}));}}
           onCenter={(mapCenter)=>geo?.setContext(prev=>({...prev,mapCenter}))} geoResult={mapResult} highlightedPlaceId={geo?.highlighted} selectedPlaceId={geo?.chosenPlace?.id} onPlace={place=>geo?.setHighlighted(place.id)}/>
         </SpatialEntityPicker>
-        {config.attribution&&<p className="text-xs text-slate-500">{config.attribution}</p>}
         {geo&&<NaturalLanguageGIS geo={geo}/>}
 
       </>}
@@ -193,7 +192,7 @@ export default function SpatialAnalysis({
           <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.chooseLayers")}</summary><fieldset>
 
             <div className="flex flex-wrap gap-x-4 gap-y-2">
-              {config.layers.map((l) => (
+              {config.layers.filter(layer => layer.id !== config.placeSearch?.roadLayerId).map((l) => (
                 <label key={l.id} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -212,7 +211,7 @@ export default function SpatialAnalysis({
                     className="h-3 w-3 rounded-sm"
                     style={{ backgroundColor: l.color ?? "#64748b" }}
                   />
-                  {l.id===`uploaded-${config.spatialSettings?.activeBoundaryDatasetId}`?t("boundary.layer.boundary"):l.role==="facilities"?t("boundary.layer.facilities"):l.role==="buildings"?t("boundary.layer.buildings"):l.datasetType==='parcels'?t("boundary.layer.parcels"):l.label}
+                  {l.role==="boundary"||l.id===`uploaded-${config.spatialSettings?.activeBoundaryDatasetId}`?t("boundary.layer.boundary"):l.role==="facilities"?t("boundary.layer.facilities"):l.role==="buildings"?t("boundary.layer.buildings"):l.datasetType==='parcels'?t("boundary.layer.parcels"):l.label}
                   {!layers.some((a) => a.config.id === l.id) && t("spatial.unavailable")}
                 </label>
               ))}
@@ -512,7 +511,6 @@ export default function SpatialAnalysis({
         </>
       )}
       {!loading && !layers.length && <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.advancedTools")}</summary>{scopeControl}</details>}
-      {!loading && <p className="text-xs text-slate-500">{t("spatial.exploreHelp")}</p>}
       {warnings.length > 0 && (
         <div role="status" className="space-y-1 text-xs text-amber-700">
           {warnings.map((w, i) => (
@@ -552,6 +550,7 @@ export default function SpatialAnalysis({
             {t("spatial.resultHint")}</p>
         </section>
       )}
+      {config.attribution && <p className="spatial-attribution">{config.attribution}</p>}
     </div>
   );
 }
