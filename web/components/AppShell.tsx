@@ -100,6 +100,15 @@ interface AppShellProps {
 export default function AppShell({ children, workspaceLayout = false }: AppShellProps) {
   const router = useRouter();
   const isWorkspace = workspaceLayout && router.pathname === "/workspace";
+  useEffect(() => {
+    if (!isWorkspace) return;
+    document.documentElement.classList.add("workspace-page");
+    document.body.classList.add("workspace-page");
+    return () => {
+      document.documentElement.classList.remove("workspace-page");
+      document.body.classList.remove("workspace-page");
+    };
+  }, [isWorkspace]);
   const { user, signOutUser } = useAuth();
   const { locale, setLocale, t, localize } = useI18n();
   const [role, setRole] = useState<string>("Guest");

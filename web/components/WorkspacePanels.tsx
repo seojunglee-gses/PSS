@@ -74,7 +74,7 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
       shell.dataset.keyboardOpen = String(keyboardOpen);
       // Safari may report a transient viewport during drawer/route/browser-bar
       // transitions. Outside keyboard use, let CSS 100dvh follow the screen.
-      if (keyboardOpen) {
+      if (keyboardOpen || !window.CSS?.supports("height", "100dvh")) {
         shell.style.setProperty("--workspace-visible-height", `${height}px`);
         shell.style.setProperty("--workspace-visible-top", `${top}px`);
       } else {
