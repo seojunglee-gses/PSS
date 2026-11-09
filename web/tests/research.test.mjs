@@ -158,7 +158,7 @@ test('synthesis prompt uses abstract scope, project context and only usable pape
     assert.match(input.systemText, /sample sizes/);
     assert.match(input.systemText, /untrusted/);
     assert.match(input.systemText, /Return limitations=""/);
-    assert.match(input.systemText, /alongside the affected claim/);
+    assert.match(input.systemText, /at the end of the relevant answer/);
     assert.match(input.systemText, /one natural, concrete next question OR a short offer of help/);
     assert.match(input.systemText, /If the policy is NONE, omit optional/);
     const payload = JSON.parse(input.userText);
@@ -266,7 +266,7 @@ test('manual selection overrides all intents; clearing selection returns to auto
   }
   assert.deepEqual(resolveSources(question, []), ['cases','research']);
   assert.deepEqual(resolveSources('우리 사업에서는 무엇을 해야 할까요?'), ['project']);
-  assert.deepEqual(resolveSources('젠트리피케이션 대응 사례의 효과는?'), ['cases']);
+  assert.deepEqual(resolveSources('젠트리피케이션 대응 사례의 효과는?'), ['cases','research']);
 });
 test('Korean academic queries omit conversational phrasing and keep planning topics/places', async (t) => {
   mockLLM(t, async () => { assert.fail('known topics need no conversion call'); });

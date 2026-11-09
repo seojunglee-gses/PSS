@@ -1,3 +1,6 @@
+import { answerFromEvidence } from '../../../lib/research/answer';
+import { wantsImplications } from '../../../lib/research/routing';
+import { spatialPromptContext } from '../../../lib/spatial/context';
 import {gisReflection,policyHistory} from "../../../lib/facilitation";
 import {conversationHistory} from "../../../lib/chat-history";
 import type { NextApiRequest, NextApiResponse } from 'next';
@@ -58,8 +61,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if(history.at(-1)?.role==="user"&&history.at(-1)?.content===req.body.question)history.pop();
         const result = await executeGeoQuery({...req.body,history:policyHistory(context.stageHistory,history)}, context.user, context.projectId, layers, warnings, abort.signal,{boundary,settings,priority,boundaryLayerId,placeSearch});
         abort.signal.throwIfAborted();
+        let interpreted = false;
+        if (!result.clarify && (result.computedResult || result.places.length) && (spatialToolRequest(req.body.question, history)?.exploratory || wantsImplications(req.body.question))) {
+            try {
+                const answer = await answerFromEvidence({ question: req.body.question, selectedSources: ['project','spatial'], cases: [], projectContext: context.currentMaterial,
+                    previousSummaries: context.previousSummaries, history, ...(result.computedResult ? {spatialContext: result.computedResult} : {}),
+                    registeredSpatialContext: spatialPromptContext(layers, req.body.context, [], !!boundary, { nearbyPlaces: !!boundary && !!process.env.KAKAO_REST_API_KEY, priority: !!priority }),
+                    analysisSession: [{ id: 'current-spatial-result', projectId: context.projectId, type: 'spatial', referenceId: 'current-result', title: req.body.question,
+                        ...(result.computedResult ? {result:result.computedResult} : {}), location: { question: req.body.question, reply: result.reply, places: result.places.slice(0,12).map(({id,name,coordinate,layerId,featureId}) => ({id,name,coordinate,...(layerId&&featureId?{layerId,featureId}:{})})) } }],
+                    provider: req.body.provider?.toLowerCase() === 'gemini' ? 'gemini' : req.body.provider?.toLowerCase() === 'deepseek' ? 'deepseek' : 'openai'
+                }, { question: req.body.question, selectedSources: ['project','spatial'], projectContext: context.currentMaterial, cases: [], papers: [], warnings: [] });
+                if (answer.summary.trim()) { result.reply = answer.summary; interpreted = true; }
+            } catch { /* Keep the real computed/search response if interpretation is unavailable. */ }
+        }
         const reflection=gisReflection(req.body.question,policyHistory(context.stageHistory,conversationHistory(req.body.history)),!!(result.route||result.computedResult)&&!result.clarify,locale);
-        if(reflection&&!spatialToolRequest(req.body.question,history)?.exploratory){result.facilitationQuestion=reflection;result.reply+='\n\n'+reflection;}
+        if(!interpreted&&reflection&&!spatialToolRequest(req.body.question,history)?.exploratory){result.facilitationQuestion=reflection;result.reply+='\n\n'+reflection;}
         res.status(200).json({ result: signGeoResult(result, context.user, context.projectId) });
     }
     catch (error) {

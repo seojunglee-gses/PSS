@@ -56,7 +56,7 @@ test('vague Data Analysis concerns can be clarified without inventing empty case
  const llm=load('lib/llm/index.js');let sent;
  mock(t,llm,'callLLM',async input=>{sent=input;return JSON.stringify({summary:'불편을 느끼고 계시는군요.',caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'어떤 상황에서 가장 불편하신가요?',projectImplications:[],limitations:''})});
  const request={question:'우리 동네가 불편해요.',selectedSources:['project'],cases:[],projectContext:'',provider:'openai'},evidence={question:request.question,selectedSources:['project'],cases:[],papers:[],warnings:[]};
- const answer=await load('lib/research/answer.js').answerFromEvidence(request,evidence);assert.match(sent.systemText,/CLARIFY/);assert.equal(answer.researchFindings.length,0);assert.equal(answer.caseFindings.length,0);assert.match(answer.integratedInterpretation,/어떤 상황/);
+ const answer=await load('lib/research/answer.js').answerFromEvidence(request,evidence);assert.match(sent.systemText,/CLARIFY/);assert.equal(answer.researchFindings.length,0);assert.equal(answer.caseFindings.length,0);assert.match(answer.summary,/어떤 상황/);assert.equal(answer.format,"direct");
 });
 test('workspace summary uses role-attributed dialogue, one existing model call and a reviewable draft schema',async t=>{
  const context=load('lib/project-context-server.js'),admin=load('lib/firebaseAdmin.js');let calls=0,sent;

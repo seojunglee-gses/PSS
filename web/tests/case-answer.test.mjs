@@ -32,7 +32,7 @@ test('case facts use direct presentation, cite exact stored passages, and cannot
  const input=request('Guildford Lane에 차도 다니니?'),evidence={question:input.question,selectedSources:['cases'],cases:[{...passage,sourceId:'C:1'}],papers:[],warnings:[]};
  mock(t,llm,'callLLM',async args=>{assert.match(args.systemText,/complete DIRECT answer/);assert.match(args.systemText,/General research cannot establish/);return response('차량 통행: 배송 차량은 제한적으로 통행합니다. [C:1]')});
  const answer=await answerFromEvidence(input,evidence);assert.equal(answer.format,'direct');assert.deepEqual(answer.projectImplications,[]);assert.equal(answer.sources[0].title,'Guildford Lane · Evaluation report · p.12');
- const apply=await answerFromEvidence({...input,question:'우리 사업에 어떻게 적용할 수 있어?'},evidence);assert.equal(apply.projectImplications.length,1);
+ const apply=await answerFromEvidence({...input,question:'우리 사업에 어떻게 적용할 수 있어?'},evidence);assert.ok(apply.summary.includes("사업에 적용할 제안"));assert.deepEqual(apply.projectImplications,[]);
  assert.throws(()=>parseAnswer(response('거짓 자료 [C:999]'),evidence),/unsupported source/);
  for(const q of ['차도 다니니?','어디에 있어?','운영 중이야?'])assert.equal(wantsImplications(q),false);for(const q of ['가좌에 참고할 점은?','이 사례에서 배울 점은?','우리 사업에 적용해줘'])assert.equal(wantsImplications(q),true);
 });

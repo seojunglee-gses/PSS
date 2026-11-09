@@ -136,3 +136,14 @@ export async function searchOpenAlex(question: string, provider?: "openai" | "ge
   pendingQuestions.set(key, operation);
   return operation;
 }
+
+// Re-open an actually viewed paper by stable ID; do not replace it with a new ranked search.
+export async function readOpenAlexPaper(id: string): Promise<ResearchPaper[]> {
+  if (!/^(?:https:\/\/openalex\.org\/)?W\d+$/.test(id)) throw new Error("Invalid selected paper.");
+  const url = new URL(`https://api.openalex.org/works/${id.split('/').pop()}`);
+  if (process.env.OPENALEX_API_KEY) url.searchParams.set("api_key", process.env.OPENALEX_API_KEY);
+  if (process.env.OPENALEX_MAILTO) url.searchParams.set("mailto", process.env.OPENALEX_MAILTO);
+  const response = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error("The selected paper could not be retrieved. Its identity has been preserved; no different paper was substituted.");
+  return selectPapers([await response.json()]);
+}
