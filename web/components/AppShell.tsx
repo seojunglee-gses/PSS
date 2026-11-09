@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
 import type { CSSProperties, ReactNode } from "react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useAuth } from "../lib/auth";
 import { normalizeRoleId, roleLabelKeys, useI18n, type Locale } from "../lib/i18n";
 import { useProject } from "../lib/projects";
 import { saveSidebarPinned, sidebarPinnedSnapshot, subscribeSidebarPreference } from "../lib/sidebar-preference";
+
+export const WorkspaceNavigationContext = createContext({ open: false, toggle: () => {} });
 
 const navigation = [
   {
@@ -123,7 +125,7 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
   useEffect(() => {
     if (!mobileNavOpen) return;
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { setMobileNavOpen(false); mobileToggleRef.current?.focus(); }
+      if (event.key === "Escape") { setMobileNavOpen(false); (document.querySelector<HTMLButtonElement>(".workspace-shell[data-tablet='true'] .workspace-tablet-menu") ?? mobileToggleRef.current)?.focus(); }
     };
     document.addEventListener("keydown", escape);
     return () => document.removeEventListener("keydown", escape);
@@ -231,6 +233,7 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
   );
 
   return (
+    <WorkspaceNavigationContext.Provider value={{ open: mobileNavOpen, toggle: () => setMobileNavOpen((open) => !open) }}>
     <div className={`app-shell min-h-screen bg-[var(--background)] text-[var(--foreground)] ${isWorkspace ? "workspace-shell" : ""}`} style={{ "--sidebar-width": sidebarPinned ? "288px" : "76px" } as CSSProperties}>
       <div className="shell-frame flex min-h-screen flex-col lg:flex-row">
         <aside ref={sidebarRef} className="desktop-sidebar hidden lg:block" data-pinned={sidebarPinned} data-expanded={sidebarExpanded}
@@ -340,5 +343,6 @@ export default function AppShell({ children, workspaceLayout = false }: AppShell
         </main>
       </div>
     </div>
+    </WorkspaceNavigationContext.Provider>
   );
 }
