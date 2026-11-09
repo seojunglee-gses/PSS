@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { spatialGoals } from "../../lib/spatial/goals";
 import type { GeoResult } from "../../lib/spatial/geo-query";
 import { analysisActivities, analysisActivityText, analysisSessionQuestion, parseAnalysisActivity, type AnalysisActivity } from "../../lib/analysis-session";
@@ -280,6 +281,26 @@ function AuthorizedWorkspace() {
   const [activeTab, setActiveTab] = useState("patterns");
   const [inputValue, setInputValue] = useState("");
   const [expandedStarterScope, setExpandedStarterScope] = useState<string | null>(null);
+  const [portalReady, setPortalReady] = useState(false);
+  const [starterOverlay, setStarterOverlay] = useState<React.CSSProperties | null>(null);
+  const starterButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => { setPortalReady(true); }, []);
+  useEffect(() => {
+    if (!expandedStarterScope) { setStarterOverlay(null); return; }
+    const button = starterButton.current;
+    const shell = button?.closest<HTMLElement>(".workspace-shell");
+    if (!button || shell?.dataset.tablet !== "true") { setStarterOverlay(null); return; }
+    const position = () => {
+      const anchor = button.getBoundingClientRect(), panel = button.closest(".workspace-chat")?.getBoundingClientRect();
+      if (!panel) return;
+      setStarterOverlay({ left: panel.left + 16, top: anchor.bottom, width: Math.max(0, anchor.left - panel.left - 28), transform: "translateY(-100%)" });
+    };
+    position();
+    const observer = new ResizeObserver(position); observer.observe(button); if (button.closest(".workspace-chat")) observer.observe(button.closest(".workspace-chat")!);
+    window.addEventListener("resize", position); window.addEventListener("scroll", position, true);
+    window.visualViewport?.addEventListener("resize", position); window.visualViewport?.addEventListener("scroll", position);
+    return () => { observer.disconnect(); window.removeEventListener("resize", position); window.removeEventListener("scroll", position, true); window.visualViewport?.removeEventListener("resize", position); window.visualViewport?.removeEventListener("scroll", position); };
+  }, [expandedStarterScope]);
   const composerInputRef = useRef<HTMLInputElement>(null);
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
   const [inspectedSpatial, setInspectedSpatial] = useState<SpatialResult | null>(null);
@@ -515,7 +536,17 @@ function AuthorizedWorkspace() {
   useEffect(() => {
     if (completionOpen) completionDialog.current?.showModal();
     else completionDialog.current?.close();
-  }, [completionOpen]);
+    if (!completionOpen) return;
+    const position = () => {
+      const dialog = completionDialog.current, viewport = window.visualViewport;
+      if (!dialog) return;
+      dialog.style.left = `${(viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth) / 2}px`;
+      dialog.style.top = `${(viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight) / 2}px`;
+      dialog.style.maxHeight = `${Math.max(100, (viewport?.height ?? window.innerHeight) - 32)}px`;
+    };
+    position(); window.addEventListener("resize", position); window.visualViewport?.addEventListener("resize", position); window.visualViewport?.addEventListener("scroll", position);
+    return () => { window.removeEventListener("resize", position); window.visualViewport?.removeEventListener("resize", position); window.visualViewport?.removeEventListener("scroll", position); };
+  }, [completionOpen, portalReady]);
   useEffect(() => () => completionResolver.current?.(false), []);
   const [summaryOpen,setSummaryOpen]=useState(false);
   const [summaryDraft,setSummaryDraft]=useState("");
@@ -1875,12 +1906,14 @@ const handleSend = async (suggestedQuestion?: string) => {
       </div>
       <div className="workspace-chat-footer">
       {hasLoadedChatLogs && guide && <div className="workspace-starter-help mt-2" data-has-dialogue={hasDialogue}>
-        <button type="button" className="workspace-help-button inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-200 text-slate-600" aria-label={t("workspace.starterPrompts")} title={t("workspace.starterPrompts")} aria-expanded={expandedStarterScope === chatScope} aria-controls="workspace-starter-prompts" disabled={isSending || isLoadingAlternatives || isStageLocked} onClick={() => setExpandedStarterScope(current => current === chatScope ? null : chatScope)}>
+        <button ref={starterButton} type="button" className="workspace-help-button inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-200 text-slate-600" aria-label={t("workspace.starterPrompts")} title={t("workspace.starterPrompts")} aria-expanded={expandedStarterScope === chatScope} aria-controls="workspace-starter-prompts" disabled={isSending || isLoadingAlternatives || isStageLocked} onClick={() => setExpandedStarterScope(current => current === chatScope ? null : chatScope)}>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.7-1.5 1.6-1.5 3.5h-4c0-1.9-.6-2.8-1.5-3.5Z" /></svg>
         </button>
-        {expandedStarterScope === chatScope && <div id="workspace-starter-prompts" className="workspace-help-popover max-h-36 overflow-y-auto overscroll-contain">
+        {expandedStarterScope === chatScope && (starterOverlay && portalReady ? createPortal(
+          <div id="workspace-starter-prompts" className="workspace-tablet-help-overlay" style={starterOverlay}><StageChatEmptyState guide={guide} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} /></div>, document.body
+        ) : <div id="workspace-starter-prompts" className="workspace-help-popover max-h-36 overflow-y-auto overscroll-contain">
           <StageChatEmptyState guide={guide} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} />
-        </div>}
+        </div>)}
       </div>}
 
       <div className="workspace-composer mt-4 bg-white">
@@ -2623,8 +2656,9 @@ const handleSend = async (suggestedQuestion?: string) => {
           <button type="button" className="min-h-11 rounded-full bg-rose-600 px-4 text-white" onClick={() => { if (pendingDeleteCaseId) deleteCase(pendingDeleteCaseId); }}>{t("common.delete")}</button>
         </div>
       </dialog>
-      <dialog ref={completionDialog} aria-labelledby="completion-title" aria-describedby="completion-description"
-        className="m-auto w-[calc(100%_-_32px)] max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl backdrop:bg-slate-900/40"
+      {portalReady && createPortal(
+<dialog ref={completionDialog} aria-labelledby="completion-title" aria-describedby="completion-description"
+        className="workspace-completion-dialog w-[calc(100%_-_32px)] max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl backdrop:bg-slate-900/40"
         onCancel={(event) => { event.preventDefault(); closeCompletion(false); }}>
         <h3 id="completion-title" className="text-lg font-semibold">{t("workspace.completeTitle")}</h3>
         <p id="completion-description" className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600">{t("workspace.completeBody")}</p>
@@ -2632,7 +2666,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           <button type="button" className="min-h-11 rounded-full border px-5 py-2 text-sm" onClick={() => closeCompletion(false)}>{t("workspace.cancel")}</button>
           <button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-5 py-2 text-sm font-semibold text-white" onClick={() => closeCompletion(true)}>{t("workspace.finishStage")}</button>
         </div>
-      </dialog>
+      </dialog>, document.body)}
       <dialog ref={summaryDialog} aria-labelledby="summary-review-title" className="m-auto w-[calc(100%_-_32px)] max-w-xl rounded-3xl border border-slate-200 bg-white p-5 shadow-xl backdrop:bg-slate-900/40" onCancel={event=>{event.preventDefault();closeSummaryReview(false);}}>
         <h3 id="summary-review-title" className="text-lg font-semibold">{t("facilitation.reviewTitle")}</h3>
         <p className="mt-2 text-sm text-slate-600">{t("facilitation.reviewHint")}</p>

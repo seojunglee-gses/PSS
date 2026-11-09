@@ -22,3 +22,10 @@ export const canManageProject = (email?: string | null, project?: ProjectMeta | 
   const role = getRoleForProject(email, project);
   return role === "system_admin" || role === "project_admin";
 };
+
+// This research/test account is excluded even on projects where it is not the owner.
+const NON_PARTICIPANT_EMAILS = new Set(["test@snu.ac.kr"]);
+export const isResearchParticipant = (email?: string | null, project?: ProjectMeta | null) =>
+  !NON_PARTICIPANT_EMAILS.has((email ?? "").trim().toLowerCase()) && !canManageProject(email, project);
+
+export const PARTICIPANT_FILTER_VERSION = 1;

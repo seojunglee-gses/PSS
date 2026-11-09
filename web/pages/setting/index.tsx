@@ -1,5 +1,5 @@
 import { uploadProjectFile } from "../../lib/storage-upload";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import AppShell from "../../components/AppShell";
 import { useAuth } from "../../lib/auth";
@@ -13,6 +13,7 @@ import {
 import { useI18n } from "../../lib/i18n";
 import { useProject } from "../../lib/projects";
 import { canManageProject } from "../../lib/rbac";
+import { projectRequest } from "../../lib/membership/client";
 import SpatialDatasetManager from "../../components/spatial/SpatialDatasetManager";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
@@ -52,6 +53,28 @@ export default function Setting() {
   >(null);
   const [siteLoadMessage, setSiteLoadMessage] = useState<string | null>(null);
   const [participantCount, setParticipantCount] = useState(0);
+  const [participants, setParticipants] = useState<{ userId: string; participantId?: string; summary: { completedStages?: string[] } }[]>([]);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
+  const participantPopover = useRef<HTMLDivElement>(null);
+  const [resetParticipant, setResetParticipant] = useState("");
+  const [resetStage, setResetStage] = useState("data");
+  const [resettingChat, setResettingChat] = useState(false);
+  const [chatResetMessage, setChatResetMessage] = useState("");
+  useEffect(() => {
+    if (!participantsOpen) return;
+    const outside = (event: PointerEvent) => { if (!participantPopover.current?.contains(event.target as Node)) setParticipantsOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setParticipantsOpen(false); };
+    document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, [participantsOpen]);
+  useEffect(() => { setParticipants([]); setParticipantCount(0); setParticipantsOpen(false); setResetParticipant(""); setChatResetMessage(""); }, [projectId, user?.uid]);
+  const resetParticipantChat = async () => {
+    if (!user || !resetParticipant || resettingChat || !window.confirm(t("setting.chatResetConfirm"))) return;
+    setResettingChat(true); setChatResetMessage("");
+    try { await projectRequest(user, "/api/projects/participant-summaries", { action: "softResetChat", projectId, userId: resetParticipant, stageId: resetStage }); setChatResetMessage("setting.chatResetSaved"); }
+    catch { setChatResetMessage("setting.chatResetFailed"); }
+    finally { setResettingChat(false); }
+  };
   const [stageCompletionCounts, setStageCompletionCounts] = useState<
     Record<string, number>
   >({});
@@ -136,10 +159,11 @@ export default function Setting() {
       const totalParticipants = summaries.filter(
         (entry) => (entry.summary.completedStages ?? []).length > 0
       ).length;
+      setParticipants(summaries);
       setParticipantCount(totalParticipants);
       setStageCompletionCounts(counts);
     };
-    loadWorkspaceProgress();
+    loadWorkspaceProgress().catch(() => { if (isMounted) { setParticipants([]); setParticipantCount(0); setStageCompletionCounts({}); } });
     return () => {
       isMounted = false;
     };
@@ -460,7 +484,6 @@ export default function Setting() {
           </div>
         </div>
       </section>
-      {activeProject?.projectId === projectId && <SpatialDatasetManager key={`${projectId}-${user?.uid}`} projectId={projectId} />}
       {isAdmin && (
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold">{t("setting.admin")}</h3>
@@ -468,6 +491,7 @@ export default function Setting() {
             {t("setting.admin.desc")}
           </p>
           <div className="mt-6 grid gap-6">
+            {activeProject?.projectId === projectId && <SpatialDatasetManager key={`${projectId}-${user?.uid}`} projectId={projectId} />}
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -476,9 +500,19 @@ export default function Setting() {
                   <p className="mt-2 text-xs text-slate-500">
                     {t("setting.progressHint")}</p>
                 </div>
-                <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-                  {t("setting.participants")}{participantCount}
+                <div ref={participantPopover} className="relative" onPointerEnter={event => { if (event.pointerType === "mouse") setParticipantsOpen(true); }} onPointerLeave={event => { if (event.pointerType === "mouse") setParticipantsOpen(false); }}>
+                  <button type="button" className="min-h-11 rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600" aria-expanded={participantsOpen} aria-controls="participant-id-list" onClick={event => { if (event.detail === 0 || !window.matchMedia("(hover: hover)").matches) setParticipantsOpen(open => !open); }} onKeyDown={event => { if (event.key === "ArrowDown") setParticipantsOpen(true); }}>{t("setting.participants")}{participantCount}</button>
+                  {participantsOpen && <div id="participant-id-list" role="region" aria-label={t("setting.participantIds")} className="absolute left-0 right-auto top-full z-30 max-h-60 sm:left-auto sm:right-0 w-72 max-w-[calc(100vw-48px)] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-lg" tabIndex={0}>
+                    {participants.filter(entry => entry.summary.completedStages?.length).map(entry => <p key={entry.userId} className="break-all py-1">{entry.participantId ?? entry.userId}</p>)}
+                    {!participantCount && <p>{t("setting.noParticipants")}</p>}
+                  </div>}
                 </div>
+              </div>
+              <div className="mt-4 flex flex-wrap items-end gap-2 rounded-xl bg-slate-50 p-3">
+                <label className="grid min-w-0 max-w-full gap-1 text-xs">{t("setting.chatResetParticipant")}<select aria-label={t("setting.chatResetParticipant")} value={resetParticipant} onChange={event => setResetParticipant(event.target.value)} className="min-h-11 max-w-full rounded-lg border bg-white p-2"><option value="">{t("setting.chooseParticipant")}</option>{participants.map(entry => <option key={entry.userId} value={entry.userId}>{entry.participantId ?? entry.userId}</option>)}</select></label>
+                <label className="grid min-w-0 max-w-full gap-1 text-xs">{t("setting.chatResetStage")}<select aria-label={t("setting.chatResetStage")} value={resetStage} onChange={event => setResetStage(event.target.value)} className="min-h-11 rounded-lg border bg-white p-2">{["problem", "data", "alternatives", "evaluation", "report"].map(stage => <option key={stage} value={stage}>{t(`step.${stage}`)}</option>)}</select></label>
+                <button type="button" disabled={!resetParticipant || resettingChat} onClick={() => void resetParticipantChat()} className="min-h-11 rounded-full border border-slate-300 bg-white px-3 text-xs disabled:opacity-50">{t("setting.chatSoftReset")}</button>
+                {chatResetMessage && <p role="status" className="w-full text-xs">{t(chatResetMessage)}</p>}
               </div>
               <div className="mt-4 grid gap-3 text-xs">
                 {[
