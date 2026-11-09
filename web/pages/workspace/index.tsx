@@ -1696,6 +1696,21 @@ const handleSend = async (suggestedQuestion?: string) => {
   }
 
 
+  const isCurrentStageCompleted = Boolean(lockedStages[activeStep.id]) || completedStages.includes(activeStep.id);
+  const completedLabel = locale === "ko" ? "단계 완료됨" : t("workspace.stageCompleted");
+  const compactCompletionLabel = locale === "ko" ? isCurrentStageCompleted ? "완료됨" : "완료"
+    : locale === "zh" ? isCurrentStageCompleted ? "已完成" : "完成"
+    : isCurrentStageCompleted ? "Done" : "Finish";
+  const renderStageCompletion = (placement: "header" | "chat" | "report") => (
+    <button type="button" data-completed={isCurrentStageCompleted} aria-busy={isSummarizing}
+      aria-label={isCurrentStageCompleted ? completedLabel : t("workspace.finishStage")}
+      className={`workspace-stage-complete ${placement === "header" ? "workspace-header-complete" : `${placement === "chat" ? "workspace-chat-finish mt-4 lg:mt-4" : "workspace-report-complete mt-6"} rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50`}`}
+      disabled={isSummarizing || isCurrentStageCompleted} onClick={() => { void handleCompleteStep(); }}>
+      {isSummarizing ? t("workspace.updating") : placement === "header" ? compactCompletionLabel
+        : isCurrentStageCompleted ? completedLabel : t("workspace.finishStage")}
+    </button>
+  );
+
   const renderChatPanel = () => {
     const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
     const defaultGuide = stageChatGuide(activeStep.id, locale, normalizedActiveRole);
@@ -1781,7 +1796,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           )}
         </div>
       )}
-      <div ref={messageListRef} className="workspace-chat-messages mt-4 space-y-4 text-sm text-slate-600"
+      <div ref={messageListRef} className="workspace-chat-messages mt-4 text-sm text-slate-600"
         onScroll={(event) => {
           const list = event.currentTarget;
           if (!list.clientHeight || list.clientHeight !== messageHeightRef.current) return;
@@ -1856,21 +1871,11 @@ const handleSend = async (suggestedQuestion?: string) => {
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.7-1.5 1.6-1.5 3.5h-4c0-1.9-.6-2.8-1.5-3.5Z" /></svg>
         </button>
         {expandedStarterScope === chatScope && <div id="workspace-starter-prompts" className="workspace-help-popover max-h-36 overflow-y-auto overscroll-contain">
-          <StageChatEmptyState guide={guide} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} />
+          <StageChatEmptyState guide={guide} showFullPrompts disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} />
         </div>}
       </div>}
 
       <div className="workspace-composer mt-4 bg-white">
-        {activeStep.id === "data" && <div className="mb-2 flex flex-wrap items-center gap-2">
-          {selectedSources.map((source) => <button key={source} type="button" disabled={isSending || isStageLocked}
-            onClick={() => setSelectedSources((prev) => prev.filter((item) => item !== source))}
-            aria-label={`${analysisLabels.remove}: ${analysisLabels[source]}`}
-            className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-700 disabled:opacity-50">
-            {analysisLabels[source]} ×
-          </button>)}
-          {!selectedSources.length && <p className="text-xs text-slate-500">{analysisLabels.defaults}</p>}
-        </div>}
-
         <div className="flex items-center gap-2">
         {activeStep.id === "data" && <SourceSelector selected={selectedSources} onChange={setSelectedSources} disabled={isSending || isStageLocked} />}
         <input ref={composerInputRef}
@@ -1921,14 +1926,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         {localize(finishNotice.message, "common.requestFailed")}
       </div>
       )}
-      <button
-        className="workspace-chat-finish mt-4 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50 lg:mt-4"
-        type="button"
-        onClick={() => { void handleCompleteStep(); }}
-        disabled={isSummarizing || isStageLocked}
-      >
-        {isSummarizing ? t("workspace.updating") : t("workspace.finishStage")}
-      </button>
+      {renderStageCompletion("chat")}
       </div>
     </div>
   );
@@ -2009,10 +2007,10 @@ const handleSend = async (suggestedQuestion?: string) => {
       <div className="workspace-desktop-navigation">{stageNavigation}</div>
 
       {activeStep.id === "problem" && (
-        <WorkspacePanels navigation={stageNavigation} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} stageTitle={t(activeStep.titleKey)} completionControl={renderStageCompletion("header")} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-slate-900">{t("step.problem")}</h3>
-            <p className="mt-1 text-sm text-slate-500">{t("workspace.problemIntro")}</p>
+            <h3 className="workspace-stage-heading text-lg font-semibold text-slate-900">{t("step.problem")}</h3>
+            <p className="workspace-stage-heading mt-1 text-sm text-slate-500">{t("workspace.problemIntro")}</p>
             <div className="mt-4 flex items-start justify-end gap-3">
               {canEditContent && (
                 <div className="flex items-center gap-2">
@@ -2057,9 +2055,9 @@ const handleSend = async (suggestedQuestion?: string) => {
       )}
 
       {activeStep.id === "data" && (
-        <WorkspacePanels navigation={stageNavigation} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} stageTitle={t(activeStep.titleKey)} completionControl={renderStageCompletion("header")} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
-            <div className="border-b border-slate-200 px-5 py-4">
+            <div className="workspace-stage-heading border-b border-slate-200 px-5 py-4">
               <h3 className="text-lg font-semibold text-slate-900">{t("boundary.dataTitle")}</h3>
               <p className="mt-1 text-sm text-slate-500">{t("boundary.dataIntro")}</p>
 
@@ -2181,10 +2179,10 @@ const handleSend = async (suggestedQuestion?: string) => {
       )}
 
       {activeStep.id === "alternatives" && (
-        <WorkspacePanels navigation={stageNavigation} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} stageTitle={t(activeStep.titleKey)} completionControl={renderStageCompletion("header")} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">{t("workspace.imageGallery")}</h3>
-            <p className="mt-2 text-sm text-slate-500">
+            <h3 className="workspace-stage-heading text-lg font-semibold">{t("workspace.imageGallery")}</h3>
+            <p className="workspace-stage-heading mt-2 text-sm text-slate-500">
               {t("workspace.imageGalleryDesc")}
             </p>
             <div className="mt-5 max-h-[70vh] overflow-y-auto pr-2">
@@ -2266,10 +2264,10 @@ const handleSend = async (suggestedQuestion?: string) => {
       )}
 
       {activeStep.id === "evaluation" && (
-        <WorkspacePanels navigation={stageNavigation} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} stageTitle={t(activeStep.titleKey)} completionControl={renderStageCompletion("header")} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">{t("step.evaluation")}</h3>
-            <p className="mt-2 text-sm text-slate-500">
+            <h3 className="workspace-stage-heading text-lg font-semibold">{t("step.evaluation")}</h3>
+            <p className="workspace-stage-heading mt-2 text-sm text-slate-500">
               {activeProject?.workspaceContent.evaluation.text || t("workspace.evaluationIntro")}
             </p>
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -2351,10 +2349,10 @@ const handleSend = async (suggestedQuestion?: string) => {
       )}
 
       {activeStep.id === "report" && (
-        <WorkspacePanels navigation={stageNavigation} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} stageTitle={t(activeStep.titleKey)} completionControl={renderStageCompletion("header")} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">{t("workspace.reportTitle")}</h3>
-            <p className="mt-2 text-sm text-slate-500">
+            <h3 className="workspace-stage-heading text-lg font-semibold">{t("workspace.reportTitle")}</h3>
+            <p className="workspace-stage-heading mt-2 text-sm text-slate-500">
               {activeProject?.workspaceContent.report.text || t("workspace.reportIntro")}
             </p>
             <div className="mt-6 flex flex-wrap gap-2">
@@ -2480,13 +2478,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                 )}
               </div>
             )}
-            <button
-              className="mt-6 rounded-full border border-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary)] hover:bg-blue-50"
-              type="button"
-              onClick={() => { void handleCompleteStep(); }}
-            >
-              {t("workspace.finishStage")}
-            </button>
+            {renderStageCompletion("report")}
           </div>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("workspace.evidenceTitle")}</h3>

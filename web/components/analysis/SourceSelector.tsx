@@ -27,12 +27,12 @@ export default function SourceSelector({ selected, onChange, disabled }: {
     {open && <fieldset id="analysis-source-options" className="absolute bottom-12 left-0 z-40 w-64 rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
       <legend className="sr-only">{labels.choose}</legend>
       <p className="mb-2 text-sm font-semibold text-slate-800">{labels.choose}</p>
-      <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-blue-50">
-        <input type="checkbox" checked={!selected.length} disabled={disabled} onChange={() => onChange([])} />
+      <label className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-2 py-2 text-sm ${!selected.length ? "border-blue-200 bg-blue-50 font-semibold text-[var(--primary)]" : "border-transparent hover:bg-blue-50"}`}>
+        <input type="checkbox" className="h-4 w-4 shrink-0 accent-[var(--primary)]" checked={!selected.length} disabled={disabled} onChange={() => onChange([])} />
         {labels.auto}
       </label>
-      {SOURCE_OPTIONS.map((source) => <label key={source} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-blue-50">
-        <input type="checkbox" checked={selected.includes(source)} disabled={disabled}
+      {SOURCE_OPTIONS.map((source) => <label key={source} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-2 py-2 text-sm ${selected.includes(source) ? "border-blue-200 bg-blue-50 font-semibold text-[var(--primary)]" : "border-transparent hover:bg-blue-50"}`}>
+        <input type="checkbox" className="h-4 w-4 shrink-0 accent-[var(--primary)]" checked={selected.includes(source)} disabled={disabled}
           onChange={() => onChange(selected.includes(source) ? selected.filter((s) => s !== source) : [...selected, source])} />
         {labels[source]}
       </label>)}
