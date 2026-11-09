@@ -31,6 +31,8 @@ const getAdminApp = () => {
   });
 };
 
+export const adminAuth = () => getAuth(getAdminApp());
+
 export const adminDb = () => getFirestore(getAdminApp());
 
 export const adminBucket = () => {

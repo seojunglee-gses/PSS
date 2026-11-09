@@ -71,7 +71,7 @@ const contentKey = (value: unknown): string | undefined => {
 
 // Each client submits a snapshot. Retain records from other clients rather than
 // replacing their newer messages with an older snapshot of the conversation.
-export function mergeStepChatLogs<T>(stored: T[], incoming: T[]): T[] {
+export function mergeStepChatLogs<T>(stored: T[], incoming: T[], resetAt?: string): T[] {
   const merged = [...stored];
   const matched = new Set<number>();
   for (const log of incoming) {
@@ -91,5 +91,5 @@ export function mergeStepChatLogs<T>(stored: T[], incoming: T[]): T[] {
       matched.add(index);
     }
   }
-  return merged.sort((a, b) => timestamp(a).localeCompare(timestamp(b)));
+  return merged.filter(log => !resetAt || timestamp(log) > resetAt).sort((a, b) => timestamp(a).localeCompare(timestamp(b)));
 }

@@ -100,8 +100,8 @@ export default function SpatialDatasetManager({ projectId }: { projectId: string
   }
   const active = datasets.find(d => d.datasetId === settings.activeBoundaryDatasetId);
   if (!loading && !canManage) return null;
-  return <section className="rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm sm:p-6" aria-label={t("dataset.title")}>
-    <h3 className="text-lg font-semibold">{t("dataset.title")}</h3>
+  return <section className="rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm sm:p-6" aria-label={t("setting.spatialSettings")}>
+    <h3 className="text-lg font-semibold">{t("setting.spatialSettings")}</h3>
     <p className="mt-2 text-sm text-slate-500">{t("upload.intro")}</p>
     {loading && <p className="mt-3 text-sm text-slate-500" role="status">{t("dataset.loading")}</p>}
     {canManage && <>
@@ -126,10 +126,10 @@ export default function SpatialDatasetManager({ projectId }: { projectId: string
       </form>}
     </>}
     {!loading && !datasets.some(d => d.datasetId !== settings.activeBoundaryDatasetId) && <p className="mt-4 text-sm text-slate-500">{t("dataset.empty")}</p>}
-    <div className="mt-4 space-y-3">{datasets.filter(d => d.datasetId !== settings.activeBoundaryDatasetId).map(dataset => <article key={dataset.datasetId} className="min-w-0 rounded-2xl border border-slate-200 p-4">
-      <h4 className="break-words font-semibold">{dataset.name}</h4><p className="mt-1 text-sm text-slate-500">{t(`dataset.${dataset.type}`)}</p><p className="mt-1 break-all text-sm text-slate-600">{dataset.fileName}</p>
+    <div className="spatial-dataset-grid mt-4 grid gap-3">{datasets.filter(d => d.datasetId !== settings.activeBoundaryDatasetId).map(dataset => <article key={dataset.datasetId} className="min-w-0 rounded-2xl border border-slate-200 p-3">
+      <h4 className="truncate text-sm font-semibold" title={dataset.name}>{dataset.name}</h4><p className="mt-1 text-sm text-slate-500">{t(`dataset.${dataset.type}`)}</p><p className="mt-1 truncate text-xs text-slate-600" title={dataset.fileName}>{dataset.fileName}</p>
       {!dataset.geometryType && <p className="mt-2 text-xs text-amber-700">{t("dataset.noCoordinates")}</p>}
-      {canManage && <div className="mt-3 flex flex-wrap gap-3"><button type="button" className="spatial-button" disabled={busy || analyzing} aria-label={t("dataset.replaceNamed", { name: dataset.name })} onClick={() => begin(dataset.type, dataset)}>{t("dataset.replace")}</button><button type="button" disabled={busy || analyzing} className="spatial-button text-red-600" aria-label={t("cases.deleteNamed", { name: dataset.name })} onClick={() => { if (window.confirm(t("dataset.deleteConfirm", { name: dataset.name }))) void mutate("delete", dataset); }}>{t("common.delete")}</button></div>}
+      {canManage && <div className="mt-2 flex flex-wrap gap-2"><button type="button" className="spatial-button" disabled={busy || analyzing} aria-label={t("dataset.replaceNamed", { name: dataset.name })} onClick={() => begin(dataset.type, dataset)}>{t("dataset.replace")}</button><button type="button" disabled={busy || analyzing} className="spatial-button text-red-600" aria-label={t("cases.deleteNamed", { name: dataset.name })} onClick={() => { if (window.confirm(t("dataset.deleteConfirm", { name: dataset.name }))) void mutate("delete", dataset); }}>{t("common.delete")}</button></div>}
     </article>)}</div>
     {message && <p role="status" className="mt-4 text-sm text-slate-700">{localize(message, "dataset.saveFailed")}</p>}
   </section>;

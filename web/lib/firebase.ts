@@ -1,3 +1,6 @@
+import { PARTICIPANT_FILTER_VERSION } from "./rbac";
+import { getAuth } from "firebase/auth";
+import { projectRequest } from "./membership/client";
 import { initializeApp, getApps } from "firebase/app";
 import {
   getFirestore,
@@ -50,7 +53,7 @@ export async function saveStepChatLogs<T = unknown>(
     const snapshot = await transaction.get(ref);
     const stored = snapshot.exists() ? snapshot.data().logs : [];
     transaction.set(ref, {
-      logs: mergeStepChatLogs(Array.isArray(stored) ? stored as T[] : [], logs),
+      logs: mergeStepChatLogs(Array.isArray(stored) ? stored as T[] : [], logs, snapshot.data()?.chatResetAt),
       updatedAt: serverTimestamp(),
     }, { merge: true });
   });
@@ -83,6 +86,7 @@ export type WorkspaceSummary = {
 };
 
 type ExecutiveSummary = {
+  participantFilterVersion?: number;
   keywords: string[];
   currentStage: string;
   stageId?: string;
@@ -205,9 +209,9 @@ export const loadEvaluationResults = async (projectId?: string): Promise<Evaluat
   if (!app) {
     return [];
   }
-  const db = getFirestore(app);
-  const snapshot = await getDocs(collection(db, scopedCollection("ppssEvaluations", projectId)));
-  return snapshot.docs.map((docSnap) => docSnap.data() as EvaluationPayload);
+  const user = getAuth(app).currentUser;
+  if (!user) return [];
+  return (await projectRequest(user, `/api/projects/participant-summaries?${new URLSearchParams({ projectId: resolveProjectId(projectId), kind: "evaluations" })}`)).evaluations as EvaluationPayload[];
 };
 
 export const saveChatLogsToStorage = async (
@@ -331,18 +335,16 @@ export const loadWorkspaceSummary = async (
 };
 
 export const loadAllWorkspaceSummaries = async (projectId?: string): Promise<
-  Array<{ userId: string; summary: WorkspaceSummary }>
+  Array<{ userId: string; participantId?: string; summary: WorkspaceSummary }>
 > => {
   const app = getFirebaseApp();
   if (!app) {
     return [];
   }
-  const db = getFirestore(app);
-  const snapshot = await getDocs(collection(db, scopedCollection("ppssWorkspaceSummaries", projectId)));
-  return snapshot.docs.map((docSnap) => ({
-    userId: docSnap.id,
-    summary: docSnap.data() as WorkspaceSummary,
-  }));
+  const user = getAuth(app).currentUser;
+  if (!user) return [];
+  return (await projectRequest(user, `/api/projects/participant-summaries?${new URLSearchParams({ projectId: resolveProjectId(projectId) })}`)).summaries;
+
 };
 
 export const loadLatestExecutiveSummariesByStage = async (projectId?: string): Promise<
@@ -360,7 +362,7 @@ export const loadLatestExecutiveSummariesByStage = async (projectId?: string): P
   const perStage: Record<string, ExecutiveSummary> = {};
   snapshot.docs.forEach((docSnap) => {
     const data = docSnap.data() as ExecutiveSummary;
-    if (!data.stageId) {
+    if (!data.stageId || data.participantFilterVersion !== PARTICIPANT_FILTER_VERSION) {
       return;
     }
     const existing = perStage[data.stageId];
@@ -612,20 +614,11 @@ export const loadSubmittedDesigns = async (projectId?: string): Promise<Submitte
     return [];
   }
   const db = getFirestore(app);
-  const submissionsSnap = await getDocs(
-    collection(db, scopedCollection("ppssUserDesignSubmissions", projectId))
-  );
-  if (submissionsSnap.empty) {
-    return [];
-  }
-  const latestByUser = submissionsSnap.docs.reduce<
-    Record<string, { imageId: string; createdAt: string }>
-  >((acc, docSnap) => {
-    const data = docSnap.data() as {
-      userId?: string;
-      imageId?: string;
-      createdAt?: string;
-    };
+  const user = getAuth(app).currentUser;
+  if (!user) return [];
+  const submissions = (await projectRequest(user, `/api/projects/participant-summaries?${new URLSearchParams({ projectId: resolveProjectId(projectId), kind: "submissions" })}`)).submissions as { userId?: string; imageId?: string; createdAt?: string }[];
+  if (!submissions.length) return [];
+  const latestByUser = submissions.reduce<Record<string, { imageId: string; createdAt: string }>>((acc, data) => {
     if (!data.userId || !data.imageId || !data.createdAt) {
       return acc;
     }
@@ -669,14 +662,10 @@ export const loadEvaluationImages = async (projectId?: string): Promise<Evaluati
   if (!app) {
     return [];
   }
-  const db = getFirestore(app);
-  const snapshot = await getDocs(collection(db, scopedCollection("ppssEvaluationImages", projectId)));
-  if (snapshot.empty) {
-    return [];
-  }
-  return snapshot.docs
-    .map((docSnap) => docSnap.data() as EvaluationImage)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const user = getAuth(app).currentUser;
+  if (!user) return [];
+  return ((await projectRequest(user, `/api/projects/participant-summaries?${new URLSearchParams({ projectId: resolveProjectId(projectId), kind: "images" })}`)).images as EvaluationImage[]).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
 };
 
 // Participant-reviewed summaries remain in the existing owner-only project namespace.

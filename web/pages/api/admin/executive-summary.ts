@@ -1,3 +1,5 @@
+import { PARTICIPANT_FILTER_VERSION } from "../../../lib/rbac";
+import { participantRecords, participantSummaries } from "../../../lib/participants-server";
 import {evidenceAttributionRules} from "../../../lib/facilitation";
 import { MODELS } from "../../../lib/llm/openai";
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -22,11 +24,6 @@ function extractOutputText(result: any): string | null {
   return null;
 }
 
-
-type WorkspaceSummary = {
-  stageSummaries: Record<string, string>;
-  overallSummary: string;
-};
 
 const scopedCollection = (base: string, projectId?: string) => `${base}_${projectId || "project-1"}`;
 
@@ -94,11 +91,7 @@ export default async function handler(
     }
 
     const db = adminDb();
-    const snapshot = await db.collection(scopedCollection("ppssWorkspaceSummaries", projectId)).get();
-    const summaries = snapshot.docs.map((docSnap) => ({
-      userId: docSnap.id,
-      summary: docSnap.data() as WorkspaceSummary,
-    }));
+    const summaries = await participantSummaries(db, projectId || "project-1");
 
     const stageCounts = stageOrder.reduce<Record<string, number>>(
       (acc, stage) => {
@@ -200,6 +193,7 @@ export default async function handler(
       : [];
 
     const payload = {
+      participantFilterVersion: PARTICIPANT_FILTER_VERSION,
       keywords,
       currentStage: stage.label,
       stageId: stage.id,
@@ -231,17 +225,9 @@ export default async function handler(
     await db.collection(scopedCollection("ppssExecutiveSummaries", projectId)).add(payload);
 
     if (stage.id === "alternatives") {
-      const submissionsSnap = await db
-        .collection(scopedCollection("ppssUserDesignSubmissions", projectId))
-        .get();
-      const latestByUser = submissionsSnap.docs.reduce<
-        Record<string, { imageId: string; createdAt: string }>
-      >((acc, docSnap) => {
-        const data = docSnap.data() as {
-          userId?: string;
-          imageId?: string;
-          createdAt?: string;
-        };
+      const submissions = await participantRecords(db, projectId || "project-1", "submissions");
+      const latestByUser = submissions.reduce<Record<string, { imageId: string; createdAt: string }>>((acc, record) => {
+        const data = record.data as { userId?: string; imageId?: string; createdAt?: string };
         if (!data.userId || !data.imageId || !data.createdAt) {
           return acc;
         }
