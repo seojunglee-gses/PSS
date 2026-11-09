@@ -49,6 +49,7 @@ export async function loadProjectContext(req: NextApiRequest, stage: string, inc
   const savedDialogue=includeStageHistory?(stage==='data'?privateData:await db.doc(`users_${projectId}/${user.uid}/steps/${stage}`).get()):undefined;
   const stageHistory=Array.isArray(savedDialogue?.data()?.logs)?savedDialogue!.data()!.logs:[];
 
-  return { projectId, user, project, currentMaterial, previousSummaries, stageHistory, spatialData,
+  const backgroundSourceIds=Array.isArray(background.data()?.sourceIds)?background.data()!.sourceIds.filter((id:unknown):id is string=>typeof id==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(id)).slice(0,10):undefined;
+  return { projectId, user, project, currentMaterial, hasBackground:background.exists, backgroundSourceIds, previousSummaries, stageHistory, spatialData,
     cases: (Array.isArray(content?.data?.cases) ? content.data.cases : []).filter((c) => c && typeof c.id === "string" && typeof c.text === "string").map((c) => ({ id: c.id, label: c.label, title: c.title, text: plain(c.text), ...(Array.isArray(c.aliases)?{aliases:c.aliases.filter((a):a is string=>typeof a==='string').slice(0,20)}:{}) })) };
 }

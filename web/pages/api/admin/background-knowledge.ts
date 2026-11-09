@@ -74,12 +74,13 @@ export default async function handler(
     const timestamp = new Date().toISOString();
 
     const textChunks: string[] = [];
+    const sourceIds:string[]=[];
     const imageInputs: { type: "input_image"; image_url: string }[] = [];
 
   for (const input of files) {
     const { buffer, ...file } = await readStorageUpload(input, scopedProjectId, decoded.uid, "ppss-background-knowledge/originals");
     const { storagePath } = file;
-    await db.collection(`ppssBackgroundKnowledgeArchives_${scopedProjectId}`).add({
+    const archive=await db.collection(`ppssBackgroundKnowledgeArchives_${scopedProjectId}`).add({
       fileName: file.name,
       projectId: scopedProjectId,
       storagePath,
@@ -88,6 +89,8 @@ export default async function handler(
       uploadedAt: timestamp,
       uploadedBy: decoded.email ?? decoded.uid,
     });
+
+    if(archive?.id)sourceIds.push(archive.id);
 
     // 2. 이미지
     if (isImageType(file.type)) {
@@ -199,6 +202,7 @@ export default async function handler(
     await db.doc(`ppssBackgroundKnowledge_${scopedProjectId}/current`).set(
       {
         curatedText,
+        sourceIds,
         updatedBy: decoded.email ?? decoded.uid,
         updatedAt: new Date().toISOString(),
       },
