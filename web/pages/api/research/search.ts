@@ -13,6 +13,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const context = await loadProjectContext(req, "data");
     request.projectContext = context.currentMaterial;
+    request.authorizedProjectId=context.projectId;
+    request.hasBackground=context.hasBackground;
+    request.backgroundSourceIds=context.backgroundSourceIds;
     request.previousSummaries = context.previousSummaries;
     request.cases = context.cases;
   } catch (error) { res.status(error instanceof AccessError ? error.status : 503).json({ error: error instanceof AccessError ? error.message : "사업 자료를 불러오지 못했습니다." }); return; }

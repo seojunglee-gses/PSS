@@ -24,6 +24,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const context = await loadProjectContext(req, "data", true, true);
     request.projectContext = context.currentMaterial;
+    request.authorizedProjectId=context.projectId;
+    request.hasBackground=context.hasBackground;
+    request.backgroundSourceIds=context.backgroundSourceIds;
     request.previousSummaries = context.previousSummaries;
     request.cases = context.cases;
     const activities=analysisActivities(context.stageHistory,context.projectId);

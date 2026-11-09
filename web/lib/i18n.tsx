@@ -46,6 +46,13 @@ const STORAGE_KEY = "ppss-locale";
 
 export const messagesByLocale: Record<Locale, Messages> = {
   en: {
+    "backgroundSource.noMatch": "No matching original passages were found in the searched material; this does not establish that the information is absent.",
+    "backgroundSource.partial": "Only part of the original background material could be searched within the processing limits.",
+    "backgroundSource.unreadable": "Some original files have no readable text or could not be opened. Image/scanned material continues to use the saved summary.",
+    "backgroundSource.legacy": "These are up to 10 recent archived background files whose link to the current summary is not recorded; check their dates before treating them as current project facts.",
+    "backgroundSource.unavailable": "Original background retrieval was unavailable. The saved project material and summary remain available.",
+    "backgroundSource.paragraph": "paragraph {number}",
+    "backgroundSource.excerpt": "Original background excerpt: {file} · {location}",
     "caseSource.title": "Answer source materials",
     "caseSource.hint": "Administrators can add original reports and supporting text. These are checked first for case questions.",
     "caseSource.name": "Source title",
@@ -814,6 +821,13 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.compareSearchesMissing": "Two recent place search results could not be verified. Please search for the places again before comparing.",
   },
   ko: {
+    "backgroundSource.noMatch": "검색한 원문에서 질문에 맞는 문단을 찾지 못했습니다. 자료 전체에 해당 내용이 없다는 뜻은 아닙니다.",
+    "backgroundSource.partial": "처리 범위 제한으로 배경자료 원문의 일부만 검색했습니다.",
+    "backgroundSource.unreadable": "일부 원문에서 텍스트를 읽지 못했습니다. 이미지·스캔 자료는 저장된 요약을 참고합니다.",
+    "backgroundSource.legacy": "현재 요약과의 연결 정보가 없는 보관 원문(최근 최대 10개)입니다. 최신 사업 내용인지 문서 시점을 함께 확인해야 합니다.",
+    "backgroundSource.unavailable": "배경자료 원문을 불러오지 못했습니다. 저장된 사업 자료와 요약은 계속 참고할 수 있습니다.",
+    "backgroundSource.paragraph": "문단 {number}",
+    "backgroundSource.excerpt": "배경자료 원문 발췌: {file} · {location}",
     "caseSource.title": "답변 기반 자료",
     "caseSource.hint": "원문 보고서와 보조 설명을 등록하세요. 이 사례에 대한 답변을 만들 때 먼저 확인합니다.",
     "caseSource.name": "자료 제목",
@@ -1582,6 +1596,13 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.compareSearchesMissing": "비교할 최근 두 장소 검색 결과를 확인할 수 없습니다. 비교할 장소를 다시 검색해주세요.",
   },
   zh: {
+    "backgroundSource.noMatch": "在已搜索的原文中未找到相关段落，并不表示所有资料都没有该信息。",
+    "backgroundSource.partial": "受处理限制，仅搜索了部分背景资料原文。",
+    "backgroundSource.unreadable": "部分原文没有可读取的文字，图片及扫描资料继续使用已保存的摘要。",
+    "backgroundSource.legacy": "这些最近存档原文（最多10份）未记录与当前摘要的关联，判断当前项目信息前请核对文档日期。",
+    "backgroundSource.unavailable": "无法读取背景资料原文，仍可参考已保存的项目资料和摘要。",
+    "backgroundSource.paragraph": "第{number}段",
+    "backgroundSource.excerpt": "背景资料原文摘录：{file} · {location}",
     "caseSource.title": "回答依据资料",
     "caseSource.hint": "管理员可登记原始报告和辅助说明，回答案例问题时优先查阅。",
     "caseSource.name": "资料标题",

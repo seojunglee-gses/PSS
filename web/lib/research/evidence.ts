@@ -1,3 +1,4 @@
+import {backgroundOriginalContext,needsBackgroundOriginal} from "./background-sources-server";
 import { requestClarification } from "../facilitation";
 import { parseSpatialResult } from "../spatial/context";
 import { canonicalBuildingContext } from "../spatial/building-use-server";
@@ -14,6 +15,9 @@ export type AnalysisRequest = {
   analysisSession?: import("../analysis-session").AnalysisActivity[];
   facilitationHistory?: ConversationMessage[];
   question: string;
+  authorizedProjectId?: string;
+  hasBackground?: boolean;
+  backgroundSourceIds?: string[];
   clarification?: string;
   history?: ConversationMessage[];
   searchQuestion?: string;
@@ -73,7 +77,13 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
   request.clarification=requestClarification(request.searchQuestion??request.question,request.history,request.projectContext,/[가-힣]/.test(request.question)?"ko":"en");
   if(request.clarification)return evidence;
   if (request.selectedSources.includes("project")) {
-    if (request.projectContext.trim()) evidence.projectContext = request.projectContext;
+    let projectMaterial=request.projectContext;
+    if(request.authorizedProjectId&&request.hasBackground&&needsBackgroundOriginal(request.searchQuestion??request.question)){
+      const original=await backgroundOriginalContext(request.authorizedProjectId,request.searchQuestion??request.question,request.backgroundSourceIds);
+      if(original.text)projectMaterial+='\n\n'+original.text;
+      evidence.warnings.push(...original.warnings.map(message=>({source:"project" as const,message})));
+    }
+    if (projectMaterial.trim()) evidence.projectContext = projectMaterial;
     else evidence.warnings.push({ source: "project", message: "이 사업에 등록된 자료가 없습니다." });
   }
   if (request.selectedSources.includes("spatial") && !request.spatialContext && !request.registeredSpatialContext?.registeredLayers.length) evidence.warnings.push({ source: "spatial", message: "공간 분석 결과가 없습니다. 공간 분석에서 질문에 필요한 분석을 먼저 실행해주세요." });

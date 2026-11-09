@@ -11,7 +11,7 @@ const uploads=load('lib/storage-upload-server.js');
 const {uploadProjectFile}=load('lib/storage-upload.js');
 function mock(t,obj,key,value){const old=obj[key];obj[key]=value;t.after(()=>obj[key]=old)}
 const project={projectName:'실제 사업',projectAdmin:'owner@example.org',workspaceContent:{problem:{title:'사업 배경',text:'실제 도로폭은 8m입니다.'},data:{title:'현황 자료',text:'대상지 면적 1234㎡',cases:[{id:'park',label:'기록된 사례',title:'주민 참여',text:'주민이 공원을 관리했습니다.'}]},alternatives:{text:'사업 계획'}}};
-function database(records,writes=[]){return {doc:p=>({get:async()=>({exists:p in records,data:()=>records[p]}),set:async v=>writes.push({p,v})}),collection:p=>({add:async v=>writes.push({p,v})})}}
+function database(records,writes=[]){return {doc:p=>({get:async()=>({exists:p in records,data:()=>records[p]}),set:async v=>writes.push({p,v})}),collection:p=>({add:async v=>{writes.push({p,v});return {id:'archive-'+writes.length}}})}}
 const request=(body={})=>({method:'POST',headers:{authorization:'Bearer fixture-token',origin:'https://example.org'},body:{projectId:'alpha',...body}});
 function fixture(t){
  mock(t,load('lib/research/case-sources-server.js'),'readCasePassages',async()=>[]);
@@ -52,6 +52,7 @@ test('storage finalization validates project, ownership and actual bytes; archiv
  mock(t,global,'fetch',async()=>Response.json({output:[{type:'message',content:[{type:'output_text',text:'추출 요약'}]}]}));
  const res=response();await load('pages/api/admin/background-knowledge.js').default(request({files:[{storagePath}]}),res);assert.equal(res.code,200);
  const archive=writes.find(w=>w.p.includes('Archives')).v;assert.equal(archive.size,bytes.length);assert.equal(archive.projectId,'alpha');assert.equal(archive.fileName,'15MB.txt');assert.ok(JSON.stringify(archive).length<1000);assert.equal(archive.data,undefined);
+ const current=writes.find(w=>w.p==='ppssBackgroundKnowledge_alpha/current').v;assert.deepEqual(current.sourceIds,['archive-1']);
 });
 test('Stage 3 reads the same project-specific current image written by Settings',async t=>{
  fixture(t);const writes=[],stored=[];mock(t,admin,'adminDb',()=>database({'ppssProjects/alpha':project,'users/member/projectMemberships/alpha':{role:'participant'},'ppssSiteImages_alpha/current':{imageId:'settings-image',downloadUrl:'https://storage.example/site.png'}},writes));
@@ -147,4 +148,82 @@ test('network upload failures retain the actual target path and never expose a s
  await assert.rejects(()=>uploadProjectFile('/api/projects/content-image',file,'alpha','fixture',{purpose:'case'}),error=>{
   assert.equal(error.code,'upload/network');assert.equal(error.storagePath,'projects/alpha/case-images/id');assert.ok(!error.message.includes('do-not-log'));return true;
  });
+});
+
+function backgroundFiles(t,projectId,archives,files){
+ const reads=[],collections=[];
+ const snapshots=archives.map(a=>({id:a.id,exists:true,data:()=>a}));
+ mock(t,admin,'adminDb',()=>({collection:name=>{collections.push(name);return {doc:id=>({get:async()=>snapshots.find(a=>a.id===id)??{id,exists:false}}),orderBy:()=>({limit:()=>({get:async()=>({docs:snapshots})})})}}}));
+ mock(t,admin,'adminBucket',()=>({file:path=>({getMetadata:async()=>[files[path]?.metadata??{metadata:{projectId:'wrong'}}],download:async()=>{reads.push(path);return [files[path].bytes]}})}));
+ return {reads,collections};
+}
+test('original background lookup is conditional, bounded to current sources and does not add a classifier model call',async t=>{
+ const sources=load('lib/research/background-sources-server.js'),research=load('lib/research/evidence.js');
+ assert.equal(sources.needsBackgroundOriginal('사업 개요를 간단히 설명해줘'),false);
+ for(const q of ['사업비가 얼마야?','사업 기간을 알려줘','보고서 원문에서 확인해줘','운영비 내역이 궁금해요'])assert.equal(sources.needsBackgroundOriginal(q),true,q);
+ const projectId='background-current-test',path1='ppss-background-knowledge/originals/'+projectId+'/current',path2='ppss-background-knowledge/originals/'+projectId+'/old';
+ const bytes=Buffer.from('사업 개요: 생활환경 개선.\n\n총사업비는 123억 원이며 운영비는 7억 원입니다.\n\n사업 기간은 2024년부터 2027년까지입니다.');
+ const fixture=backgroundFiles(t,projectId,[{id:'current',projectId,fileName:'사업계획.txt',storagePath:path1,uploadedAt:'2026-11-09'},{id:'old',projectId,fileName:'예전계획.txt',storagePath:path2}],{[path1]:{bytes,metadata:{size:String(bytes.length),generation:'1',metadata:{projectId}}}});
+ mock(t,llm,'callLLM',async()=>assert.fail('retrieval and routing must not call an LLM'));mock(t,global,'fetch',async()=>assert.fail('original retrieval must not search OpenAlex'));
+ const base={question:'사업비가 얼마야?',selectedSources:['project'],cases:[],projectContext:'짧은 요약에는 예산이 없음',provider:'openai',authorizedProjectId:projectId,hasBackground:true,backgroundSourceIds:['current']};
+ const result=await research.retrieveEvidence(base);assert.match(result.projectContext,/123억/);assert.match(result.projectContext,/사업계획.txt/);assert.match(result.projectContext,/문단/);assert.equal(base.projectContext,'짧은 요약에는 예산이 없음');assert.deepEqual(fixture.reads,[path1]);assert.ok(!result.projectContext.includes('예전계획'));assert.deepEqual(result.warnings,[]);
+ await research.retrieveEvidence({...base,question:'사업 기간은 언제야?'});assert.equal(fixture.reads.length,1);
+ await research.retrieveEvidence({...base,question:'사업 개요를 간단히 설명해줘'});assert.equal(fixture.collections.length,2);
+ const parsed=research.parseAnalysisRequest({question:'사업비 얼마야?',authorizedProjectId:projectId,hasBackground:true,backgroundSourceIds:['current']});assert.equal(parsed.authorizedProjectId,undefined);assert.equal(parsed.hasBackground,undefined);
+ await research.retrieveEvidence({...base,selectedSources:['cases'],cases:[]});assert.equal(fixture.reads.length,1);
+});
+test('legacy original archives are labelled, storage generations invalidate cache, and foreign project paths cannot be read',async t=>{
+ const sources=load('lib/research/background-sources-server.js'),projectId='background-legacy-test',path1='ppss-background-knowledge/originals/'+projectId+'/file';
+ let bytes=Buffer.from('예산은 11억 원입니다.');const files={[path1]:{bytes,metadata:{size:String(bytes.length),generation:'1',metadata:{projectId}}}};
+ const fixture=backgroundFiles(t,projectId,[{id:'valid',projectId,fileName:'예산.txt',storagePath:path1},{id:'foreign',projectId:'other',fileName:'비밀예산.txt',storagePath:'ppss-background-knowledge/originals/other/secret'},{id:'traversal',projectId,fileName:'다른예산.txt',storagePath:'ppss-background-knowledge/originals/'+projectId+'/../secret'},{id:'image',projectId,fileName:'이미지.png',storagePath:'ignored'}],files);
+ const first=await sources.backgroundOriginalContext(projectId,'예산은 얼마야?');assert.match(first.text,/11억/);assert.ok(first.warnings.some(m=>/현재 요약과의 연결 정보/.test(m)));assert.deepEqual(fixture.reads,[path1]);
+ bytes=Buffer.from('예산은 22억 원으로 변경되었습니다.');files[path1]={bytes,metadata:{size:String(bytes.length),generation:'2',metadata:{projectId}}};
+ const revised=await sources.backgroundOriginalContext(projectId,'예산은 얼마야?',['valid']);assert.match(revised.text,/22억/);assert.doesNotMatch(revised.text,/11억/);assert.equal(fixture.reads.length,2);
+ const empty=await sources.backgroundOriginalContext(projectId,'원문에서 가로수 수종을 찾아줘',['valid']);assert.equal(empty.text,'');assert.ok(empty.warnings.some(m=>/해당 내용이 없다는 뜻은 아닙니다/.test(m)));
+ files[path1].metadata.metadata.projectId='other';const invalid=await sources.backgroundOriginalContext(projectId,'예산은 얼마야?',['valid']);assert.equal(invalid.text,'');assert.equal(fixture.reads.length,2);
+});
+test('original PDF page numbers reach the existing evidence prompt and a storage failure preserves the summary',async t=>{
+ const sources=load('lib/research/background-sources-server.js'),parser=load('lib/research/case-sources-server.js'),research=load('lib/research/evidence.js');
+ const projectId='background-pages-test',path1='ppss-background-knowledge/originals/'+projectId+'/pdf',bytes=Buffer.from('fixture');
+ backgroundFiles(t,projectId,[{id:'report',projectId,fileName:'사업보고서.pdf',storagePath:path1}],{[path1]:{bytes,metadata:{size:String(bytes.length),generation:'1',metadata:{projectId}}}});
+ mock(t,parser,'extractSourcePages',async()=>[{text:'표지',page:1},{text:'총사업비는 123억 원입니다.',page:12}]);
+ const request={question:'원문에서 총사업비를 확인해줘',selectedSources:['project'],cases:[],projectContext:'저장된 요약',provider:'openai',authorizedProjectId:projectId,hasBackground:true,backgroundSourceIds:['report']};
+ const evidence=await research.retrieveEvidence(request);assert.match(evidence.projectContext,/사업보고서.pdf · p.12/);let received;
+ mock(t,llm,'callLLM',async input=>{received=input;return JSON.stringify({summary:'총사업비는 123억 원입니다. (프로젝트 자료: 사업보고서.pdf, p.12)',caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'',projectImplications:[],limitations:''})});
+ const answer=await load('lib/research/answer.js').answerFromEvidence(request,evidence);assert.match(answer.summary,/p.12/);assert.match(received.systemText,/limited retrieved passages/);assert.match(JSON.parse(received.userText).projectMaterial,/123억/);assert.equal(JSON.parse(received.userText).projectContext,'저장된 요약');
+ mock(t,admin,'adminDb',()=>{throw Error('private credential details must not escape')});
+ const failed=await research.retrieveEvidence(request);assert.equal(failed.projectContext,'저장된 요약');assert.ok(failed.warnings.some(w=>w.source==='project'));assert.doesNotMatch(JSON.stringify(failed),/credential details/);
+});
+
+test('real original PDF extraction retains the page containing a fact omitted from the summary',async t=>{
+ let pdf='%PDF-1.4\n';const offsets=[0],one='BT /F1 12 Tf 72 720 Td (Project overview.) Tj ET',two='BT /F1 12 Tf 72 720 Td (The approved budget is 9876 million won.) Tj ET';
+ const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>','<< /Length '+one.length+' >>\nstream\n'+one+'\nendstream','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>','<< /Length '+two.length+' >>\nstream\n'+two+'\nendstream'];
+ for(let i=0;i<objects.length;i++){offsets.push(pdf.length);pdf+=(i+1)+' 0 obj\n'+objects[i]+'\nendobj\n';}
+ const xref=pdf.length;pdf+='xref\n0 8\n0000000000 65535 f \n'+offsets.slice(1).map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')+'trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF';
+ const projectId='background-real-pdf',storagePath='ppss-background-knowledge/originals/'+projectId+'/report',bytes=Buffer.from(pdf);
+ backgroundFiles(t,projectId,[{id:'report',projectId,fileName:'budget-report.pdf',storagePath}],{[storagePath]:{bytes,metadata:{size:String(bytes.length),generation:'1',metadata:{projectId}}}});
+ const result=await load('lib/research/background-sources-server.js').backgroundOriginalContext(projectId,'What is the approved budget?',['report']);assert.match(result.text,/budget-report.pdf · p.2/);assert.match(result.text,/9876 million/);assert.deepEqual(result.warnings,[]);
+ const page=await load('lib/research/background-sources-server.js').backgroundOriginalContext(projectId,'budget-report.pdf 원문 2페이지를 확인해줘',['report']);assert.match(page.text,/p.2/);assert.doesNotMatch(page.text,/p.1/);
+});
+test('unauthorized background-original questions cannot reach project archives or Storage',async t=>{
+ mock(t,admin,'verifyUserRequest',async()=>({uid:'outsider',email:'outsider@example.org'}));
+ mock(t,admin,'adminDb',()=>({doc:p=>({get:async()=>({exists:p==='ppssProjects/alpha',data:()=>p==='ppssProjects/alpha'?project:undefined})}),collection:()=>assert.fail('denied project archives must not be read')}));
+ mock(t,admin,'adminBucket',()=>assert.fail('denied original Storage must not be read'));
+ const res=response();await load('pages/api/research/answer.js').default(request({question:'사업비 원문에서 확인해줘',selectedSources:['project']}),res);assert.equal(res.code,403);
+});
+
+test('text originals without a filename extension remain searchable using verified Storage MIME metadata',async t=>{
+ const projectId='background-mime-test',storagePath='ppss-background-knowledge/originals/'+projectId+'/source',bytes=Buffer.from('사업 기간은 2024년부터 2027년까지입니다.');
+ backgroundFiles(t,projectId,[{id:'source',projectId,fileName:'사업 설명',storagePath}],{[storagePath]:{bytes,metadata:{size:String(bytes.length),generation:'1',contentType:'text/plain',metadata:{projectId}}}});
+ const result=await load('lib/research/background-sources-server.js').backgroundOriginalContext(projectId,'사업 기간을 알려줘',['source']);assert.match(result.text,/2027/);assert.match(result.text,/사업 설명/);assert.deepEqual(result.warnings,[]);
+});
+
+test('authorized Data Analysis API uses linked originals while ignoring client-supplied file identities',async t=>{
+ const records=fixture(t);records['ppssBackgroundKnowledge_alpha/current']={curatedText:'사업 개요만 정리한 요약',sourceIds:['active-source']};
+ const bytes=Buffer.from('총사업비는 123억 원입니다.'),storagePath='ppss-background-knowledge/originals/alpha/api-source';let calls=0,received;
+ mock(t,admin,'adminDb',()=>({...database(records),collection:name=>{assert.equal(name,'ppssBackgroundKnowledgeArchives_alpha');return {doc:id=>{assert.equal(id,'active-source');return {get:async()=>({id,exists:true,data:()=>({projectId:'alpha',fileName:'사업예산.txt',storagePath})})}}}}}));
+ mock(t,admin,'adminBucket',()=>({file:path=>{assert.equal(path,storagePath);return {getMetadata:async()=>[{size:String(bytes.length),generation:'api-source-version',contentType:'text/plain',metadata:{projectId:'alpha'}}],download:async()=>[bytes]}}}));
+ mock(t,llm,'callLLM',async input=>{calls++;received=JSON.parse(input.userText);return JSON.stringify({summary:'총사업비는 123억 원입니다. (프로젝트 자료: 사업예산.txt, 문단 1)',caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'',projectImplications:[],limitations:''})});
+ const res=response();await load('pages/api/research/answer.js').default(request({question:'총사업비가 얼마야?',selectedSources:['project'],authorizedProjectId:'other',backgroundSourceIds:['evil'],projectContext:'클라이언트가 만든 내용'}),res);
+ assert.equal(res.code,200);assert.equal(calls,1);assert.match(res.body.reply,/123억/);assert.match(res.body.analysis.evidence.projectContext,/사업예산.txt/);assert.match(received.projectMaterial,/123억/);assert.doesNotMatch(received.projectContext,/123억|클라이언트가 만든 내용/);assert.match(received.projectContext,/8m/);assert.deepEqual(res.body.analysis.answer.researchFindings,[]);
 });

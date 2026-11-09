@@ -15,7 +15,7 @@ export function splitCasePassages(pages:{text:string;page?:number}[],revisionId:
  }
  if(!passages.length)throw new AccessError(400,'caseSource.noText');return passages;
 }
-async function extract(buffer:Buffer,fileName:string){
+export async function extractSourcePages(buffer:Buffer,fileName:string){
  if(/\.pdf$/i.test(fileName)){const {PDFParse}=await import('pdf-parse');const parser=new PDFParse({data:buffer});try{const text=await parser.getText();return text.pages.map(p=>({text:p.text,page:p.num}));}finally{await parser.destroy();}}
  if(/\.docx$/i.test(fileName)){const mammoth=await import('mammoth');return [{text:(await mammoth.extractRawText({buffer})).value}];}
  if(/\.(txt|md)$/i.test(fileName))return [{text:new TextDecoder('utf-8',{fatal:true}).decode(buffer)}];
@@ -35,7 +35,7 @@ export async function mutateCaseSource(projectId:string,caseId:string,user:{uid:
   if(!['add','replace'].includes(String(body.action))||typeof body.title!=='string'||!body.title.trim()||body.title.length>200)throw new AccessError(400,'caseSource.invalid');
   let storagePath:string|undefined,fileName=body.title.trim()+'.txt',pages:{text:string;page?:number}[];
   if(typeof body.text==='string'){pages=[{text:body.text}];}
-  else{const file=await readStorageUpload({storagePath:typeof body.storagePath==='string'?body.storagePath:undefined},projectId,user.uid,'projects','case-sources');storagePath=file.storagePath;fileName=file.name;pages=await extract(file.buffer,file.name);}
+  else{const file=await readStorageUpload({storagePath:typeof body.storagePath==='string'?body.storagePath:undefined},projectId,user.uid,'projects','case-sources');storagePath=file.storagePath;fileName=file.name;pages=await extractSourcePages(file.buffer,file.name);}
   const passages=splitCasePassages(pages,revisionId),passagesPath=`projects/${projectId}/case-sources/${id}/${revisionId}/passages.json`;
   payload={projectId,caseId,sourceId:id,title:body.title.trim(),fileName,revisionId,uploadedAt:new Date().toISOString(),uploadedBy:user.uid,passageCount:passages.length,passagesPath,...(storagePath?{storagePath}:{})};
   await adminBucket().file(passagesPath).save(Buffer.from(JSON.stringify(passages)),{resumable:false,metadata:{contentType:'application/json',cacheControl:'private, no-store'}});
