@@ -18,7 +18,7 @@ export default function SpatialMap({ onReturn, ...props }: SpatialMapProps & { o
     {error && <p role="status" className="text-xs text-amber-700">{t(error)}</p>}
     <div className="relative">
     {provider === 'kakao' ? <KakaoSpatialMap {...props} onFailure={failed}/> : <OSMSpatialMap {...props} overlay={osmOverlay}/>}
-      {onReturn && <button type="button" title={t('boundary.return')} aria-label={t('boundary.return')} className="absolute bottom-3 left-3 z-10 flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm" onClick={event => { event.stopPropagation(); onReturn(); }}><span aria-hidden="true">⌖</span>{t('spatial.projectArea')}</button>}
+      {onReturn && <button type="button" title={t('boundary.return')} aria-label={t('boundary.return')} className="absolute bottom-3 left-3 z-10 flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm" onClick={event => { event.stopPropagation(); onReturn(); }}><span aria-hidden="true">⌖</span></button>}
     </div>
     {provider === 'osm' && props.geoResult?.places.some(p => p.source === 'kakao') && <p className="text-xs text-slate-500">{t('gis.kakaoOnly')}</p>}
   </div>;

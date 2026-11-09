@@ -340,3 +340,10 @@ html.workspace-page, body.workspace-page { overflow: hidden; overscroll-behavior
 .workspace-shell[data-tablet="true"] .workspace-help-popover button span { white-space: nowrap; word-break: normal; overflow-wrap: normal; }
 .no-flex-gap .workspace-tablet-actions > * + * { margin-left: 6px; }
 .no-flex-gap .workspace-shell[data-tablet="true"] .workspace-help-popover button + button { margin-left: 8px; }
+
+/* Data Analysis content only; the workspace split and controls keep their frame. */
+.workspace-analysis-tabs { position: sticky; top: 0; z-index: 15; border-radius: 22px 22px 0 0; }
+.spatial-analysis > details ~ details { margin-top: 8px; }
+.workspace-shell .workspace-information .spatial-analysis p.spatial-attribution { margin-top: 16px; font-size: 10px; line-height: 1.4; color: #9ca3af; }
+.evidence-panel > section:first-of-type { margin-top: 0; }
+.workspace-shell .workspace-information .workspace-analysis-tabs button { min-width: 0; min-height: 44px; padding: 8px 4px; font-size: 13px; white-space: nowrap; }
