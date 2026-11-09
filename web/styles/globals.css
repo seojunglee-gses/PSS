@@ -140,7 +140,7 @@ html.workspace-page, body.workspace-page { overflow: hidden; overscroll-behavior
 .workspace-chat-footer { flex-shrink: 0; min-width: 0; }
 .workspace-chat-finish { width: 100%; min-height: 44px; }
 .workspace-composer { position: static; min-width: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
-.workspace-composer input { width: 0; }
+.workspace-composer input:not([type="checkbox"]) { width: 0; }
 .workspace-chat #analysis-source-options { max-width: 256px; max-height: 60vh; overflow-y: auto; }
 @supports (width: 1cqw) { .workspace-chat #analysis-source-options { max-width: min(256px, calc(100cqw - 32px)); max-height: min(360px, calc(100cqh - 110px)); overflow-y: auto; overscroll-behavior: contain; } }
 /* Portrait chat keeps compact navigation visible without unmounting panels. */
@@ -275,11 +275,13 @@ html.workspace-page, body.workspace-page { overflow: hidden; overscroll-behavior
 .workspace-shell[data-tablet="true"] .workspace-chat-messages { margin-top: 0; padding-bottom: 72px; }
 .workspace-shell[data-tablet="true"] .workspace-chat-footer { position: relative; display: flex; flex-direction: column; }
 .workspace-shell[data-tablet="true"] .workspace-composer { order: 2; margin-top: 12px; padding: 8px; border-radius: 28px; background: white; }
-.workspace-shell[data-tablet="true"] .workspace-chat-finish { order: 1; margin-top: 4px; min-height: 32px; padding-block: 4px; font-size: 12px; background: #ffffffa0; }
-.workspace-shell[data-tablet="true"] .workspace-starter-help { display: block; position: absolute; bottom: calc(100% + 12px); right: 4px; z-index: 15; background: transparent; }
-.workspace-shell[data-tablet="true"] .workspace-help-button { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; border: 1px solid var(--border); border-radius: 50%; background: white; box-shadow: 0 4px 10px #0f172a20; }
+.workspace-shell[data-tablet="true"] .workspace-chat-finish,
+.workspace-shell[data-tablet="true"] .workspace-report-complete,
+.workspace-shell[data-tablet="true"] .workspace-stage-heading { display: none; }
+.workspace-shell[data-tablet="true"] .workspace-starter-help { display: flex; justify-content: flex-end; position: absolute; bottom: calc(100% + 12px); left: 4px; right: 4px; z-index: 15; background: transparent; pointer-events: none; }
+.workspace-shell[data-tablet="true"] .workspace-help-button { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; flex-shrink: 0; pointer-events: auto; border: 1px solid var(--border); border-radius: 50%; background: white; box-shadow: 0 4px 10px #0f172a20; }
 .workspace-shell[data-tablet="true"] .workspace-help-button svg { width: 28px; height: 28px; }
-.workspace-shell[data-tablet="true"] .workspace-help-popover { position: absolute; right: 0; bottom: 64px; width: min(360px, calc(100vw - 400px)); width: min(360px, calc(100cqw - 40px)); max-height: min(440px, calc(100vh - 160px)); max-height: min(440px, calc(100cqh - 160px)); overflow-y: auto; padding: 16px; border: 1px solid var(--border); border-radius: 20px; background: white; box-shadow: 0 8px 24px #0f172a20; }
+.workspace-shell[data-tablet="true"] .workspace-help-popover { position: absolute; right: 64px; bottom: 0; width: calc(100% - 64px); max-height: none; overflow: visible; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; pointer-events: auto; }
 .workspace-shell[data-tablet="true"] .workspace-information,
 .workspace-shell[data-tablet="true"] .workspace-chat-messages,
 .workspace-shell[data-tablet="true"] .workspace-help-popover { font-size: var(--workspace-font-size, 16px); line-height: 1.6; }
@@ -324,3 +326,17 @@ html.workspace-page, body.workspace-page { overflow: hidden; overscroll-behavior
 .no-flex-gap .workspace-shell[data-tablet="true"] .shell-content > * + *,
 .no-flex-gap .workspace-shell[data-tablet="true"] .shell-route-content > * + * { margin-top: 0; }
 .no-flex-gap .workspace-shell[data-tablet="true"] .workspace-stage-list > * + * { margin-left: 0; }
+
+/* Compact workspace controls reuse the existing completion and source state. */
+.workspace-chat-messages > * + * { margin-top: 10px; }
+.workspace-stage-complete[data-completed="true"] { border-color: var(--primary); background: var(--primary); color: white; }
+.workspace-tablet-toolbar strong { flex: 1; min-width: 0; font-size: clamp(12px, 1.5vw, 16px); line-height: 1.4; word-break: keep-all; }
+.workspace-tablet-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: auto; }
+.workspace-tablet-actions .workspace-font-control { margin-left: 0; }
+.workspace-tablet-toolbar .workspace-header-complete { min-width: 44px; min-height: 44px; padding: 6px 8px; border: 1px solid var(--primary); border-radius: 12px; font-size: 13px; font-weight: 600; color: var(--primary); background: white; }
+.workspace-tablet-toolbar .workspace-header-complete[data-completed="true"] { background: var(--primary); color: white; }
+.workspace-shell[data-tablet="true"] .workspace-help-popover [data-testid="stage-chat-guide"] { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 4px; overscroll-behavior-x: contain; }
+.workspace-shell[data-tablet="true"] .workspace-help-popover button { flex: 0 0 auto; width: auto; max-width: none; min-height: 44px; white-space: nowrap; border-color: #a5b4df; background: #eff6ffe6; backdrop-filter: blur(8px); box-shadow: 0 2px 6px #2f3f9c14; }
+.workspace-shell[data-tablet="true"] .workspace-help-popover button span { white-space: nowrap; word-break: normal; overflow-wrap: normal; }
+.no-flex-gap .workspace-tablet-actions > * + * { margin-left: 6px; }
+.no-flex-gap .workspace-shell[data-tablet="true"] .workspace-help-popover button + button { margin-left: 8px; }

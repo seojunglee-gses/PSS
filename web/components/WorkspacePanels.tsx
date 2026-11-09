@@ -5,8 +5,8 @@ import { useI18n } from "../lib/i18n";
 import { constrainPanelRatio, DEFAULT_PANEL_RATIO, PANEL_DIVIDER_WIDTH, panelRatioBounds, workspaceLayoutMode, workspaceViewportMetrics } from "../lib/workspace-layout";
 import type { WorkspacePanelView } from "../lib/workspace-layout";
 
-export default function WorkspacePanels({ children, navigation, ratio, onRatioChange, view, onViewChange }: {
-  children: ReactNode; navigation?: ReactNode; ratio: number; onRatioChange: (ratio: number) => void;
+export default function WorkspacePanels({ children, navigation, stageTitle, completionControl, ratio, onRatioChange, view, onViewChange }: {
+  children: ReactNode; navigation?: ReactNode; stageTitle?: string; completionControl?: ReactNode; ratio: number; onRatioChange: (ratio: number) => void;
   view: WorkspacePanelView; onViewChange: (view: WorkspacePanelView) => void;
 }) {
   const { t, locale } = useI18n();
@@ -196,7 +196,9 @@ export default function WorkspacePanels({ children, navigation, ratio, onRatioCh
       <div className="workspace-information-column">
         <div className="workspace-tablet-toolbar">
           <button type="button" className="workspace-tablet-menu" aria-label={t(menu.open ? "shell.sidebarCollapse" : "shell.sidebarExpand")} aria-expanded={menu.open} aria-controls="workspace-sidebar-drawer" onClick={menu.toggle}>☰</button>
-          <strong>{locale === "ko" ? "작업공간" : t("nav.workspace")}</strong>
+          <strong>{locale === "ko" ? "작업공간" : t("nav.workspace")}{stageTitle && ` · ${stageTitle}`}</strong>
+          <div className="workspace-tablet-actions">
+          {completionControl}
           <div className="workspace-font-control">
             <button type="button" aria-label={locale === "ko" ? "글자 크기" : locale === "zh" ? "字号" : "Text size"} aria-expanded={fontOpen} aria-controls={`${id}-font`} onClick={() => { setFontSize(Number(root.current?.closest<HTMLElement>(".workspace-shell")?.style.getPropertyValue("--workspace-font-size").replace("px", "")) || 16); setFontOpen((open) => !open); }}>Aa</button>
             {fontOpen && <div id={`${id}-font`} className="workspace-font-popover" onKeyDown={(event) => { if (event.key === "Escape") { setFontOpen(false); event.currentTarget.parentElement?.querySelector("button")?.focus(); } }}>
@@ -204,6 +206,7 @@ export default function WorkspacePanels({ children, navigation, ratio, onRatioCh
               <input type="range" min="14" max="22" step="1" value={fontSize} aria-label={locale === "ko" ? "작업공간 글자 크기" : locale === "zh" ? "工作区字号" : "Workspace text size"} onChange={(event) => { setFontSize(Number(event.target.value)); root.current?.closest<HTMLElement>(".workspace-shell")?.style.setProperty("--workspace-font-size", `${event.target.value}px`); }} />
               <span aria-hidden="true">A</span>
             </div>}
+          </div>
           </div>
         </div>
         <div className="workspace-tablet-navigation">{navigation}</div>
