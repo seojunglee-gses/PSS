@@ -10,6 +10,7 @@ export type CasePassage = { passageId:string;text:string;page?:number;paragraph:
 export type CaseEvidence = CaseMaterial & {
   sourceId: string;
   relevanceTerms: string[];
+  origin?: "external"; url?: string; publisher?: string; evidenceLevel?: "page" | "preview"; retrievedAt?: string;
   documentId?: string; documentTitle?:string; fileName?:string; revisionId?:string; passageId?:string; page?:number; paragraph?:number;
 };
 export type ResearchPaper = {
@@ -25,6 +26,7 @@ export type ResearchPaper = {
   openAccess: boolean | null;
   topics: string[];
   usedInAnswer: boolean;
+  evidenceExcerpt?: string;
 };
 export type EvidenceBundle = {
   projectContext?: string;
@@ -44,6 +46,7 @@ export type EvidenceCitation = {
   openAlexId: string | null;
   doi: string | null;
   citationCount: number | null;
+  origin?: "external"; url?: string; publisher?: string;
 };
 export type AnalysisAnswer = {
   format?: 'direct';
@@ -57,7 +60,7 @@ export type AnalysisAnswer = {
   limitations: string;
   sources: EvidenceCitation[];
 };
-// Small metadata fits the existing step-chat records; abstracts stay transient.
+// Keep bounded abstract excerpts for grounded follow-ups; full abstracts stay transient.
 export type AnalysisRecord = {
   spatialContext?: SpatialResult;
   selectedSources: EvidenceSource[];
@@ -70,7 +73,7 @@ export type AnalysisRecord = {
 export function compactEvidence(evidence: EvidenceBundle): AnalysisRecord["evidence"] {
   return { ...evidence, papers: evidence.papers.map(({ abstract, ...paper }) => {
     void abstract;
-    return paper;
+    return { ...paper, ...(abstract ? { evidenceExcerpt: abstract.slice(0, 2500) } : {}) };
   }) };
 }
 

@@ -50,7 +50,7 @@ export function clarificationExchange(question: string, history: ConversationMes
 export function contextualQuestion(question: string, history: ConversationMessage[] = []): string {
   const clarified = clarificationExchange(question, history);
   if (clarified) return [clarified.request, ...clarified.answers].join("\n");
-  const followUp = /(?:그|해당|위|앞서|이전|이)\s*(?:내용|논문|연구|사례|자료|결과|방법|대안|답변|사업)|거기|그럼|그러면|좀\s*더|더\s*자세|이어서|계속|(?:첫|두|세|[1-9])\s*번째|\b(?:this|that|these|those|previous|above|them|it|more|continue|expand)\b/i;
+  const followUp = /(?:그|해당|위|앞서|이전|이)\s*(?:내용|논문|연구|사례|자료|결과|방법|방식|대안|답변|사업)|거기|그럼|그러면|좀\s*더|더\s*자세|이어서|계속|(?:첫|두|세|[1-9])\s*번째|\b(?:this|that|these|those|previous|above|them|it|more|continue|expand)\b/i;
   if (!followUp.test(question)) return question;
   const questions = history.filter((message) => message.role === "user");
   const anchor = [...questions].reverse().find((message) => !followUp.test(message.content)) ?? questions[questions.length - 1];

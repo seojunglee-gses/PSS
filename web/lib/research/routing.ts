@@ -9,8 +9,8 @@ export function namedCases<T extends {id:string;title:string;label:string;aliase
   for(const message of [...history].reverse()){const found=match(message.content);if(found.length)return found;}return [];
 }
 export const wantsImplications=(question:string)=>/적용|시사점|배울\s*점|참고할\s*점|아이디어|비교|전략|적합|괜찮|좋을까|어떻게|개선|해결|대안|방법|추천|제안|효과|가능|해야|할까|너라면|\b(?:apply|adapt|implications?|lessons?|compare|recommend|suggest|alternatives?|suitab|should|improve)\b/i.test(question);
-// These describe intent, not a new search service. New cases can only be found via existing literature search.
-export const wantsNewCases = (question:string) => /(?:사례|비슷한\s*(?:사업|지역|도시)|다른\s*(?:사업|지역|도시)).*(?:찾|검색|있(?:어|나)|보여)|실제로.*(?:한|운영).*(?:곳|사례).*(?:있|찾)|(?:find|search|show).*(?:cases?|similar projects?)|other cases?/i.test(question);
+// Real implemented examples use external case search; effect/research questions use OpenAlex.
+export const wantsNewCases = (question:string) => /(?:사례|비슷한\s*(?:사업|지역|도시)|다른\s*(?:사업|지역|도시)).*(?:찾|검색|있(?:어|나)|보여)|실제로.*(?:한|운영).*(?:곳|사례).*(?:있|찾)|(?:find|search|show).*(?:cases?|similar projects?)|other cases?|해외에서는.*어떻게|국내\s*다른\s*지역|다른\s*지역.*어떻게|이런\s*방식.*해결한\s*곳|성공(?:한)?\s*사례|지속(?:적으로)?\s*운영(?:되는)?\s*사례|이런\s*사례.*있/i.test(question);
 export const wantsResearch = (question:string) => /논문|연구|학술|검증|선행연구|근거.*(?:찾|검색)|효과(?:가|는|적|\s*있)|지속가능성|다른\s*(?:방법|대안).*(?:없|있|찾)|literature|\b(?:stud(?:y|ies)|research|evidence|effective|effectiveness|sustainability)\b/i.test(question);
 
 export function resolveSources(question: string, selected: EvidenceSource[] = [], availableCases:{id:string;title:string;label:string;aliases?:string[]}[]=[],history:ConversationMessage[]=[]): EvidenceSource[] {

@@ -98,19 +98,19 @@ async function fetchPapers(query: string): Promise<ResearchPaper[]> {
   try {
     response = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { Accept: "application/json" } });
   } catch {
-    throw new Error("Research retrieval is unavailable or timed out. Please try again.");
+    throw new Error("연구논문 검색에 연결하지 못했거나 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
   }
   if (!response.ok) {
     // Never return provider request URLs/errors; they can contain the API key.
-    if (response.status === 401 || response.status === 403) throw new Error("Research access was denied. Check the server-side OPENALEX_API_KEY and network access.");
-    if (response.status === 429) throw new Error("Research search is rate limited. Please try again later.");
-    throw new Error("Research search failed. Please try again.");
+    if (response.status === 401 || response.status === 403) throw new Error("연구논문 검색 서비스에 접근하지 못했습니다. 검색 설정을 확인해 주세요.");
+    if (response.status === 429) throw new Error("연구논문 검색 요청이 많아 잠시 제한되었습니다. 잠시 후 다시 시도해 주세요.");
+    throw new Error("연구논문 검색을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.");
   }
   let payload: { results?: OpenAlexWork[] };
   try { payload = await response.json(); }
-  catch { throw new Error("Research search returned an invalid response."); }
-  if (!payload || typeof payload !== "object") throw new Error("Research search returned an invalid response.");
-  if (!Array.isArray(payload.results)) throw new Error("Research search returned an invalid response.");
+  catch { throw new Error("연구논문 검색 결과를 읽지 못했습니다. 잠시 후 다시 시도해 주세요."); }
+  if (!payload || typeof payload !== "object") throw new Error("연구논문 검색 결과를 읽지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  if (!Array.isArray(payload.results)) throw new Error("연구논문 검색 결과를 읽지 못했습니다. 잠시 후 다시 시도해 주세요.");
   const papers = selectPapers(payload.results);
   if (cache.size >= 50) cache.delete(cache.keys().next().value!);
   cache.set(query, { expires: Date.now() + 5 * 60 * 1000, papers });
@@ -139,11 +139,11 @@ export async function searchOpenAlex(question: string, provider?: "openai" | "ge
 
 // Re-open an actually viewed paper by stable ID; do not replace it with a new ranked search.
 export async function readOpenAlexPaper(id: string): Promise<ResearchPaper[]> {
-  if (!/^(?:https:\/\/openalex\.org\/)?W\d+$/.test(id)) throw new Error("Invalid selected paper.");
+  if (!/^(?:https:\/\/openalex\.org\/)?W\d+$/.test(id)) throw new Error("선택한 논문 정보가 올바르지 않습니다.");
   const url = new URL(`https://api.openalex.org/works/${id.split('/').pop()}`);
   if (process.env.OPENALEX_API_KEY) url.searchParams.set("api_key", process.env.OPENALEX_API_KEY);
   if (process.env.OPENALEX_MAILTO) url.searchParams.set("mailto", process.env.OPENALEX_MAILTO);
   const response = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error("The selected paper could not be retrieved. Its identity has been preserved; no different paper was substituted.");
+  if (!response.ok) throw new Error("선택한 논문을 불러오지 못했습니다. 다른 논문으로 대체하지 않았습니다.");
   return selectPapers([await response.json()]);
 }

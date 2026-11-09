@@ -115,19 +115,19 @@ test('research outage is explicit while case evidence stays usable', async (t) =
   const result = await retrieveEvidence(parseAnalysisRequest({ question: 'outage fixture', selectedSources: ['cases', 'research'], cases: [material] }));
   assert.equal(result.cases.length, 1);
   assert.equal(result.papers.length, 0);
-  assert.match(result.warnings[0].message, /unavailable/);
+  assert.match(result.warnings[0].message, /연결하지 못/);
   assert(!JSON.stringify(result).includes('private details'));
 });
 test('rate limits and denied access produce specific safe warnings', async (t) => {
   mockFetch(t, async () => new Response('private provider payload', { status: 429 }));
-  assert.match((await retrieveEvidence(parseAnalysisRequest({ question: 'rate limit fixture', selectedSources: ['research'] }))).warnings[0].message, /rate limited/);
+  assert.match((await retrieveEvidence(parseAnalysisRequest({ question: 'rate limit fixture', selectedSources: ['research'] }))).warnings[0].message, /잠시 제한/);
   global.fetch = async () => new Response('', { status: 401 });
-  assert.match((await retrieveEvidence(parseAnalysisRequest({ question: 'denied fixture', selectedSources: ['research'] }))).warnings[0].message, /OPENALEX_API_KEY/);
+  assert.match((await retrieveEvidence(parseAnalysisRequest({ question: 'denied fixture', selectedSources: ['research'] }))).warnings[0].message, /검색 설정/);
 });
 test('malformed provider responses produce safe warnings rather than parser details', async (t) => {
   mockFetch(t, async () => new Response('private invalid payload'));
   const result = await retrieveEvidence(parseAnalysisRequest({ question: 'invalid JSON fixture', selectedSources: ['research'] }));
-  assert.equal(result.warnings[0].message, 'Research search returned an invalid response.');
+  assert.equal(result.warnings[0].message, '연구논문 검색 결과를 읽지 못했습니다. 잠시 후 다시 시도해 주세요.');
   assert.deepEqual(selectPapers([null, work()]).map(p => p.sourceId), ['R:W1']);
 });
 test('no abstracts never generate title-based findings or call the LLM', async (t) => {
@@ -138,7 +138,7 @@ test('no abstracts never generate title-based findings or call the LLM', async (
   const answer = await answerFromEvidence(request, result);
   assert.equal(answer.sources.length, 0);
   assert.deepEqual(answer.researchFindings, []);
-  assert.match(answer.limitations, /no available abstracts/);
+  assert.match(answer.limitations, /공개 초록이 없어/);
 });
 test('citation metadata comes from retrieval; hallucinated or cross-kind references fail', () => {
   const valid = response(); valid.sources = [{ title: 'invented paper' }];

@@ -52,11 +52,12 @@ export default function EvidencePanel({ evidence, enabled, loading, highlighted,
       <h4 className="font-semibold text-slate-800">{labels.caseEvidence}</h4>
       <p className="mt-1 text-xs text-slate-500">{new Set(evidence.cases.map(c=>c.id)).size} {labels.caseCount}</p>
       <div className="mt-3 space-y-3">{evidence?.cases.map((c) => <article key={c.sourceId} id={`evidence-${c.sourceId}`} className={cardClass(c.sourceId)}>
+        {c.origin === "external" && <p className="text-xs font-semibold text-blue-700">🌐 {locale === "ko" ? "외부 사례" : locale === "zh" ? "外部案例" : "External case"}</p>}
         <h5 className="mt-1 font-semibold">{c.title}</h5>
-        <p className="mt-1 break-words text-xs text-slate-500">{c.fileName || c.documentTitle || labels.projectMaterial}{c.page ? ` · p.${c.page}` : c.paragraph ? ` · ${t('caseSource.paragraph', {paragraph: c.paragraph})}` : ""}</p>
+        <p className="mt-1 break-words text-xs text-slate-500">{c.origin === "external" ? c.publisher : c.fileName || c.documentTitle || labels.projectMaterial}{c.page ? ` · p.${c.page}` : c.paragraph ? ` · ${t('caseSource.paragraph', {paragraph: c.paragraph})}` : ""}</p>
         <p className="mt-2 text-xs font-semibold text-blue-700">{snippetLabel}</p>
         <p className="mt-1 whitespace-pre-line text-sm text-slate-600">{relevantSnippet(caseFindings.filter(finding => finding.sourceIds.includes(c.sourceId)).map(finding => finding.text.replace(/\[(?:[CR]:)[^\[\]]+\]/g, "")).join("\n") || c.text, evidence.question, c.relevanceTerms)}</p>
-        <details className="mt-2 text-sm text-slate-600"><summary className="cursor-pointer text-blue-700">{originalLabel}</summary><p className="mt-2 whitespace-pre-line">{c.text}</p></details>
+        {c.origin === "external" && c.url ? <a href={c.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-sm text-blue-700 underline">{originalLabel}</a> : <details className="mt-2 text-sm text-slate-600"><summary className="cursor-pointer text-blue-700">{originalLabel}</summary><p className="mt-2 whitespace-pre-line">{c.text}</p></details>}
         {onViewCase && availableCaseIds.includes(c.id) && <button type="button" onClick={() => onViewCase(c.id)} className="mt-3 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-blue-700">{labels.fullCase}</button>}
       </article>)}</div>
     </section>}

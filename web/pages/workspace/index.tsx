@@ -1182,7 +1182,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       if (activeStep.id === "data") {
         setPanelView("information");
         if (analysis.selectedSources.includes("research")) setAnalysisView("answer");
-        else if (analysis.selectedSources.includes("cases") && analysis.evidence.cases.length) {
+        else if (analysis.selectedSources.includes("cases") && analysis.evidence.cases.length && analysis.evidence.cases[0].origin !== "external") {
           setActiveTab(analysis.evidence.cases[0].id); setAnalysisView("cases"); recordCaseView(analysis.evidence.cases[0].id);
         } else setAnalysisView("answer");
       }
