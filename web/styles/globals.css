@@ -56,8 +56,9 @@ body {
 }
 
 /* Only the workspace owns a viewport frame. Other routes keep their page layout. */
-html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overscroll-behavior: none; }
-.workspace-shell { position: fixed; inset: var(--workspace-visible-top, 0px) 0 auto; height: var(--workspace-visible-height, 100dvh); min-height: 0; overflow: hidden; }
+html.workspace-page, body.workspace-page { overflow: hidden; overscroll-behavior: none; }
+.workspace-shell { position: fixed; top: var(--workspace-visible-top, 0px); right: 0; left: 0; height: var(--workspace-visible-height, 100vh); min-height: 0; overflow: hidden; }
+@supports (height: 100dvh) { .workspace-shell { height: var(--workspace-visible-height, 100dvh); } }
 .workspace-shell .shell-frame { height: 100%; min-height: 0; }
 .workspace-shell .desktop-sidebar { height: 100%; }
 .workspace-shell .shell-main { display: flex; flex-direction: column; min-height: 0; padding-top: 24px; padding-bottom: 24px; }
@@ -102,7 +103,7 @@ html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overs
 .workspace-information::-webkit-scrollbar { width: 12px; }
 .workspace-information::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 8px; }
 .workspace-information::-webkit-scrollbar-thumb { background: #64748b; border: 2px solid #e2e8f0; border-radius: 8px; }
-.workspace-information { height: 100%; padding-right: 16px; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #64748b #e2e8f0; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; container: workspace-information / inline-size; overflow-wrap: anywhere; }
+.workspace-information { overflow-wrap: break-word; height: 100%; padding-right: 16px; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #64748b #e2e8f0; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; container: workspace-information / inline-size; overflow-wrap: anywhere; }
 .workspace-information > * + * { margin-top: 16px; }
 .workspace-information > :only-child { min-height: 100%; }
 .workspace-information > *, .workspace-chat-slot, .workspace-chat-slot > * { min-width: 0; min-height: 0; }
@@ -134,13 +135,14 @@ html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overs
 .workspace-chat-controls { min-width: 0; }
 .workspace-chat-controls button { white-space: nowrap; }
 .workspace-chat-lock { flex-shrink: 0; }
-.workspace-chat-messages { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; overflow-wrap: anywhere; }
+.workspace-chat-messages { overflow-wrap: break-word; flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; overflow-wrap: anywhere; }
 .workspace-chat-messages > div { min-width: 0; }
 .workspace-chat-footer { flex-shrink: 0; min-width: 0; }
 .workspace-chat-finish { width: 100%; min-height: 44px; }
 .workspace-composer { position: static; min-width: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
 .workspace-composer input { width: 0; }
-.workspace-chat #analysis-source-options { max-width: min(256px, calc(100cqw - 32px)); max-height: min(360px, calc(100cqh - 110px)); overflow-y: auto; overscroll-behavior: contain; }
+.workspace-chat #analysis-source-options { max-width: 256px; max-height: 60vh; overflow-y: auto; }
+@supports (width: 1cqw) { .workspace-chat #analysis-source-options { max-width: min(256px, calc(100cqw - 32px)); max-height: min(360px, calc(100cqh - 110px)); overflow-y: auto; overscroll-behavior: contain; } }
 /* Portrait chat keeps compact navigation visible without unmounting panels. */
 .workspace-shell[data-keyboard-open="true"] .workspace-chat-finish { display: none; }
 .workspace-shell[data-keyboard-open="true"] .workspace-chat-footer { display: flex; flex-direction: column; }
@@ -198,7 +200,7 @@ html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overs
 .project-image-open { position: absolute; inset: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; cursor: zoom-in; }
 .project-image-open img { width: 100%; height: 100%; object-fit: contain; }
 .project-image-open:focus-visible { outline: 3px solid var(--primary); outline-offset: -4px; }
-.image-viewer { width: min(96vw, 1600px); height: 92dvh; max-width: none; max-height: none; margin: auto; padding: 12px; border: 1px solid #475569; border-radius: 16px; background: #0f172a; color: white; overflow: hidden; overscroll-behavior: contain; }
+.image-viewer { width: min(96vw, 1600px); height: 92vh; max-width: none; max-height: none; margin: auto; padding: 12px; border: 1px solid #475569; border-radius: 16px; background: #0f172a; color: white; overflow: hidden; overscroll-behavior: contain; }
 .image-viewer::backdrop { background: #020617d9; }
 .image-viewer-layout { display: flex; flex-direction: column; height: 100%; gap: 10px; }
 .image-viewer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -212,3 +214,16 @@ html:has(.workspace-shell), body:has(.workspace-shell) { overflow: hidden; overs
 
 @media (hover: hover) and (pointer: fine) { .group:hover .workspace-hover-preview { opacity: 1; } }
 @media (any-pointer: coarse) { .workspace-hover-preview { display: none; } }
+
+@supports (height: 92dvh) { .image-viewer { height: 92dvh; } }
+@supports not (aspect-ratio: 16 / 9) {
+  .project-image-frame::before { content: ""; display: block; padding-top: 56.25%; }
+}
+@supports not (container-type: inline-size) {
+  @media (max-width: 959px) { .workspace-information .grid { grid-template-columns: minmax(0, 1fr); } }
+  .workspace-chat-controls > span { display: none; }
+}
+.no-flex-gap .flex:not(.flex-col)[class*="gap-"] > * + *:not(.ml-auto):not(.mx-auto) { margin-left: var(--ppss-gap, 0px); }
+.no-flex-gap .flex.flex-col[class*="gap-"] > * + *:not(.mt-auto):not(.my-auto) { margin-left: 0; margin-top: var(--ppss-gap, 0px); }
+.no-flex-gap .workspace-account-row > * + *:not(.ml-auto), .no-flex-gap .workspace-stage-list > * + * { margin-left: var(--ppss-gap, 6px); }
+.no-flex-gap .workspace-content > * + *, .no-flex-gap .shell-content > * + *, .no-flex-gap .shell-route-content > * + * { margin-top: var(--ppss-gap, 8px); }
