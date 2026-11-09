@@ -1,4 +1,4 @@
-import { representativePoint, featureNames } from "../../lib/spatial/geo-query";
+import { representativePoint, featureNames, type Place } from "../../lib/spatial/geo-query";
 import { deriveBoundary, boundaryGeoJSON } from '../../lib/spatial/boundary';
 import NaturalLanguageGIS from "./NaturalLanguageGIS";
 import SpatialEntityPicker from "./SpatialEntityPicker";
@@ -36,7 +36,7 @@ export default function SpatialAnalysis({
   category = null,
   onInspect,
 }: {
-  onInspect?: (selection: { layerId: string; featureId: string; name: string; coordinate: [number, number]; scopeMeters?: number }) => void;
+  onInspect?: (selection: { layerId?: string; featureId?: string; name: string; coordinate: [number, number]; scopeMeters?: number }) => void;
   category?: number | null;
   onCategoryChange?: (category: number, layers: LoadedLayer[]) => void;
   projectId: string;
@@ -156,6 +156,10 @@ export default function SpatialAnalysis({
       featureCollection([feature]),
     );
   };
+  const choosePlace = (place: Place) => {
+    geo?.choosePlace(place);
+    onInspect?.({ name: place.name, coordinate: place.coordinate, ...(place.source === "project" ? { layerId: place.layerId, featureId: place.featureId } : {}) });
+  };
   const boundaryLayerId=config.boundaryLayerId??(config.spatialSettings?.activeBoundaryDatasetId?`uploaded-${config.spatialSettings.activeBoundaryDatasetId}`:undefined);
   const boundary=useMemo(()=>{const layer=layers.find(l=>l.config.id===boundaryLayerId);if(!layer)return;try{return deriveBoundary(boundaryGeoJSON(layer.data));}catch{return;}},[layers,boundaryLayerId]);
   const activeLayers = layers;
@@ -170,10 +174,10 @@ export default function SpatialAnalysis({
     <div className="spatial-analysis space-y-3 p-4 sm:p-6">
       {!loading&&<>
         {!boundary&&<p role="status" className="text-xs text-amber-800">{t("boundary.noActive")}</p>}
-        <SpatialEntityPicker entities={showResults?(geo?.candidates??[]):[]} selected={showResults?(geo?.chosenPlace??null):null} highlighted={geo?.highlighted??null} onHighlight={id=>geo?.setHighlighted(id)} onChoose={place=>geo?.choosePlace(place)} busy={geo?.loading??false} reference={showResults?geo?.result?.clarify?.reference:undefined}>
+        <SpatialEntityPicker entities={showResults?(geo?.candidates??[]):[]} selected={showResults?(geo?.chosenPlace??null):null} highlighted={geo?.highlighted??null} onHighlight={id=>geo?.setHighlighted(id)} onChoose={choosePlace} busy={geo?.loading??false} reference={showResults?geo?.result?.clarify?.reference:undefined}>
         <SpatialMap layers={layers} visible={mapVisible} overlay={showResults?overlay:featureCollection([])} extent={boundary?.bbox} resetVersion={resetVersion} onReturn={()=>{setSelected(null);setOverlay(featureCollection([]));if(geo?.loading)geo.clear();setShowResults(false);geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter}));setResetVersion(v=>v+1);}} onSelect={choose}
-          onPoint={(coordinate)=>{setSelected(null);setOverlay(featureCollection([{type:"Feature",properties:{},geometry:{type:"Point",coordinates:coordinate}}]));geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter,point:coordinate}));}}
-          onCenter={(mapCenter)=>geo?.setContext(prev=>({...prev,mapCenter}))} geoResult={mapResult} highlightedPlaceId={geo?.highlighted} selectedPlaceId={geo?.chosenPlace?.id} onPlace={place=>geo?.setHighlighted(place.id)}/>
+          onPoint={(coordinate)=>{onInspect?.({name:t("gis.selectedPoint"),coordinate});setSelected(null);setOverlay(featureCollection([{type:"Feature",properties:{},geometry:{type:"Point",coordinates:coordinate}}]));geo?.setContext(prev=>({scopeMeters:prev.scopeMeters,mapCenter:prev.mapCenter,point:coordinate}));}}
+          onCenter={(mapCenter)=>geo?.setContext(prev=>({...prev,mapCenter}))} geoResult={mapResult} highlightedPlaceId={geo?.highlighted} selectedPlaceId={geo?.chosenPlace?.id} onPlace={choosePlace}/>
         </SpatialEntityPicker>
         {geo&&<NaturalLanguageGIS geo={geo}/>}
 

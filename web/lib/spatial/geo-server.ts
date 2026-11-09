@@ -11,7 +11,7 @@ import { featureKey, featureCollection, resultFor, isArea, touches, createBuffer
 import { bbox, bearing, point, booleanPointInPolygon, pointToPolygonDistance, nearestPointOnLine, lineString } from '@turf/turf';
 import type { Identity } from '../membership/server';
 import type { LoadedLayer, SpatialConfig } from './types';
-import { coordinate, spatialConversationQuestion, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, genericCategoryCode, spatialToolRequest, isMapReference, isProjectStreetReference, projectStreetCorrection, featureNames, type Place, type GeoContext, type GeoResult, type PlaceSearchSnapshot } from './geo-query';
+import { coordinate, mapPointLabel, spatialConversationQuestion, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, genericCategoryCode, spatialToolRequest, isMapReference, isProjectStreetReference, projectStreetCorrection, featureNames, type Place, type GeoContext, type GeoResult, type PlaceSearchSnapshot } from './geo-query';
 import { getWalkingRoute, searchBoundaryPlaces } from './kakao-server';
 import { translate, type Locale } from '../i18n';
 const geometryCache = new Map<string, {
@@ -99,7 +99,7 @@ function selectedPlace(context: GeoContext, layers: LoadedLayer[]): Place | unde
         return { id: `${layer.config.id}:${featureKey(feature, index)}`, name: featureNames(feature)[0] ?? layer.config.label, source: 'project', layerId: layer.config.id, featureId: featureKey(feature, index), ...representativePoint(feature) };
     }
     if (context.point)
-        return { id: 'map-point', name: 'gis.selectedPoint', coordinate: context.point, source: 'map' };
+        return { id: 'map-point', name: context.pointLabel ?? 'gis.selectedPoint', coordinate: context.point, source: 'map' };
 }
 function defaultOrigin(context: GeoContext, layers: LoadedLayer[]): Place | undefined {
     const selected = selectedPlace(context, layers);
@@ -146,7 +146,7 @@ export function verifyChoice(token: unknown, binding: string): Place | undefined
 export async function resolvePlaceReference(name: string, context: GeoContext, layers: LoadedLayer[], search?: (query: string) => Promise<Place[]>): Promise<Place[]> {
     if (/^(현재\s*(지도\s*)?중심|map center)$/i.test(name.trim()))
         return context.mapCenter ? [{ id: 'map-center', name: 'gis.mapCenter', coordinate: context.mapCenter, source: 'map' as const }] : [];
-    if (isMapReference(name)) {
+    if (isMapReference(name) || context.pointLabel && name.trim().replace(/\s/g,'').toLowerCase() === context.pointLabel.replace(/\s/g,'').toLowerCase()) {
         const selected = selectedPlace(context, layers);
         return selected ? [selected] : [];
     }
@@ -248,6 +248,15 @@ export async function executeGeoQuery(input: {
     const warnings = layerWarnings.map(w => t(w));
     if(options&&!boundary)warnings.push(t('boundary.noActive'));
     const result: GeoResult = { question: originalQuestion, intent: plan.intent, reply: '', places: [], warnings };
+    const label = mapPointLabel(originalQuestion);
+    if (label) {
+        const selected = selectedPlace(context, layers);
+        if (!selected) { result.reply = locale === 'ko' ? '지도에서 이름을 붙일 위치를 먼저 선택해주세요.' : 'Select the map point you want to name first.'; return result; }
+        const named: Place = { id: 'map-point', name: label, coordinate: selected.coordinate, source: 'map' };
+        result.origin = named; result.resolvedPlaces = [named];
+        result.reply = locale === 'ko' ? `선택한 위치를 ‘${label}’로 기억해둘게요.` : `I'll use “${label}” for the selected point.`;
+        return result;
+    }
     if(clarification){result.reply=clarification;return result;}
     let tool = spatialToolRequest(input.question, input.history);
     const exploring = tool?.exploratory;
@@ -261,7 +270,7 @@ export async function executeGeoQuery(input: {
         if (regions.length === 1 && subjects.length === 1 && subjects[0] !== regions[0]) {
             explorationTargets = [subjects[0],regions[0]];
             tool = { operation: "overlay", reference: "", exploratory: true };
-        } else if (nearbyAvailable && role !== "buildings" && !layers.some(layer => layer.config.role !== "boundary" && layer.config.datasetType !== "project_boundary" && layer.data.features.length)) {
+        } else if (nearbyAvailable && role !== "buildings" && !layers.some(layer => layer.config.id !== options?.placeSearch?.roadLayerId && layer.config.role !== "boundary" && layer.config.datasetType !== "project_boundary" && layer.data.features.length)) {
             // Reuse the existing bounded place lookup when there is only a boundary to work with.
             tool = undefined; plan.intent="NEARBY_SEARCH"; plan.query=role==="green"?"공원":"편의시설"; plan.nearby=true; plan.origin=/여기|이곳|이\s*장소|선택한|here|this place/i.test(input.question)?undefined:"사업구역"; plan.destination=undefined; plan.locations=undefined; result.intent=plan.intent;
         }
@@ -329,7 +338,7 @@ export async function executeGeoQuery(input: {
             const targetInfo = eligible.length === 1 ? eligible[0] : eligible.length ? undefined
                 : targets.length === 1 && targets[0].data.features.length === 1 ? {layer:targets[0],feature:targets[0].data.features[0],index:0}
                 : selectedFeature && selectedLayer && (!targets.length||targets.includes(selectedLayer)) ? {layer:selectedLayer,feature:selectedFeature,index:selectedLayer.data.features.indexOf(selectedFeature)} : undefined;
-            const target = explorationRegion ?? targetInfo?.feature;
+            const target = explorationRegion ?? targetInfo?.feature ?? (tool.operation === "buffer" && selected?.source === "map" ? point(selected.coordinate) : undefined);
             if (tool.operation === "buffer") {
                 const radius = input.question.match(/(\d+(?:\.\d+)?)\s*(km|m|미터|킬로미터)/i) ?? tool.reference.match(/(\d+(?:\.\d+)?)\s*(km|m|미터|킬로미터)/i);
                 if (target && !radius) { result.reply=t("gis.toolInput.distance",{name:featureNames(target)[0]??selectedLayer?.config.label??t("gis.selectedPoint")}); return result; }
@@ -337,7 +346,7 @@ export async function executeGeoQuery(input: {
                 if (!target || !radius) return ask("buffer");
                 const meters = Number(radius[1])*(/km|킬로/.test(radius[2])?1000:1);
                 const shape = createBuffer(target,meters);
-                result.computedResult = resultFor(projectId,"buffer",layers,shape,{distanceMeters:meters,selectedLayerId:targetInfo!.layer.config.id,selectedFeatureId:featureKey(targetInfo!.feature,targetInfo!.index)});
+                result.computedResult = resultFor(projectId,"buffer",layers,shape,{distanceMeters:meters,...(targetInfo?{selectedLayerId:targetInfo.layer.config.id,selectedFeatureId:featureKey(targetInfo.feature,targetInfo.index)}:{selectedPoint:JSON.stringify(selected!.coordinate)})});
                 result.resultGeometry = featureCollection([shape]);
                 result.reply = t("gis.toolBuffer",{distance:meters,area:Math.round(result.computedResult.metrics.areaSqm).toLocaleString()});
             } else {
@@ -410,7 +419,7 @@ export async function executeGeoQuery(input: {
             const regionToken=reference.regionName.split(/\s+/).at(-1)!;
             const namedRoad=plan.origin?reference.roadNames.find(name=>normalize(name)===normalize(plan.origin!)):undefined;
             const wholeRegion=context.scopeMeters===0||/사업구역\s*(?:안|내|전체)|(?:entire|whole) project/i.test(input.question)||(normalize(input.question).includes(normalize(regionToken))&&(!reference.roadNames.some(name=>normalize(input.question).includes(normalize(name)))||/전체/.test(input.question)));
-            const explicitOrigin=!!plan.origin&&!namedRoad&&!isProjectStreetReference(plan.origin)&&!/^(?:사업구역|대상지)$/.test(plan.origin);
+            const explicitOrigin=!!context.point || !!context.selected || !!plan.origin&&!namedRoad&&!isProjectStreetReference(plan.origin)&&!/^(?:사업구역|대상지)$/.test(plan.origin);
             const useRoads=!resolvingOrigin&&!wholeRegion&&!explicitOrigin;
             const radius=explicitRadius?Math.min(2000,plan.radius):context.scopeMeters||reference.radiusMeters;
             const roads=layers.find(layer=>layer.config.id===reference.roadLayerId);

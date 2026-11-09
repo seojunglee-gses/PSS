@@ -4,7 +4,7 @@ import { analysisActivities, analysisActivityText, analysisSessionQuestion, pars
 import { mergeStepChatLogs } from "../../lib/chat-history";
 import {isDesignGenerationRequest} from "../../lib/facilitation";
 import { useGeoWorkspace } from "../../lib/spatial/use-geo";
-import { isGeoQuestion, spatialConversationQuestion, placeResultFollowUp, spatialToolRequest, isSpatialToolExplanation, isSpatialToolCancelled } from "../../lib/spatial/geo-query";
+import { isGeoQuestion, mapPointLabel, spatialConversationQuestion, placeResultFollowUp, spatialToolRequest, isSpatialToolExplanation, isSpatialToolCancelled } from "../../lib/spatial/geo-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import SpatialSummary from "../../components/spatial/SpatialSummary";
@@ -270,7 +270,6 @@ function AuthorizedWorkspace() {
   const userKey = user?.uid;
   const queryProjectId = typeof router.query.projectId === "string" ? router.query.projectId : null;
   const projectId = queryProjectId ?? activeProjectId ?? "project-1";
-  const geo = useGeoWorkspace(projectId);
   const [geoChat, setGeoChat] = useState<{time: string; question: string} | null>(null);
   const providerStorageKey = `${providerStorageKeyBase}-${projectId}`;
   const activeStepStorageKey = `ppss-active-step-${projectId}`;
@@ -317,6 +316,7 @@ function AuthorizedWorkspace() {
   const [role, setRole] = useState("Guest");
   const normalizedActiveRole = normalizeRoleId(role);
   const [activeProvider, setActiveProvider] = useState("ChatGPT");
+  const geo = useGeoWorkspace(projectId, activeProvider);
 
 
 
@@ -702,8 +702,10 @@ function AuthorizedWorkspace() {
             const category = /^category-([0-3])$/.exec(current.referenceId);
             if (category) setSpatialCategory(Number(category[1]));
           }
-          const place = current?.location?.places.length === 1 ? current.location.places[0] : undefined;
-          if (place) geo.setContext({ point: place.coordinate, ...(place.layerId && place.featureId ? { selected: { layerId: place.layerId, featureId: place.featureId } } : {}), ...([0, 500, 1000].includes(current?.location?.scopeMeters ?? -1) ? { scopeMeters: current!.location!.scopeMeters as 0 | 500 | 1000 } : {}) });
+          const selection = [...analysisActivities(normalized, projectId)].reverse().find(activity => activity.location?.reply === "Selected project feature; location only." || activity.location?.places.some(place => place.id === "map-point"));
+          const place = selection?.location?.places.find(place => place.id === "map-point") ?? selection?.location?.places[0] ?? (current?.location?.places.length === 1 ? current.location.places[0] : undefined);
+          const scope = selection?.location?.scopeMeters ?? current?.location?.scopeMeters;
+          if (place) geo.setContext({ point: place.coordinate, ...(place.layerId && place.featureId ? { selected: { layerId: place.layerId, featureId: place.featureId } } : {pointLabel:place.name}), ...([0, 500, 1000].includes(scope ?? -1) ? { scopeMeters: scope as 0 | 500 | 1000 } : {}) });
         }
         setChatLogsByStep((prev) => ({ ...prev, [activeStep.id]: normalized }));
         setLoadedChatScope(chatScope);
@@ -1105,7 +1107,7 @@ const handleSend = async (suggestedQuestion?: string) => {
   const sessionQuestion = stepId === "data" ? (clarificationExchange(userMessage,history) ? sourceRoutingQuestion(userMessage,history) : analysisSessionQuestion(userMessage, analysisActivities(dataLogsRef.current, projectId), activeProject?.workspaceContent.data.cases)) : userMessage;
   const placeFollowUp = stepId === "data" && Boolean(((placeResultFollowUp(userMessage)==="search-comparison"&&geo.recentSearches.length)||geo.result?.places.length || analysisActivities(dataLogsRef.current, projectId).at(-1)?.location?.places.length) && !geo.result?.clarify && placeResultFollowUp(userMessage));
   const toolRequest = stepId === "data" ? spatialToolRequest(spatialQuestion,history) : undefined;
-  const effectiveSources = resolveSources(placeFollowUp || toolRequest || (spatialQuestion!==userMessage&&isGeoQuestion(spatialQuestion)) ? "공간 분석" : sessionQuestion !== userMessage ? sessionQuestion : sourceRoutingQuestion(userMessage, history), selectedSources, activeProject?.workspaceContent.data.cases, sessionQuestion !== userMessage ? [] : history);
+  const effectiveSources = resolveSources(placeFollowUp || toolRequest || (spatialQuestion!==userMessage&&isGeoQuestion(spatialQuestion)) ? "공간 분석" : sessionQuestion !== userMessage ? sessionQuestion : sourceRoutingQuestion(userMessage, history), mapPointLabel(userMessage) && (geo.context.point || geo.context.selected) ? [] : selectedSources, activeProject?.workspaceContent.data.cases, sessionQuestion !== userMessage ? [] : history);
   setSendingChatScope(chatScope);
   setIsSending(true);
   setErrorMessage(null);
@@ -1829,6 +1831,10 @@ const handleSend = async (suggestedQuestion?: string) => {
               </p>
               {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} additionalSources={[...(message.analysis.evidence.projectContext ? ["project" as const] : []), ...(message.analysis.spatialContext ? ["spatial" as const] : [])]} onViewEvidence={(sourceId) => {
                 setInspectedEvidence(usedAnswerEvidence(message.analysis!));
+                const viewedPaper = message.analysis!.evidence.papers.find(paper => paper.sourceId === sourceId);
+                if (viewedPaper) recordAnalysisActivity({type:"research",referenceId:viewedPaper.openAlexId,title:viewedPaper.title});
+                const viewedCase = message.analysis!.evidence.cases.find(item => item.sourceId === sourceId);
+                if (viewedCase) recordCaseView(viewedCase.id);
                 setInspectedResearchFindings(message.analysis!.answer.researchFindings);
                 setInspectedCaseFindings(message.analysis!.answer.caseFindings);
                 setInspectedSpatial(message.analysis!.spatialContext ?? null);
@@ -2087,7 +2093,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               <SpatialAnalysis category={spatialCategory} onCategoryChange={(category, layers) => {
                 setSpatialCategory(category); updateSpatialResult(null);
                 recordAnalysisActivity({ type: "spatial", referenceId: `category-${category}`, title: t(`boundary.category.${category}`), location: { question: t(`boundary.category.${category}`), reply: JSON.stringify({ displayedLayers: layers.map(layer => ({ id: layer.config.id, name: layer.config.label, featureCount: layer.data.features.length })), scope: "Counts cover uploaded datasets, not measured need or facility adequacy." }), places: [] } });
-              }} onInspect={selection => { updateSpatialResult(null); recordAnalysisActivity({ type: "spatial", referenceId: `${selection.layerId}/${selection.featureId}`, title: selection.name, location: { question: selection.name, reply: "Selected project feature; location only.", ...(selection.scopeMeters !== undefined ? { scopeMeters: selection.scopeMeters } : {}), places: [{ id: `${selection.layerId}/${selection.featureId}`, name: selection.name, coordinate: selection.coordinate, layerId: selection.layerId, featureId: selection.featureId }] } }); }} geo={geo} key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={recordSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
+              }} onInspect={selection => { updateSpatialResult(null); recordAnalysisActivity({ type: "spatial", referenceId: selection.layerId && selection.featureId ? `${selection.layerId}/${selection.featureId}` : "map-point", title: selection.name, location: { question: selection.name, reply: "Selected project feature; location only.", ...(selection.scopeMeters !== undefined ? { scopeMeters: selection.scopeMeters } : {}), places: [{ id: selection.layerId && selection.featureId ? `${selection.layerId}/${selection.featureId}` : "map-point", name: selection.name, coordinate: selection.coordinate, ...(selection.layerId && selection.featureId ? {layerId: selection.layerId, featureId: selection.featureId} : {}) }] } }); }} geo={geo} key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={recordSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
             </div>}
             {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
               <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>

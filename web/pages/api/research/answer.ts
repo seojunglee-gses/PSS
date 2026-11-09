@@ -1,7 +1,7 @@
 import { spatialPromptContext } from "../../../lib/spatial/context";
 import { projectLayers } from "../../../lib/spatial/geo-server";
 import { canonicalBuildingContext } from "../../../lib/spatial/building-use-server";
-import { analysisActivities, analysisSessionContext, analysisSessionQuestion } from "../../../lib/analysis-session";
+import { analysisActivities, analysisSessionContext, analysisSessionQuestion, isPaperReference } from "../../../lib/analysis-session";
 import { clarificationExchange } from "../../../lib/chat-history";
 import {policyHistory} from "../../../lib/facilitation";
 import { loadProjectContext } from "../../../lib/project-context-server";
@@ -10,7 +10,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { parseAnalysisRequest, retrieveEvidence } from "../../../lib/research/evidence";
 import { answerFromEvidence, answerText } from "../../../lib/research/answer";
 import { compactEvidence } from "../../../lib/research/types";
-import { namedCases,resolveSources,sourceRoutingQuestion } from "../../../lib/research/routing";
+import { namedCases,resolveSources,sourceRoutingQuestion, wantsNewCases } from "../../../lib/research/routing";
 import { readCasePassages } from "../../../lib/research/case-sources-server";
 
 export const config = { api: { bodyParser: { sizeLimit: "128kb" } } };
@@ -34,6 +34,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const contextual=request.searchQuestion!==request.question;
     if(!contextual)request.searchQuestion=sourceRoutingQuestion(request.question,request.history??[]);
     if(!Array.isArray(req.body.selectedSources)||!req.body.selectedSources.length)request.selectedSources=resolveSources(request.searchQuestion,[],context.cases,contextual?[]:request.history);
+    if (isPaperReference(request.question)) {
+      const paper = [...activities].reverse().find(activity => activity.type === "research" && /^https:\/\/openalex\.org\/W\d+$/.test(activity.referenceId));
+      if (paper) request.selectedPaperId = paper.referenceId;
+    }
     request.analysisSession=analysisSessionContext(context.stageHistory,context.projectId,context.cases,request.selectedSources);
     if(request.selectedSources.includes("spatial") && !request.spatialContext)request.spatialContext=canonicalBuildingContext([...activities].reverse().find(a=>a.type==="spatial")?.result);
     if(request.selectedSources.includes("spatial")) {
@@ -42,7 +46,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     if(request.selectedSources.includes('cases')){
       const focused=namedCases(request.searchQuestion,context.cases,contextual?[]:request.history);
-      request.casePassages=await readCasePassages(context.projectId,focused.length?focused:context.cases);
+      request.casePassages=await readCasePassages(context.projectId,!wantsNewCases(request.question)&&focused.length?focused:context.cases);
     }
     request.facilitationHistory=policyHistory(context.stageHistory);
   } catch (error) { res.status(error instanceof AccessError ? error.status : 503).json({ error: error instanceof AccessError ? error.message : "사업 자료를 불러오지 못했습니다." }); return; }

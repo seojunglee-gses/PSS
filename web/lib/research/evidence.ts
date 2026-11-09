@@ -3,9 +3,9 @@ import { requestClarification } from "../facilitation";
 import { parseSpatialResult } from "../spatial/context";
 import { canonicalBuildingContext } from "../spatial/building-use-server";
 import type { SpatialResult } from "../spatial/types";
-import { searchOpenAlex } from "./openalex";
+import { searchOpenAlex, readOpenAlexPaper } from "./openalex";
 import { SOURCE_OPTIONS } from "./types";
-import { resolveSources, sourceRoutingQuestion,namedCases,wantsImplications } from "./routing";
+import { resolveSources, sourceRoutingQuestion,namedCases,wantsImplications,wantsResearch,wantsNewCases } from "./routing";
 import { retrieveCasePassages } from "./case-retrieval";
 import { conversationHistory } from "../chat-history";
 import type { ConversationMessage } from "../chat-history";
@@ -29,6 +29,7 @@ export type AnalysisRequest = {
   previousSummaries?: Record<string, unknown>;
   provider: "openai" | "gemini" | "deepseek";
   casePassages?: CaseEvidence[];
+  selectedPaperId?: string;
 };
 
 export function parseAnalysisRequest(body: unknown): AnalysisRequest {
@@ -69,7 +70,7 @@ export function selectCases(question: string, cases: CaseMaterial[]): CaseEviden
     .sort((a, b) => b.relevanceTerms.length - a.relevanceTerms.length);
   const matching = ranked.filter((c) => c.relevanceTerms.length);
   // A lexical miss is explicitly a contextual comparison, not a relevance claim.
-  return (matching.length ? matching : ranked).slice(0, 4);
+  return (matching.length ? matching : wantsNewCases(question) ? [] : ranked).slice(0, 4);
 }
 
 export async function retrieveEvidence(request: AnalysisRequest): Promise<EvidenceBundle> {
@@ -86,24 +87,33 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
     if (projectMaterial.trim()) evidence.projectContext = projectMaterial;
     else evidence.warnings.push({ source: "project", message: "이 사업에 등록된 자료가 없습니다." });
   }
-  if (request.selectedSources.includes("spatial") && !request.spatialContext && !request.registeredSpatialContext?.registeredLayers.length) evidence.warnings.push({ source: "spatial", message: "공간 분석 결과가 없습니다. 공간 분석에서 질문에 필요한 분석을 먼저 실행해주세요." });
+  if (request.selectedSources.includes("spatial") && !request.spatialContext && !request.registeredSpatialContext?.registeredLayers.length) evidence.warnings.push({ source: "spatial", message: "현재 질문에 사용할 공간 계산 결과가 아직 없습니다. 실행되지 않은 값을 사실로 제시하지 마세요." });
   let researchQuery=request.searchQuestion ?? request.question;
   let needsResearch=request.selectedSources.includes('research');
-  const focused=namedCases(request.searchQuestion ?? request.question,request.cases,request.history);
+  const discovery=wantsNewCases(request.question);
+  const explicitResearch=wantsResearch(request.question) || request.selectedSources.includes("research");
+  const focused=discovery?[]:namedCases(request.searchQuestion ?? request.question,request.cases,request.history);
   const caseFactsOnly=request.casePassages!==undefined&&focused.length>0&&!wantsImplications(request.question)&&!/논문|연구|학술|일반|\b(?:research|stud(?:y|ies)|literature)\b/i.test(request.question);
   if (request.selectedSources.includes("cases")) {
     evidence.cases = selectCases(request.searchQuestion ?? request.question, focused.length?request.cases.filter(item=>focused.some(c=>c.id===item.id)):request.cases);
-    if(request.casePassages!==undefined&&(request.casePassages.length>0||namedCases(request.question,request.cases,request.history).length>0)){
-      const selected=await retrieveCasePassages(request,request.casePassages,evidence.cases);evidence.cases=selected.cases;
-      needsResearch=!!selected.researchQuery;researchQuery=selected.researchQuery;
+    if(request.casePassages!==undefined&&(request.casePassages.length>0||namedCases(request.question,request.cases,request.history).length>0||discovery&&request.cases.length>0)){
+      const bodies = discovery ? request.cases.map((material,index)=>({...material,sourceId:`C:${index+1}`,relevanceTerms:[]})) : evidence.cases;
+      const selected=await retrieveCasePassages(request,request.casePassages,bodies);evidence.cases=selected.cases;
+      needsResearch=explicitResearch || !!selected.researchQuery || (discovery && !selected.cases.length);researchQuery=selected.researchQuery || request.searchQuestion || request.question;
       if(needsResearch&&!request.selectedSources.includes('research'))request.selectedSources.push('research');
       if(needsResearch&&caseFactsOnly&&!focused.some(c=>researchQuery.toLowerCase().includes(c.title.toLowerCase())))researchQuery=`${focused.map(c=>c.title).join(' ')} ${researchQuery}`.slice(0,350);
     }
-    if (!evidence.cases.length) evidence.warnings.push({ source: "cases", message: "No substantive case-study materials are available for this project." });
+    if (discovery && !evidence.cases.length) {
+      needsResearch = true;
+      researchQuery = `${request.searchQuestion ?? request.question} actual implemented case studies`;
+      if (!request.selectedSources.includes('research')) request.selectedSources.push('research');
+      evidence.warnings.push({source:"cases",message:"No matching registered case was confirmed. OpenAlex is the available fallback for documented applications; this system has no general web case-search tool. An unrelated registered case is not a matching example."});
+    }
+    if (!evidence.cases.length) evidence.warnings.push({ source: "cases", message: discovery ? "No matching registered case was confirmed for this request." : "No substantive case-study materials are available for this project." });
   }
   if (needsResearch) {
     try {
-      evidence.papers = await searchOpenAlex(researchQuery, request.provider, request.projectContext);
+      evidence.papers = request.selectedPaperId ? await readOpenAlexPaper(request.selectedPaperId) : await searchOpenAlex(researchQuery, request.provider, request.projectContext);
       if(caseFactsOnly){
         const normalized=(value:string)=>value.toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
         evidence.papers=evidence.papers.filter(p=>focused.some(c=>[c.title,...(c.aliases??[])].some(name=>normalized(name).length>=4&&normalized(`${p.title} ${p.abstract??''}`).includes(normalized(name)))));

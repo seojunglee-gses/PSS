@@ -32,6 +32,7 @@ export type GeoContext = {
         featureId: string;
     };
     point?: Coordinate;
+    pointLabel?: string;
     mapCenter?: Coordinate;
 };
 export type GeoIntent = 'PLACE_SEARCH' | 'CATEGORY_SEARCH' | 'NEARBY_SEARCH' | 'STRAIGHT_DISTANCE' | 'WALKING_ROUTE' | 'NEAREST_PLACE' | 'RADIUS_SEARCH' | 'EXISTING_GIS_QUERY';
@@ -100,6 +101,10 @@ export function parseGeoContext(input: unknown): GeoContext {
     }
     if (v.point)
         result.point = coordinate(v.point);
+    if (v.pointLabel !== undefined) {
+        if (!result.point || typeof v.pointLabel !== 'string' || !v.pointLabel.trim() || v.pointLabel.length > 100 || /[\x00-\x1f]/.test(v.pointLabel)) throw new Error('gis.invalidCoordinate');
+        result.pointLabel = v.pointLabel.trim();
+    }
     if (v.mapCenter)
         result.mapCenter = coordinate(v.mapCenter);
     return result;
@@ -133,7 +138,20 @@ export const isProjectStreetReference = (name: string) => /^(?:(?:이|그|해당
 export function projectStreetCorrection(question: string): string | undefined {
     return question.match(/^(?:이|그|해당)\s*(?:거리|가로|길)(?:는|은)\s*(?:당연히\s*)?(.+?)(?:이지|이죠|이에요|입니다|이야|야|요)?[.!?\s]*$/)?.[1]?.trim();
 }
-const reference = /^(?:지금\s*)?(여기|거기|이곳|이\s*건물|이\s*필지|선택한.*|선택된.*|현재\s*(지도\s*)?중심|here|this (building|parcel)|selected.*|map center)$/i;
+// A participant label is attached only to the selected point, never treated as a verified POI.
+export function mapPointLabel(question: string): string | undefined {
+    const match = question.trim().match(/^(?:여기|이곳|이\s*(?:장소|지점))(?:가|는|은)?\s+(.{1,100}?)(?:이야|야|이에요|예요|입니다)[.!。\s]*$/);
+    const label = match?.[1]?.trim();
+    return label && !/[?？]|어디|무엇|뭐|어떤|아니|않/.test(label) ? label : undefined;
+}
+export function isSpatialInvestigation(question: string) {
+    if (/논문|학술|연구|사례|\b(?:research|literature|stud(?:y|ies)|cases?)\b/i.test(question)) return false;
+    if (mapPointLabel(question)) return true;
+    const location = /여기|이곳|이\s*(?:장소|근처)|아까\s*말한\s*곳|주변|근처|지역|장소|시설|거리|도로|공간|보행|here|nearby|this place/i.test(question);
+    return location && /왜.{0,12}(?:번잡|복잡|혼잡)|(?:주변|근처).*(?:확인|뭐|무엇)|영향|몇\s*(?:개|곳)|가까운|찾아봐|확인해봐|살펴봐|investigat|congest|crowd/i.test(question)
+      || /^\s*\d+(?:\.\d+)?\s*(?:m|km|미터)\s*(?:이내|주변|반경|근처)/i.test(question);
+}
+const reference = /^(?:지금\s*)?(여기|거기|이곳|이\s*장소|아까\s*말한\s*곳|이전에\s*말한\s*곳|이\s*건물|이\s*필지|선택한.*|선택된.*|현재\s*(지도\s*)?중심|here|this (building|parcel)|selected.*|map center)$/i;
 export const isMapReference = (name: string) => reference.test(name.trim());
 function clean(text: string) { return text.trim().replace(/(?:을|를)?\s*(?:지도(?:에|에서)\s*)?(?:보여(?:줘|주세요)|찾아(?:줘|주세요)|검색(?:해줘|해주세요)|(?:분석|확인)(?:해줘|해주세요))\s*[?.!]*$/i, '').replace(/(?:은|는|이|가)?\s*어디(?:에)?\s*있(?:어|나요|니|을까)?[?.!]*$/, '').replace(/[?.!]+$/g, '').replace(/(?:은|는|이|가)?\s*어디(?:야|인가요|에\s*있(?:어|나요))$/,'').replace(/(?:을|를)?\s*(?:찾아(?:줘|주세요)?|검색(?:해줘|해주세요)?|알려(?:줘|주세요)?|보여(?:줘|주세요)?|어디(?:야|인가요)?|있(?:어|나요)|있을까|search|find|show)(?:[?.!\s]*)$/i, '').trim(); }
 export function parseGeoPlan(question: string): GeoPlan {
@@ -191,6 +209,9 @@ export function parseGeoPlan(question: string): GeoPlan {
     if (intent === 'CATEGORY_SEARCH' && !genericCategoryCode(query))
         intent = 'PLACE_SEARCH';
     if(/주요\s*(?:사업)?시설|공간\s*구조|사업구역.*(?:면적|건물)|타워.*전파기지.*어디|key\s*(?:project\s*)?facilit|spatial\s*structure|where.*tower.*station/i.test(q))intent='EXISTING_GIS_QUERY';
+    query = query.replace(/(?:찾아봐|확인해봐|주변\s*확인|근처\s*확인)[.!?\s]*$/, '').trim();
+    query = query.replace(/(?:이|가|은|는)?\s*몇\s*(?:개|곳)(?:야|인가요|있(?:어|나요))?.*$/, '').trim();
+    if (!query || /^(?:뭐가|무엇이|뭐|무엇|어떤\s*곳|확인)(?:\s*있어)?$/i.test(query)) query = '편의시설';
     query=query.replace(/^(?:에|의)\s+/, '').replace(/^(?:어떤|어디에|무슨)\s*/,'').replace(/^(?:생활시설|편의시설|시설)(?:이|가|은|는)?$/,'편의시설');
     if (/주민.*이용.*시설|이용할.*시설/.test(query)) query = '편의시설';
     if (intent === 'PLACE_SEARCH' && genericCategoryCode(query)) intent = 'CATEGORY_SEARCH';
@@ -211,6 +232,10 @@ export const isSpatialToolExplanation = (question: string) => toolOperations(que
 export function spatialConversationQuestion(question: string, history: import("../chat-history").ConversationMessage[] = []): string {
     const exchange=clarificationExchange(question,history);
     if(!exchange){
+        if (/^(?:그럼|그러면|다시)?\s*(?:찾아봐|찾아줘|검색해봐|검색해줘|확인해봐)[.!?\s]*$/.test(question.trim())) {
+            const previous = [...history].reverse().find(message => message.role === "user");
+            if (previous && isGeoQuestion(previous.content) && !mapPointLabel(previous.content) && !/논문|연구|학술|사례|research|study|case/i.test(previous.content)) return previous.content;
+        }
         const last=history[history.length-1],correction=history[history.length-2];
         // Recover the reported failed task when the participant retries after a false text-only hand-off.
         if(/^(?:그럼|그러면|다시|이어서)?\s*(?:검색해봐|검색해줘|검색해주세요|찾아봐|찾아줘|찾아주세요|확인해봐)[.!?\s]*$/.test(question.trim())
@@ -238,7 +263,7 @@ export function spatialConversationQuestion(question: string, history: import(".
 export function spatialToolRequest(question: string, history: import("../chat-history").ConversationMessage[] = []): { operation: typeof toolPatterns[number][0]; reference: string; exploratory: boolean } | undefined {
     if (isSpatialToolExplanation(question) || /하지\s*마|하지\s*말|실행하지|말고|취소|그만|don.?t|do not|cancel/i.test(question)) return;
     const exploration = !toolOperations(question).length && !/논문|학술|연구|사례|\b(?:research|literature|study|cases?)\b/i.test(question)
-        && /개선|문제|후보|improv|problem|candidate/i.test(question)
+        && /개선|문제|후보|왜.{0,12}(?:번잡|복잡|혼잡)|improv|problem|candidate|congest|crowd/i.test(question)
         && /장소|지역|공간|대상지|가로|시설|places?|sites?|areas?/i.test(question)
         && /어디부터|무엇부터|어떤\s*(?:자료|곳|분석)|자료부터|찾으려면|찾아|살펴|확인|where.*start|what.*(?:check|first)|identify/i.test(question);
     if (exploration) return { operation: "area", reference: "", exploratory: true };
@@ -259,7 +284,7 @@ export function placeResultFollowUp(question: string): "distribution" | "boundar
     if (/어느\s*(?:쪽|방향).*모|(?:이|그)\s*(?:결과|장소|시설).*분포|어디.*모여|which (?:side|direction)|(?:these|those|results).*distribut/i.test(question)) return "distribution";
 }
 export function isGeoQuestion(question: string) {
-    return !!placeCategory(question) || (/어린이집|유치원|학원|주유소|충전소|지하철|은행|중개업소|관광지|관광명소|숙박|호텔|세탁소|경로당|공방|체육관|daycare|bank|gym|laundry/i.test(question) && /보여|찾아|검색|어디|주변|근처|show|find|search|where|near/i.test(question)) || /key\s*(?:project\s*)?facilit|spatial\s*structure|주요\s*(?:사업)?시설|공간\s*구조|면적|건물\s*수|위치|어디(?:야|인가요|에\s*있)|\b(?:find|search|where (?:is|are))\b|(?:검색|찾아)(?:해)?(?:줘|주세요)|주변|근처|카페|약국|마트|음식점|식당|편의점|병원|학교|버스\s*정류장|공원|도보|걸어|몇\s*미터|가장\s*가까|지도\s*중심|까지.*거리|에서.*까지|nearby|nearest|walking|\bfrom\b.*\bto\b|\b(cafe|pharmacy|restaurant|supermarket)\b/i.test(question);
+    return isSpatialInvestigation(question) || !!placeCategory(question) || (/어린이집|유치원|학원|주유소|충전소|지하철|은행|중개업소|관광지|관광명소|숙박|호텔|세탁소|경로당|공방|체육관|daycare|bank|gym|laundry/i.test(question) && /보여|찾아|검색|어디|주변|근처|show|find|search|where|near/i.test(question)) || /key\s*(?:project\s*)?facilit|spatial\s*structure|주요\s*(?:사업)?시설|공간\s*구조|면적|건물\s*수|위치|어디(?:야|인가요|에\s*있)|\b(?:find|search|where (?:is|are))\b|(?:검색|찾아)(?:해)?(?:줘|주세요)|주변|근처|카페|약국|마트|음식점|식당|편의점|병원|학교|버스\s*정류장|공원|도보|걸어|몇\s*미터|가장\s*가까|지도\s*중심|까지.*거리|에서.*까지|nearby|nearest|walking|\bfrom\b.*\bto\b|\b(cafe|pharmacy|restaurant|supermarket)\b/i.test(question);
 }
 export function calculateStraightLineDistance(origin: Coordinate, destination: Coordinate) { return distance(point(coordinate(origin)), point(coordinate(destination)), { units: 'meters' }); }
 export function representativePoint(feature: Feature<Geometry>): {

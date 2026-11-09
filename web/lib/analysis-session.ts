@@ -1,3 +1,4 @@
+import { isSpatialInvestigation, isGeoQuestion } from "./spatial/geo-query";
 import { parseSpatialResult } from "./spatial/context";
 import type { SpatialResult } from "./spatial/types";
 import type { CaseMaterial, EvidenceSource } from "./research/types";
@@ -47,11 +48,14 @@ export function analysisActivities(logs: unknown, projectId: string): AnalysisAc
   }).slice(-12);
 }
 
+export const isPaperReference = (question: string) => !/다른\s*논문|새로운\s*(?:논문|연구)|말고|\b(?:other|new|instead)\b/i.test(question) && /(?:이|그|해당)\s*(?:논문|연구)|(?:방금|최근|아까).{0,12}(?:논문|연구)|\b(?:this|that|last|selected) (?:paper|study)\b/i.test(question);
+
 // Extend retrieval context only for a referential follow-up; never alter the displayed question.
 export function analysisSessionQuestion(question: string, activities: AnalysisActivity[], cases: CaseMaterial[] = []): string {
-  if (!/여기|거기|(?:이|그|해당)\s*(?:사례|자료|논문|연구|결과|분석)|우리\s*(?:지역|사업)|적용할|관련\s*(?:연구|논문)|\b(?:here|there|this|that|apply|related)\b/i.test(question)) return question;
-  const referenceType = /(?:이|그|해당)\s*사례|\b(?:this|that) case\b/i.test(question) ? "cases"
-    : /(?:이|그|해당)\s*(?:논문|연구)|\b(?:this|that) (?:paper|study)\b/i.test(question) ? "research"
+  if (isSpatialInvestigation(question) || isGeoQuestion(question) && !/논문|연구|학술|사례|\b(?:research|stud(?:y|ies)|cases?)\b/i.test(question)) return question;
+  if (!/여기|거기|아까\s*말한\s*곳|(?:방금|최근|아까).{0,12}(?:사례|논문|연구)|(?:이|그|해당)\s*(?:사례|자료|논문|연구|결과|분석)|우리\s*(?:지역|사업)|적용할|관련\s*(?:연구|논문)|\b(?:here|there|this|that|apply|related)\b/i.test(question)) return question;
+  const referenceType = /(?:이|그|해당)\s*사례|(?:방금|최근|아까).{0,12}사례|\b(?:this|that) case\b/i.test(question) ? "cases"
+    : isPaperReference(question) ? "research"
     : /(?:이|그)\s*(?:분석|결과)|\b(?:this|that) (?:analysis|result)\b/i.test(question) ? "spatial" : undefined;
   const current = referenceType ? [...activities].reverse().find(activity => activity.type === referenceType) : activities[activities.length - 1];
   if (!current) return question;

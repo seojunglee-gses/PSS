@@ -71,7 +71,7 @@ export default function EvidencePanel({ evidence, enabled, loading, highlighted,
           {topTopics.length > 0 && <p className="mt-1">{labels.topics}: {topTopics.map(([topic]) => topic).join(" · ")}</p>}
         </div>
         <div className="mt-3 space-y-3">{papers.map((p) => <article key={p.sourceId} id={`evidence-${p.sourceId}`} className={cardClass(p.sourceId)}>
-          <p className="text-xs text-blue-700">[{p.sourceId}]</p><h5 className="mt-1 font-semibold">{p.title}</h5>
+          <p className="text-xs text-blue-700">[{p.sourceId}]</p><h5 className="mt-1 font-semibold"><button type="button" className="min-h-11 text-left hover:text-blue-700" onClick={() => onViewPaper?.(p)}>{p.title}</button></h5>
           <p className="mt-2 text-xs text-slate-600">{p.authors.length ? p.authors.join(", ") : labels.authorUnknown}</p>
           <p className="mt-1 text-xs text-slate-500">{p.year ?? labels.unknown} · {p.journal ?? labels.unknown}</p>
           {researchFindings.some(finding => finding.sourceIds.includes(p.sourceId)) && <>
