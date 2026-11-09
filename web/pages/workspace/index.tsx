@@ -1806,7 +1806,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                   : "border-slate-200 bg-white"
               } ${isAssistant ? "mr-auto" : "ml-auto"}`}
             >
-              <p className="text-xs font-semibold text-slate-400">
+              <p className={`${isAssistant ? "workspace-assistant-label " : ""}text-xs font-semibold text-slate-400`}>
                 {normalizeRoleId(message.label) ? t(roleLabelKeys[normalizeRoleId(message.label)!]) : localize(providerLabel(message.label))}
               </p>
               {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} additionalSources={[...(message.analysis.evidence.projectContext ? ["project" as const] : []), ...(message.analysis.spatialContext ? ["spatial" as const] : [])]} onViewEvidence={(sourceId) => {
@@ -1851,11 +1851,11 @@ const handleSend = async (suggestedQuestion?: string) => {
         <div ref={chatEndRef} />
       </div>
       <div className="workspace-chat-footer">
-      {hasLoadedChatLogs && hasDialogue && guide && <div className="mt-2">
-        <button type="button" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-200 text-slate-600" aria-label={t("workspace.starterPrompts")} title={t("workspace.starterPrompts")} aria-expanded={expandedStarterScope === chatScope} aria-controls="workspace-starter-prompts" disabled={isSending || isLoadingAlternatives || isStageLocked} onClick={() => setExpandedStarterScope(current => current === chatScope ? null : chatScope)}>
+      {hasLoadedChatLogs && guide && <div className="workspace-starter-help mt-2" data-has-dialogue={hasDialogue}>
+        <button type="button" className="workspace-help-button inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border border-slate-200 text-slate-600" aria-label={t("workspace.starterPrompts")} title={t("workspace.starterPrompts")} aria-expanded={expandedStarterScope === chatScope} aria-controls="workspace-starter-prompts" disabled={isSending || isLoadingAlternatives || isStageLocked} onClick={() => setExpandedStarterScope(current => current === chatScope ? null : chatScope)}>
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.7-1.5 1.6-1.5 3.5h-4c0-1.9-.6-2.8-1.5-3.5Z" /></svg>
         </button>
-        {expandedStarterScope === chatScope && <div id="workspace-starter-prompts" className="max-h-36 overflow-y-auto overscroll-contain">
+        {expandedStarterScope === chatScope && <div id="workspace-starter-prompts" className="workspace-help-popover max-h-36 overflow-y-auto overscroll-contain">
           <StageChatEmptyState guide={guide} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} />
         </div>}
       </div>}
@@ -1934,29 +1934,10 @@ const handleSend = async (suggestedQuestion?: string) => {
   );
   };
 
-  return (
-    <AppShell workspaceLayout>
-      {projectError && !contentSaveError && <p role="alert" className="mb-4 text-sm text-rose-600">{localize(projectError, "common.requestFailed")}</p>}
-      <div className="workspace-content" data-header-compact={compactHeader}>
-      <section className="workspace-intro flex flex-col gap-2" aria-label={t("workspace.title")}>
-        <p className="workspace-intro-badge text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
-          {t("workspace.badge")}
-        </p>
-        <div className="workspace-intro-heading"><h2 className="text-3xl font-semibold">{t("workspace.title")}<span className="workspace-compact-stage"> · {t(activeStep.titleKey)}</span></h2>
-        <button type="button" className="workspace-intro-toggle" aria-expanded={!compactHeader} aria-controls="workspace-intro-details" onClick={() => setCompactHeader(value => !value)}>{t(compactHeader ? "workspace.expandDetails" : "workspace.collapseDetails")} <span aria-hidden="true">{compactHeader ? "⌄" : "⌃"}</span></button></div>
-        <div id="workspace-intro-details" className="workspace-intro-details"><div>
-        <p className="max-w-3xl text-sm text-slate-500">
-          {(normalizedActiveRole ? t(roleDescriptionKeys[normalizedActiveRole]) : undefined) ?? t("workspace.fallback")}
-        </p>
-        <div className="text-xs font-semibold tracking-[0.3em] text-blue-300">
-          {t("workspace.provider")}: {providerLabel(activeProvider)}
-        </div>
-        </div></div>
-      </section>
-
-      <section className="workspace-stage-nav rounded-3xl border border-[var(--border)] bg-white px-4 py-4 shadow-sm lg:px-6 lg:py-6">
+  const stageNavigation = (
+    <section className="workspace-stage-nav rounded-3xl border border-[var(--border)] bg-white px-4 py-4 shadow-sm lg:px-6 lg:py-6">
         <div className="workspace-stage-list">
-          {steps.map((step) => {
+          {steps.map((step, index) => {
             const isActive = step.id === activeStep.id;
             return (
               <button
@@ -1989,7 +1970,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                       : "border border-slate-200 bg-white text-[var(--primary)]"
                   }`}
                 >
-                  {step.icon}
+                  <span className="workspace-stage-icon">{step.icon}</span><span className="workspace-stage-number">{locale === "ko" ? `${index + 1}단계` : locale === "zh" ? `第${index + 1}步` : `Step ${index + 1}`}</span>
                 </span>
                 <span className="whitespace-nowrap">{t(step.titleKey)}</span>
               </button>
@@ -2003,9 +1984,32 @@ const handleSend = async (suggestedQuestion?: string) => {
           />
         </div>
       </section>
+  );
+
+  return (
+    <AppShell workspaceLayout>
+      {projectError && !contentSaveError && <p role="alert" className="mb-4 text-sm text-rose-600">{localize(projectError, "common.requestFailed")}</p>}
+      <div className="workspace-content" data-header-compact={compactHeader}>
+      <section className="workspace-intro flex flex-col gap-2" aria-label={t("workspace.title")}>
+        <p className="workspace-intro-badge text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">
+          {t("workspace.badge")}
+        </p>
+        <div className="workspace-intro-heading"><h2 className="text-3xl font-semibold">{t("workspace.title")}<span className="workspace-compact-stage"> · {t(activeStep.titleKey)}</span></h2>
+        <button type="button" className="workspace-intro-toggle" aria-expanded={!compactHeader} aria-controls="workspace-intro-details" onClick={() => setCompactHeader(value => !value)}>{t(compactHeader ? "workspace.expandDetails" : "workspace.collapseDetails")} <span aria-hidden="true">{compactHeader ? "⌄" : "⌃"}</span></button></div>
+        <div id="workspace-intro-details" className="workspace-intro-details"><div>
+        <p className="max-w-3xl text-sm text-slate-500">
+          {(normalizedActiveRole ? t(roleDescriptionKeys[normalizedActiveRole]) : undefined) ?? t("workspace.fallback")}
+        </p>
+        <div className="text-xs font-semibold tracking-[0.3em] text-blue-300">
+          {t("workspace.provider")}: {providerLabel(activeProvider)}
+        </div>
+        </div></div>
+      </section>
+
+      <div className="workspace-desktop-navigation">{stageNavigation}</div>
 
       {activeStep.id === "problem" && (
-        <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold text-slate-900">{t("step.problem")}</h3>
             <p className="mt-1 text-sm text-slate-500">{t("workspace.problemIntro")}</p>
@@ -2053,7 +2057,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       )}
 
       {activeStep.id === "data" && (
-        <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
               <h3 className="text-lg font-semibold text-slate-900">{t("boundary.dataTitle")}</h3>
@@ -2177,7 +2181,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       )}
 
       {activeStep.id === "alternatives" && (
-        <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("workspace.imageGallery")}</h3>
             <p className="mt-2 text-sm text-slate-500">
@@ -2262,7 +2266,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       )}
 
       {activeStep.id === "evaluation" && (
-        <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("step.evaluation")}</h3>
             <p className="mt-2 text-sm text-slate-500">
@@ -2347,7 +2351,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       )}
 
       {activeStep.id === "report" && (
-        <WorkspacePanels ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="text-lg font-semibold">{t("workspace.reportTitle")}</h3>
             <p className="mt-2 text-sm text-slate-500">

@@ -1,15 +1,22 @@
-import { Children, useCallback, useEffect, useId, useRef } from "react";
+import { Children, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactNode } from "react";
+import { WorkspaceNavigationContext } from "./AppShell";
 import { useI18n } from "../lib/i18n";
 import { constrainPanelRatio, DEFAULT_PANEL_RATIO, PANEL_DIVIDER_WIDTH, panelRatioBounds, workspaceLayoutMode, workspaceViewportMetrics } from "../lib/workspace-layout";
 import type { WorkspacePanelView } from "../lib/workspace-layout";
 
-export default function WorkspacePanels({ children, ratio, onRatioChange, view, onViewChange }: {
-  children: ReactNode; ratio: number; onRatioChange: (ratio: number) => void;
+export default function WorkspacePanels({ children, navigation, ratio, onRatioChange, view, onViewChange }: {
+  children: ReactNode; navigation?: ReactNode; ratio: number; onRatioChange: (ratio: number) => void;
   view: WorkspacePanelView; onViewChange: (view: WorkspacePanelView) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const id = useId();
+  const menu = useContext(WorkspaceNavigationContext);
+  const [fontOpen, setFontOpen] = useState(false);
+  const [fontSize, setFontSize] = useState(16);
+  const tablet = useRef(false);
+  const tabletRatio = useRef(38);
+  const desktopRatio = useRef(ratio);
   const root = useRef<HTMLElement>(null);
   const information = useRef<HTMLDivElement>(null);
   const indicator = useRef<HTMLSpanElement>(null);
@@ -35,8 +42,11 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
     return next;
   }, [t]);
   useEffect(() => {
-    ratioRef.current = ratio;
-    applyRatio(ratio);
+    desktopRatio.current = ratio;
+    if (!tablet.current) {
+      ratioRef.current = ratio;
+      applyRatio(ratio);
+    }
   }, [ratio, applyRatio]); // Resize and pointer events apply the same constraints without rendering each move.
 
   useEffect(() => {
@@ -46,9 +56,10 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
     const viewport = window.visualViewport;
     let frame = 0;
     let previousWidth = window.innerWidth;
-    let baselineHeight = Math.max(window.innerHeight, viewport?.height ?? 0);
+    let baselineHeight = Math.max(window.innerHeight, viewport?.height ?? 0, shell.dataset.keyboardOpen === "true" ? parseFloat(shell.style.getPropertyValue("--workspace-tablet-height")) || 0 : 0);
     let landscape = window.matchMedia("(orientation: landscape)").matches;
-    let keyboardOpen = false;
+    let keyboardOpen = shell.dataset.keyboardOpen === "true";
+    const tabletMedia = window.matchMedia("(min-width: 768px) and (max-width: 1279px), (min-width: 768px) and (any-pointer: coarse)");
     const measure = () => {
       frame = 0;
       const {height, top} = workspaceViewportMetrics(viewport, window.innerHeight);
@@ -68,7 +79,13 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
       previousWidth = width;
       keyboardOpen = nextKeyboardOpen;
       const desktopPointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches && !window.matchMedia("(any-pointer: coarse)").matches;
-      const mode = workspaceLayoutMode(node.clientWidth, width, landscape, desktopPointer);
+      const isTablet = tabletMedia.matches;
+      if (isTablet !== tablet.current) {
+        ratioRef.current = isTablet ? Number(shell.style.getPropertyValue("--workspace-tablet-ratio")) || tabletRatio.current : desktopRatio.current;
+        tablet.current = isTablet;
+      }
+      shell.dataset.tablet = String(isTablet);
+      const mode = isTablet ? "split" : workspaceLayoutMode(node.clientWidth, width, landscape, desktopPointer);
       node.dataset.layout = mode;
       shell.dataset.chatView = String(mode === "toggle" && node.dataset.view === "chat");
       shell.dataset.keyboardOpen = String(keyboardOpen);
@@ -81,6 +98,10 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
         shell.style.removeProperty("--workspace-visible-height");
         shell.style.removeProperty("--workspace-visible-top");
       }
+      // Freeze the information panel while chat follows the keyboard viewport.
+      shell.style.setProperty("--workspace-tablet-height", `${keyboardOpen ? baselineHeight : height}px`);
+      shell.style.setProperty("--workspace-chat-height", `${Math.max(0, height - 24)}px`);
+      shell.style.setProperty("--workspace-chat-top", `${top}px`);
       applyRatio(ratioRef.current);
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
@@ -145,7 +166,11 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
   useEffect(() => () => cancelAnimationFrame(dragFrame.current), []);
   const commit = (value: number) => {
     ratioRef.current = applyRatio(value);
-    onRatioChange(ratioRef.current);
+    if (tablet.current) {
+      tabletRatio.current = ratioRef.current;
+      root.current?.closest<HTMLElement>(".workspace-shell")?.style.setProperty("--workspace-tablet-ratio", String(ratioRef.current));
+    }
+    else onRatioChange(ratioRef.current);
   };
   const endDrag = (event: PointerEvent<HTMLDivElement>) => {
     const current = drag.current;
@@ -160,7 +185,7 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
   const keyResize = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!["ArrowLeft", "ArrowRight", "Home"].includes(event.key)) return;
     event.preventDefault();
-    commit(event.key === "Home" ? DEFAULT_PANEL_RATIO : ratioRef.current + (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 10 : 2));
+    commit(event.key === "Home" ? (tablet.current ? 38 : DEFAULT_PANEL_RATIO) : ratioRef.current + (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 10 : 2));
   };
   return <section ref={root} className="workspace-panels" data-layout="toggle" data-view={view}>
     <div className="workspace-view-switch" role="group" aria-label={t("workspace.panelView")}>
@@ -168,9 +193,24 @@ export default function WorkspacePanels({ children, ratio, onRatioChange, view, 
       <button type="button" aria-pressed={view === "chat"} aria-controls={`${id}-chat`} onClick={() => onViewChange("chat")}>{t("workspace.chatView")}</button>
     </div>
     <div className="workspace-panel-body">
-      <div className="workspace-information-frame">
-        <div ref={information} id={`${id}-information`} className="workspace-information" role="region" tabIndex={0} aria-label={t("workspace.informationView")}>{panels.slice(0, -1)}</div>
-        <div className="workspace-scroll-indicator" aria-hidden="true"><span ref={indicator} /></div>
+      <div className="workspace-information-column">
+        <div className="workspace-tablet-toolbar">
+          <button type="button" className="workspace-tablet-menu" aria-label={t(menu.open ? "shell.sidebarCollapse" : "shell.sidebarExpand")} aria-expanded={menu.open} aria-controls="workspace-sidebar-drawer" onClick={menu.toggle}>☰</button>
+          <strong>{locale === "ko" ? "작업공간" : t("nav.workspace")}</strong>
+          <div className="workspace-font-control">
+            <button type="button" aria-label={locale === "ko" ? "글자 크기" : locale === "zh" ? "字号" : "Text size"} aria-expanded={fontOpen} aria-controls={`${id}-font`} onClick={() => { setFontSize(Number(root.current?.closest<HTMLElement>(".workspace-shell")?.style.getPropertyValue("--workspace-font-size").replace("px", "")) || 16); setFontOpen((open) => !open); }}>Aa</button>
+            {fontOpen && <div id={`${id}-font`} className="workspace-font-popover" onKeyDown={(event) => { if (event.key === "Escape") { setFontOpen(false); event.currentTarget.parentElement?.querySelector("button")?.focus(); } }}>
+              <span aria-hidden="true">A</span>
+              <input type="range" min="14" max="22" step="1" value={fontSize} aria-label={locale === "ko" ? "작업공간 글자 크기" : locale === "zh" ? "工作区字号" : "Workspace text size"} onChange={(event) => { setFontSize(Number(event.target.value)); root.current?.closest<HTMLElement>(".workspace-shell")?.style.setProperty("--workspace-font-size", `${event.target.value}px`); }} />
+              <span aria-hidden="true">A</span>
+            </div>}
+          </div>
+        </div>
+        <div className="workspace-tablet-navigation">{navigation}</div>
+        <div className="workspace-information-frame">
+          <div ref={information} id={`${id}-information`} className="workspace-information" role="region" tabIndex={0} aria-label={t("workspace.informationView")}>{panels.slice(0, -1)}</div>
+          <div className="workspace-scroll-indicator" aria-hidden="true"><span ref={indicator} /></div>
+        </div>
       </div>
       <div className="workspace-divider"><div ref={divider} className="workspace-resize-handle" role="separator" tabIndex={0} aria-orientation="vertical"
         aria-label={t("workspace.resizePanels")} aria-controls={`${id}-information ${id}-chat`}
