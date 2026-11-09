@@ -5,6 +5,7 @@ import fs from 'node:fs';
 const require=createRequire(import.meta.url),build=process.env.PSS_TEST_BUILD;
 const routing=require(`${build}/lib/research/routing.js`),geo=require(`${build}/lib/spatial/geo-query.js`),server=require(`${build}/lib/spatial/geo-server.js`);
 const evidence=require(`${build}/lib/research/evidence.js`),llm=require(`${build}/lib/llm/index.js`),papers=require(`${build}/lib/research/openalex.js`),session=require(`${build}/lib/analysis-session.js`),kakao=require(`${build}/lib/spatial/kakao-server.js`);
+const external=require(`${build}/lib/research/external-cases.js`);
 function mock(t,obj,key,value){const old=obj[key];obj[key]=value;t.after(()=>obj[key]=old)}
 const input=(question,extra={})=>({question,selectedSources:['cases'],cases:[],projectContext:'사업 배경',provider:'openai',history:[],...extra});
 
@@ -31,16 +32,17 @@ test('explicit research survives an empty helper query, including manual combine
  assert.equal(calls.length,1);assert.equal(result.cases.length,1);
 });
 
-test('new real-world examples fall back to OpenAlex without substituting an unrelated case',async t=>{
+test('new real-world examples use external search without substituting an unrelated case',async t=>{
  mock(t,llm,'callLLM',async()=>JSON.stringify({sourceIds:[],researchQuery:''}));
- const calls=[];mock(t,papers,'searchOpenAlex',async q=>{calls.push(q);return []});
+ const calls=[];mock(t,external,'searchExternalCases',async r=>{calls.push(r.question);return []});
+ mock(t,papers,'searchOpenAlex',()=>assert.fail('real case search is distinct from academic search'));
  const material={id:'a',title:'도로 사업',label:'도로',text:'도로 포장에 관한 기록.'};
  const result=await evidence.retrieveEvidence(input('지속가능하게 운영되는 마을 텃밭 사례를 찾아줘',{cases:[material],casePassages:[]}));
- assert.equal(result.cases.length,0);assert.equal(calls.length,1);assert.match(calls[0],/actual implemented case studies/);assert.ok(result.warnings.some(w=>/no general web case-search/.test(w.message)));
+ assert.equal(result.cases.length,0);assert.equal(calls.length,1);assert.match(calls[0],/마을 텃밭/);assert.ok(result.warnings.some(w=>/외부 검색/.test(w.message)));
 });
 
-test('a semantic miss in registered documents triggers literature rather than unrelated material',async t=>{
- mock(t,llm,'callLLM',async()=>JSON.stringify({sourceIds:[],researchQuery:''}));let count=0;mock(t,papers,'searchOpenAlex',async()=>{count++;return []});
+test('a semantic miss in registered documents triggers external search rather than unrelated material',async t=>{
+ mock(t,llm,'callLLM',async()=>JSON.stringify({sourceIds:[],researchQuery:''}));let count=0;mock(t,external,'searchExternalCases',async()=>{count++;return []});
  const material={id:'a',title:'포장 사례',label:'포장',text:'포장 기록',sourceId:'',relevanceTerms:[],documentId:'d',passageId:'p1'};
  const result=await evidence.retrieveEvidence(input('지속가능한 텃밭의 실제 사례 찾아줘',{cases:[material],casePassages:[material]}));assert.equal(result.cases.length,0);assert.equal(count,1);
 });
@@ -83,10 +85,11 @@ test('spatial interpretation runs after actual results and falls back to the rea
  mock(t,llm,'callLLM',async()=>{throw Error('provider unavailable')});const fallback=response();await handler({...req,body:{...req.body,projectId:'planning-check'}},fallback);assert.equal(fallback.body.result.reply,'실제 실행 결과: 면적 100m²');
 });
 
-test('new-case discovery checks registered bodies semantically before falling back to literature',async t=>{
+test('new-case discovery checks registered bodies and also looks for requested new examples',async t=>{
  const material={id:'garden',title:'Community Garden',label:'Garden',text:'Residents share ongoing planting and maintenance responsibilities.'};
  mock(t,llm,'callLLM',async req=>{const data=JSON.parse(req.userText);assert.ok(data.passages.some(p=>p.text===material.text));return JSON.stringify({sourceIds:[data.passages[0].sourceId],researchQuery:''})});
- mock(t,papers,'searchOpenAlex',()=>assert.fail('a matching actual registered example needs no fallback search'));
- const result=await evidence.retrieveEvidence(input('지속가능하게 운영되는 마을 텃밭 사례를 찾아줘',{cases:[material],casePassages:[]}));assert.equal(result.cases[0].id,'garden');
+ mock(t,papers,'searchOpenAlex',()=>assert.fail('a real-case question needs no academic search'));
+ let searched=0;mock(t,external,'searchExternalCases',async()=>{searched++;return []});
+ const result=await evidence.retrieveEvidence(input('지속가능하게 운영되는 마을 텃밭 사례를 찾아줘',{cases:[material],casePassages:[]}));assert.equal(result.cases[0].id,'garden');assert.equal(searched,1);
  assert.equal(session.isPaperReference('이 논문 말고 다른 논문 찾아줘'),false);
 });

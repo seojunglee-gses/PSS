@@ -1,3 +1,4 @@
+import { isPlanningFollowUp, recentAnswerEvidence } from "../../../lib/research/follow-up";
 import { spatialPromptContext } from "../../../lib/spatial/context";
 import { projectLayers } from "../../../lib/spatial/geo-server";
 import { canonicalBuildingContext } from "../../../lib/spatial/building-use-server";
@@ -10,17 +11,17 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { parseAnalysisRequest, retrieveEvidence } from "../../../lib/research/evidence";
 import { answerFromEvidence, answerText } from "../../../lib/research/answer";
 import { compactEvidence } from "../../../lib/research/types";
-import { namedCases,resolveSources,sourceRoutingQuestion, wantsNewCases } from "../../../lib/research/routing";
+import { namedCases,resolveSources,sourceRoutingQuestion, wantsNewCases, wantsResearch } from "../../../lib/research/routing";
 import { readCasePassages } from "../../../lib/research/case-sources-server";
 
 export const config = { api: { bodyParser: { sizeLimit: "128kb" } } };
-export const maxDuration = 60;
+export const maxDuration = 120;
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") { res.setHeader("Allow", "POST"); res.status(405).json({ error: "Method not allowed" }); return; }
   let request;
   try { request = parseAnalysisRequest(req.body); }
-  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Invalid request." }); return; }
+  catch { res.status(400).json({ error: "질문과 선택한 자료를 확인해 주세요. 질문은 1~2000자로 입력할 수 있습니다." }); return; }
   try {
     const context = await loadProjectContext(req, "data", true, true);
     request.projectContext = context.currentMaterial;
@@ -38,13 +39,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const paper = [...activities].reverse().find(activity => activity.type === "research" && /^https:\/\/openalex\.org\/W\d+$/.test(activity.referenceId));
       if (paper) request.selectedPaperId = paper.referenceId;
     }
+    const automatic = !Array.isArray(req.body.selectedSources) || !req.body.selectedSources.length;
+    if (automatic && wantsResearch(request.question) && !wantsNewCases(request.question)) {
+      // A referential effects question should not repeat the anchor's case search.
+      request.selectedSources = ["research"];
+      if (/이런|이러한|그런|이\s*방법|그\s*방법|이\s*방식|this|that/i.test(request.question)) {
+        const recent = request.history?.filter(message => message.role === "assistant").slice(-1)[0]?.content;
+        if (recent) request.searchQuestion = `${request.question}\n앞서 논의한 방법: ${recent.slice(0, 1800)}`;
+      }
+    }
+    if (automatic && isPlanningFollowUp(request.question)) {
+      const previous = recentAnswerEvidence(context.stageHistory);
+      if (previous) {
+        request.reuseEvidence = previous;
+        request.searchQuestion = request.question;
+        request.selectedSources = ["project", ...previous.selectedSources];
+      }
+    }
     request.analysisSession=analysisSessionContext(context.stageHistory,context.projectId,context.cases,request.selectedSources);
     if(request.selectedSources.includes("spatial") && !request.spatialContext)request.spatialContext=canonicalBuildingContext([...activities].reverse().find(a=>a.type==="spatial")?.result);
     if(request.selectedSources.includes("spatial")) {
       const data=context.spatialData??await projectLayers(context.user,context.projectId);
       request.registeredSpatialContext=spatialPromptContext(data.layers,req.body.spatialSelection,activities,!!data.boundary,{nearbyPlaces:!!data.boundary&&!!process.env.KAKAO_REST_API_KEY,priority:!!data.priority});
     }
-    if(request.selectedSources.includes('cases')){
+    if(request.selectedSources.includes('cases') && !request.reuseEvidence){
       const focused=namedCases(request.searchQuestion,context.cases,contextual?[]:request.history);
       request.casePassages=await readCasePassages(context.projectId,!wantsNewCases(request.question)&&focused.length?focused:context.cases);
     }
@@ -56,6 +74,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const answer = await answerFromEvidence(request, evidence);
     res.status(200).json({ reply: answerText(answer), analysis: { selectedSources: request.selectedSources, ...(request.spatialContext ? { spatialContext: request.spatialContext } : {}), answer, evidence: compactEvidence(evidence) } });
   } catch {
-    res.status(502).json({ error: "Unable to synthesize the retrieved evidence. Check the selected AI provider configuration or try again.", evidence: compactEvidence(evidence) });
+    res.status(502).json({ error: "찾은 자료를 바탕으로 답변을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.", evidence: compactEvidence(evidence) });
   }
 }

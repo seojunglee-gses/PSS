@@ -4,12 +4,13 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { parseAnalysisRequest, retrieveEvidence } from "../../../lib/research/evidence";
 
 export const config = { api: { bodyParser: { sizeLimit: "128kb" } } };
+export const maxDuration = 120;
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") { res.setHeader("Allow", "POST"); res.status(405).json({ error: "Method not allowed" }); return; }
   let request;
   try { request = parseAnalysisRequest(req.body); }
-  catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Invalid request." }); return; }
+  catch { res.status(400).json({ error: "질문과 선택한 자료를 확인해 주세요. 질문은 1~2000자로 입력할 수 있습니다." }); return; }
   try {
     const context = await loadProjectContext(req, "data");
     request.projectContext = context.currentMaterial;

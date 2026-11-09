@@ -3,6 +3,7 @@ import { requestClarification } from "../facilitation";
 import { parseSpatialResult } from "../spatial/context";
 import { canonicalBuildingContext } from "../spatial/building-use-server";
 import type { SpatialResult } from "../spatial/types";
+import { searchExternalCases } from "./external-cases";
 import { searchOpenAlex, readOpenAlexPaper } from "./openalex";
 import { SOURCE_OPTIONS } from "./types";
 import { resolveSources, sourceRoutingQuestion,namedCases,wantsImplications,wantsResearch,wantsNewCases } from "./routing";
@@ -15,6 +16,7 @@ export type AnalysisRequest = {
   analysisSession?: import("../analysis-session").AnalysisActivity[];
   facilitationHistory?: ConversationMessage[];
   question: string;
+  reuseEvidence?: EvidenceBundle;
   authorizedProjectId?: string;
   hasBackground?: boolean;
   backgroundSourceIds?: string[];
@@ -88,6 +90,9 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
     else evidence.warnings.push({ source: "project", message: "이 사업에 등록된 자료가 없습니다." });
   }
   if (request.selectedSources.includes("spatial") && !request.spatialContext && !request.registeredSpatialContext?.registeredLayers.length) evidence.warnings.push({ source: "spatial", message: "현재 질문에 사용할 공간 계산 결과가 아직 없습니다. 실행되지 않은 값을 사실로 제시하지 마세요." });
+  if (request.reuseEvidence) {
+    return { ...request.reuseEvidence, question: request.question, selectedSources: request.selectedSources, projectContext: request.projectContext, warnings: [] };
+  }
   let researchQuery=request.searchQuestion ?? request.question;
   let needsResearch=request.selectedSources.includes('research');
   const discovery=wantsNewCases(request.question);
@@ -99,17 +104,22 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
     if(request.casePassages!==undefined&&(request.casePassages.length>0||namedCases(request.question,request.cases,request.history).length>0||discovery&&request.cases.length>0)){
       const bodies = discovery ? request.cases.map((material,index)=>({...material,sourceId:`C:${index+1}`,relevanceTerms:[]})) : evidence.cases;
       const selected=await retrieveCasePassages(request,request.casePassages,bodies);evidence.cases=selected.cases;
-      needsResearch=explicitResearch || !!selected.researchQuery || (discovery && !selected.cases.length);researchQuery=selected.researchQuery || request.searchQuestion || request.question;
+      needsResearch=explicitResearch || (!discovery && !!selected.researchQuery);researchQuery=selected.researchQuery || request.searchQuestion || request.question;
       if(needsResearch&&!request.selectedSources.includes('research'))request.selectedSources.push('research');
       if(needsResearch&&caseFactsOnly&&!focused.some(c=>researchQuery.toLowerCase().includes(c.title.toLowerCase())))researchQuery=`${focused.map(c=>c.title).join(' ')} ${researchQuery}`.slice(0,350);
     }
-    if (discovery && !evidence.cases.length) {
-      needsResearch = true;
-      researchQuery = `${request.searchQuestion ?? request.question} actual implemented case studies`;
-      if (!request.selectedSources.includes('research')) request.selectedSources.push('research');
-      evidence.warnings.push({source:"cases",message:"No matching registered case was confirmed. OpenAlex is the available fallback for documented applications; this system has no general web case-search tool. An unrelated registered case is not a matching example."});
+    // Explicit requests for new examples reach the web even when a registered case matches.
+    // A substantive unmatched case-comparison gap can use the same path.
+    if (discovery || (!evidence.cases.length && wantsImplications(request.question) && !explicitResearch)) {
+      try {
+        const external = await searchExternalCases(request);
+        evidence.cases.push(...external);
+        if (!external.length) evidence.warnings.push({ source: "cases", message: "이번 외부 검색에서 요청 조건에 맞는 실제 사례를 확인하지 못했습니다. 확인된 자료와 조건부 계획 판단을 구분해 설명합니다." });
+      } catch {
+        evidence.warnings.push({ source: "cases", message: "외부 사례 검색을 완료하지 못했습니다. 확인하지 못한 사례나 성과를 사실로 제시하지 않습니다." });
+      }
     }
-    if (!evidence.cases.length) evidence.warnings.push({ source: "cases", message: discovery ? "No matching registered case was confirmed for this request." : "No substantive case-study materials are available for this project." });
+    if (!evidence.cases.length && !discovery) evidence.warnings.push({ source: "cases", message: "현재 질문에 맞는 등록 사례 근거를 확인하지 못했습니다." });
   }
   if (needsResearch) {
     try {
@@ -118,10 +128,11 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
         const normalized=(value:string)=>value.toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
         evidence.papers=evidence.papers.filter(p=>focused.some(c=>[c.title,...(c.aliases??[])].some(name=>normalized(name).length>=4&&normalized(`${p.title} ${p.abstract??''}`).includes(normalized(name)))));
       }
-      if (!evidence.papers.length) evidence.warnings.push({ source: "research", message: "No relevant research papers were found. Try a more specific question." });
-      else if (!evidence.papers.some((paper) => paper.abstract)) evidence.warnings.push({ source: "research", message: "The retrieved papers have no available abstracts; research findings cannot be inferred from titles alone." });
+      if (!evidence.papers.length) evidence.warnings.push({ source: "research", message: "이번 검색에서 질문에 맞는 연구논문을 찾지 못했습니다." });
+      else if (!evidence.papers.some((paper) => paper.abstract)) evidence.warnings.push({ source: "research", message: "검색된 논문에 공개 초록이 없어 제목만으로 연구 결과를 판단할 수 없습니다." });
     } catch (error) {
-      evidence.warnings.push({ source: "research", message: error instanceof Error ? error.message : "Research search failed." });
+      const message = error instanceof Error && /^[가-힣\s.,]+$/.test(error.message) ? error.message : "연구논문 검색을 완료하지 못했습니다. 현재 확인된 자료를 바탕으로 답변합니다.";
+      evidence.warnings.push({ source: "research", message });
     }
   }
   return evidence;
