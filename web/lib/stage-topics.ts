@@ -17,7 +17,7 @@ export type TopicSummaryState = {
   topics: DiscussionTopic[];
   status: 'ready'|'missing'|'processing'|'failed'|'blocked'|'empty';
   reason?: 'not_prepared'|'safety_not_verified'|'derived_access_denied'|'generation_failed'|'save_failed'|'source_unavailable'|'input_too_large';
-  needsPreparation: boolean; canPrepare: boolean;
+  needsPreparation: boolean; canPrepare: boolean; oneTimeBackfill?: boolean;
 };
 export const topicSummaryNotice=(state:Pick<TopicSummaryState,'status'|'reason'>):string=>
   state.status==='blocked'?'주제 요약을 준비할 수 없는 상태입니다. 관리자에게 요약 준비를 요청해 주세요. 원문은 그대로 보존되어 있어요.'

@@ -12,8 +12,18 @@ openQuestion is OPTIONAL (empty string when unnecessary). Only when a useful nex
 Before output, review whether titles and summaries are distinct, themes are meaningfully grouped, important dissent/corrections are preserved, and every paraphrase is supported by its exact cited resident words. Do this within this one generation, without requesting another model call.
 Output ONLY JSON {"topics":[{"title":"짧은 주제명","summary":"발언에 근거한 완결된 한 문장.","places":[],"openQuestion":"","references":[{"sourceIndex":0,"quote":"exact substring from a supplied non-assistant dialogue turn"}]}]}. Every topic must cite actual non-assistant dialogue turns using their sourceIndex. Each quote must be a verbatim substring, max 600 characters. Places must appear verbatim in cited quotes. Do not make new overall stage summaries, planning decisions or GIS claims.`;
 
-// No source-document writes exist in this module. Persistence is opt-in only after
-// an operator has independently verified research backup, restoration and deployment of the private derived-data rules.
+// Explicit one-off authorization for the already-completed Stage 1 workshop cohort.
+// This cutoff is fixed, not a rolling window; future completions and other stages are excluded.
+export const LEGACY_STAGE1_REPAIR = 'stage1-workshop-20261111';
+export const LEGACY_STAGE1_COMPLETED_BEFORE = Date.parse('2026-11-10T21:51:36.000Z');
+function timestamp(value:unknown):number|undefined {
+  if(value&&typeof value==='object'&&'toMillis' in value&&typeof value.toMillis==='function')return value.toMillis();
+  const result=typeof value==='string'?Date.parse(value):typeof value==='number'?value:NaN;
+  return Number.isFinite(result)?result:undefined;
+}
+// No source-document writes exist in this module. Ordinary persistence requires the
+// verified backup/restore/private-rules gates. Only the explicitly authorized closed
+// Stage 1 cohort below has a one-off exception; the global policy is never enabled.
 export function topicWritesEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const verified = (value: string | undefined) => !!value && Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.now();
   return env.PPSS_TOPIC_DERIVED_WRITES_ENABLED === 'true' && verified(env.PPSS_RESEARCH_BACKUP_VERIFIED_AT) && verified(env.PPSS_RESEARCH_RESTORE_VERIFIED_AT) && verified(env.PPSS_TOPIC_RULES_VERIFIED_AT);
@@ -43,7 +53,7 @@ export function validateTopics(value: unknown, source: Source[], stage: Dialogue
   return value.map(raw=>{
     const title=text(raw.title,80),summary=text(raw.summary,800),openQuestion=text(raw.openQuestion ?? '',400);
     const normalized=(text:string)=>text.replace(/[\s\p{P}]/gu,'').toLowerCase();
-    if(qualityVersion===2 && (title.length>32 || /[.!?。！？…]$/.test(title) || /(?:\.{2,}|…)$/.test(summary) || !/[.!?。！？]$/.test(summary) || summary.split(/(?<=[.!?。！？])\s+|\n+/u).filter(Boolean).length>2 || normalized(title)===normalized(summary) || source.some(s=>s.role!=='assistant'&&normalized(s.content)===normalized(title)) || openQuestion && !/[?？]$/.test(openQuestion)))throw Error('주제 제목과 요약의 품질을 확인하지 못했습니다.');
+    if(qualityVersion===2 && (/^이전 단계 발언(?:\s|$)/u.test(title) || title.length>32 || /[.!?。！？…]$/.test(title) || /(?:\.{2,}|…)$/.test(summary) || !/[.!?。！？]$/.test(summary) || summary.split(/(?<=[.!?。！？])\s+|\n+/u).filter(Boolean).length>2 || normalized(title)===normalized(summary) || source.some(s=>s.role!=='assistant'&&normalized(s.content)===normalized(title)) || openQuestion && !/[?？]$/.test(openQuestion)))throw Error('주제 제목과 요약의 품질을 확인하지 못했습니다.');
     const titleKey=qualityVersion===2?normalized(title):title;
     if(!title||!summary||titles.has(titleKey)||!Array.isArray(raw.references)||!raw.references.length||raw.references.length>64)throw Error('논의 주제의 출처를 확인하지 못했습니다.');
     titles.add(titleKey);
@@ -63,27 +73,36 @@ async function topicSource(projectId:string,userId:string,stage:DialogueStage){
   const db=adminDb();
   // Read existing research records only, including the original IDs and timestamps.
   const snapshot=await db.doc(`users_${projectId}/${userId}/steps/${stage}`).get();
+  let modifiedAt=timestamp(snapshot.updateTime)??timestamp(snapshot.data()?.updatedAt);
   let source=sources(snapshot.data()?.logs,stage),kind:DiscussionTopic['sourceKind']='dialogue';
   if(!source.some(s=>s.role==='user')){
     // Same legacy project/user path used by loadChatLogsFromFirestore; never scan other users.
-    const legacy=(await db.doc(`ppssChatLogs_${projectId}/${userId}`).get()).data();
+    const legacySnapshot=await db.doc(`ppssChatLogs_${projectId}/${userId}`).get();
+    const legacy=legacySnapshot.data();
     const logs=legacy?.logsByStep?.[stage]??(Array.isArray(legacy?.logs)?legacy.logs.filter((log:{stepId?:string})=>log?.stepId===stage):undefined);
     source=sources(logs,stage);
+    const turnTimes=source.filter(turn=>turn.role==='user').map(turn=>timestamp(turn.createdAt));
+    // A legacy shared document may have newer chats from other stages. Date this stage's turns only.
+    modifiedAt=turnTimes.length&&turnTimes.every((time):time is number=>time!==undefined)?Math.max(...turnTimes):timestamp(legacySnapshot.updateTime)??timestamp(legacy?.updatedAt);
   }
   if(!source.some(s=>s.role==='user')){
     const [personal,workspace]=await Promise.all([db.doc(`users_${projectId}/${userId}`).get(),db.doc(`ppssWorkspaceSummaries_${projectId}/${userId}`).get()]);
     const summary=[personal.data()?.confirmedStageSummaries?.[stage]?.text,workspace.data()?.stageSummaries?.[stage]].find(value=>typeof value==='string'&&value.trim());
-    if(typeof summary!=='string'||!summary.trim())return {source:[] as Source[],kind};
+    if(typeof summary!=='string'||!summary.trim())return {source:[] as Source[],kind,modifiedAt};
     source=[{sourceIndex:0,role:'summary',content:summary}];kind='summary';
   }
-  return {source,kind};
+  return {source,kind,modifiedAt};
 }
 export async function readStageTopics(projectId:string,userId:string,stage:DialogueStage):Promise<DiscussionTopic[]> {
+  return extractStageTopics(projectId,userId,stage);
+}
+async function extractStageTopics(projectId:string,userId:string,stage:DialogueStage,oneTimeAuthorization?:typeof LEGACY_STAGE1_REPAIR):Promise<DiscussionTopic[]> {
   if(!planningStages.includes(stage))throw Error('단계를 확인해주세요.');
   const db=adminDb(),{source,kind}=await topicSource(projectId,userId,stage);
   if(!source.length)return [];
   const sourceHash=hash({version:2,stage,kind,source}),scope=hash([projectId,userId,stage,sourceHash]);
-  const cached=pending.get(scope);if(cached&&cached.expires>Date.now())return cached.value;
+  const cacheKey=scope+':'+(topicWritesEnabled()||oneTimeAuthorization?'persist':'readonly');
+  const cached=pending.get(cacheKey);if(cached&&cached.expires>Date.now())return cached.value;
   const work=(async()=>{
     const ref=db.doc(`ppssDerivedStageTopics/${scope}`);
     let existing,derivedReadable=true;
@@ -105,8 +124,8 @@ export async function readStageTopics(projectId:string,userId:string,stage:Dialo
       topics=validateTopics(JSON.parse(result.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'' )).topics,source,stage,sourceHash,kind,2);
       if(!topics.length)throw Error('empty extraction');
     }catch{throw new TopicPreparationError('generation_failed');}
-    if(derivedReadable&&topicWritesEnabled()){
-      try{await ref.create({projectId,userId,sourceStage:stage,sourceKind:kind,sourceHash,topics,derivedAt:new Date().toISOString(),version:2});}
+    if(derivedReadable&&(topicWritesEnabled()||oneTimeAuthorization===LEGACY_STAGE1_REPAIR)){
+      try{await ref.create({projectId,userId,sourceStage:stage,sourceKind:kind,sourceHash,topics,derivedAt:new Date().toISOString(),version:2,...(oneTimeAuthorization?{oneTimeBackfill:oneTimeAuthorization}:{})});}
       catch(error){
         if([6,'already-exists'].includes((error as {code:number|string}).code)){
           const saved=(await ref.get()).data();
@@ -118,8 +137,8 @@ export async function readStageTopics(projectId:string,userId:string,stage:Dialo
     return topics;
   })();
   if(pending.size>=100)pending.delete(pending.keys().next().value!);
-  pending.set(scope,{expires:Date.now()+30*60*1000,value:work});
-  try{return await work}catch(error){pending.delete(scope);if(error instanceof TopicPreparationError)throw error;throw new TopicPreparationError('generation_failed');}
+  pending.set(cacheKey,{expires:Date.now()+30*60*1000,value:work});
+  try{return await work}catch(error){pending.delete(cacheKey);if(error instanceof TopicPreparationError)throw error;throw new TopicPreparationError('generation_failed');}
 }
 
 // Stable derived document: direct reads never invoke a model or re-summarize history.
@@ -185,16 +204,20 @@ export async function readStoredStageTopicState(projectId:string,userId:string,s
 export async function readStoredStageTopics(projectId:string,userId:string,stage:DialogueStage):Promise<DiscussionTopic[]>{
   return (await readStoredStageTopicState(projectId,userId,stage)).topics;
 }
-export async function prepareStageTopics(projectId:string,userId:string,stage:DialogueStage):Promise<'ready'|'processing'|'unavailable'|'cooldown'|'no_source'>{
+type PreparationResult='ready'|'processing'|'unavailable'|'cooldown'|'no_source';
+export async function prepareStageTopics(projectId:string,userId:string,stage:DialogueStage):Promise<PreparationResult>{
+  return prepareStageTopicsCore(projectId,userId,stage);
+}
+async function prepareStageTopicsCore(projectId:string,userId:string,stage:DialogueStage,oneTimeAuthorization?:typeof LEGACY_STAGE1_REPAIR):Promise<PreparationResult>{
   if(!planningStages.includes(stage))throw Error('단계를 확인해주세요.');
   // Without verified persistence, avoid an expensive result that cannot be reused across instances.
   readCache.delete(hash([projectId,userId,stage]));
-  if(!topicWritesEnabled())return (await readStoredStageTopicState(projectId,userId,stage)).status==='ready'?'ready':'unavailable';
+  if(!topicWritesEnabled()&&!oneTimeAuthorization)return (await readStoredStageTopicState(projectId,userId,stage)).status==='ready'?'ready':'unavailable';
   const {source,kind}=await topicSource(projectId,userId,stage),sourceHash=hash({version:2,stage,kind,source});
   const existing=await readStoredStageTopicState(projectId,userId,stage);
   const previousHash=hash({version:1,stage,kind,source});
   if(existing.status==='ready'&&existing.topics.every(topic=>topic.sourceHash===sourceHash||topic.sourceHash===previousHash))return 'ready';
-  if(existing.status==='blocked')return 'unavailable';
+  if(existing.status==='blocked'&&(!oneTimeAuthorization||existing.reason==='derived_access_denied'))return 'unavailable';
   if(!source.some(turn=>turn.role==='user'&&!acknowledgement(turn.content)))return 'no_source';
   const db=adminDb(),ref=preparedRef(projectId,userId,stage),owner=hash([Date.now(),Math.random()]);
   const acquired=await db.runTransaction(async transaction=>{
@@ -202,11 +225,11 @@ export async function prepareStageTopics(projectId:string,userId:string,stage:Di
     if(data?.status==='ready'&&data.sourceHash===sourceHash&&Array.isArray(data.topics)&&data.topics.length&&data.topics.every(semanticTopic))return 'ready' as const;
     if(data?.status==='processing'&&data.expiresAt>now)return 'processing' as const;
     if(data?.status==='failed'&&data.retryAfter>now)return 'cooldown' as const;
-    transaction.set(ref,{projectId,userId,sourceStage:stage,status:'processing',sourceHash,owner,expiresAt:now+180000});return true;
+    transaction.set(ref,{projectId,userId,sourceStage:stage,status:'processing',sourceHash,owner,expiresAt:now+180000,...(oneTimeAuthorization?{oneTimeBackfill:oneTimeAuthorization}:{})});return true;
   });
   if(acquired!==true)return acquired;
   try{
-    const topics=await readStageTopics(projectId,userId,stage);
+    const topics=await extractStageTopics(projectId,userId,stage,oneTimeAuthorization);
     try{await db.runTransaction(async transaction=>{if((await transaction.get(ref)).data()?.owner===owner)transaction.update(ref,{status:'ready',mode:'model',topics,derivedAt:new Date().toISOString(),qualityVersion:2});});}catch{throw new TopicPreparationError('save_failed');}
     readCache.delete(hash([projectId,userId,stage]));
     return 'ready';
@@ -217,6 +240,52 @@ export async function prepareStageTopics(projectId:string,userId:string,stage:Di
     await db.runTransaction(async transaction=>{if((await transaction.get(ref)).data()?.owner===owner)transaction.update(ref,{status:'failed',reason,expiresAt:0,retryAfter:Date.now()+60000});}).catch(()=>{});
     throw error;
   }
+}
+
+async function legacyStage1Eligible(projectId:string,userId:string):Promise<boolean>{
+  const db=adminDb(),{source,kind,modifiedAt}=await topicSource(projectId,userId,'problem');
+  if(kind!=='dialogue'||!source.some(turn=>turn.role==='user'&&!acknowledgement(turn.content)))return false;
+  if(modifiedAt!==undefined&&modifiedAt>LEGACY_STAGE1_COMPLETED_BEFORE)return false;
+  const [personal,workspace,locks]=await Promise.all([
+    db.doc(`users_${projectId}/${userId}`).get(),db.doc(`ppssWorkspaceSummaries_${projectId}/${userId}`).get(),db.doc(`ppssStageLocks_${projectId}/${userId}`).get(),
+  ]);
+  const old=(value:unknown)=>{const time=timestamp(value);return time!==undefined&&time<=LEGACY_STAGE1_COMPLETED_BEFORE;};
+  // Read completion proof only. No completion, source or reviewed-summary write occurs here.
+  const completed=workspace.data()?.completedStages?.includes('problem')||personal.data()?.completedStages?.includes('problem')||locks.data()?.lockedStages?.problem===true;
+  if(!completed)return false;
+  const confirmed=personal.data()?.confirmedStageSummaries?.problem;
+  const confirmedAt=timestamp(confirmed?.confirmedAt);
+  if(confirmedAt!==undefined&&confirmedAt>LEGACY_STAGE1_COMPLETED_BEFORE)return false;
+  if(typeof confirmed?.text==='string'&&confirmed.text.trim()&&old(confirmed.confirmedAt))return true;
+  if(workspace.data()?.completedStages?.includes('problem')&&old(timestamp(workspace.updateTime)??workspace.data()?.updatedAt))return true;
+  if(personal.data()?.completedStages?.includes('problem')&&old(timestamp(personal.updateTime)??personal.data()?.updatedAt))return true;
+  if(locks.data()?.lockedStages?.problem===true&&old(timestamp(locks.updateTime)??locks.data()?.updatedAt))return true;
+  // Older completion records have no per-stage completion timestamp. Existing completion
+  // plus the pre-cutoff Stage 1 source snapshot anchors those records to this closed cohort.
+  return old(modifiedAt);
+}
+
+// Only this server-owned wrapper can grant the one-off authorization. Client flags are ignored.
+export async function prepareLegacyStage1Topics(projectId:string,userId:string):Promise<PreparationResult>{
+  if(!await legacyStage1Eligible(projectId,userId))return 'unavailable';
+  return prepareStageTopicsCore(projectId,userId,'problem',LEGACY_STAGE1_REPAIR);
+}
+export async function readWithLegacyStage1Repair(projectId:string,userId:string,state:TopicSummaryState):Promise<TopicSummaryState>{
+  if(state.status==='ready'||!state.needsPreparation||!await legacyStage1Eligible(projectId,userId))return state;
+  if(state.reason==='derived_access_denied')return {...state,status:'failed',reason:'save_failed',oneTimeBackfill:true,canPrepare:false};
+  const recorded=(await preparedRef(projectId,userId,'problem').get()).data();
+  const exceptionState=(status:TopicSummaryState['status'],reason?:TopicSummaryState['reason'],canPrepare=false):TopicSummaryState=>({topics:[],status,reason,needsPreparation:true,canPrepare,oneTimeBackfill:true});
+  if(recorded?.projectId===projectId&&recorded.userId===userId&&recorded.sourceStage==='problem'&&recorded.oneTimeBackfill===LEGACY_STAGE1_REPAIR){
+    if(recorded.status==='processing'&&recorded.expiresAt>Date.now())return exceptionState('processing');
+    // Never automatically retry a failed repair on each visit. Explicit retries retain the cooldown.
+    if(recorded.status==='failed')return exceptionState('failed',recorded.reason==='save_failed'?'save_failed':recorded.reason==='input_too_large'?'input_too_large':'generation_failed',!(recorded.retryAfter>Date.now()));
+  }
+  try{
+    const result=await prepareStageTopicsCore(projectId,userId,'problem',LEGACY_STAGE1_REPAIR);
+    if(result==='ready'){const saved=await readStoredStageTopicState(projectId,userId,'problem');return saved.status==='ready'?saved:exceptionState('failed','save_failed');}
+    if(result==='processing')return exceptionState('processing');
+    return exceptionState('failed',result==='unavailable'?'derived_access_denied':'generation_failed',false);
+  }catch(error){return exceptionState('failed',error instanceof TopicPreparationError?error.reason:'generation_failed');}
 }
 
 export async function resolveStoredTopic(projectId:string,userId:string,stage:DialogueStage,id:string):Promise<DiscussionTopic|undefined>{
