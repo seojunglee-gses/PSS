@@ -22,7 +22,7 @@ test('Problem Definition interprets before questioning and permits synthesis wit
 });
 test('Problem Definition chat applies conversational cadence in the existing single response call',async t=>{
  const context=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');let calls=0,sent;
- mock(t,context,'loadProjectContext',async()=>({currentMaterial:'현재 사업: 시장 주변 보행환경',previousSummaries:{},stageHistory:[]}));
+ mock(t,context,'loadProjectContext',async()=>({currentMaterial:'현재 사업: 시장 주변 보행환경',previousSummaries:{},stageHistory:[assistant('주로 어느 길을 이용하시나요?')]}));
  const reply='퇴근길의 보행 경험을 사업에서 살펴볼 문제와 연결해볼 수 있겠습니다. 어떤 변화가 생기면 이 길을 이용하기 좋아졌다고 느끼실까요?';
  mock(t,llm,'callLLM',async input=>{calls++;sent=input;return reply});
  const res={status(n){this.code=n;return this},json(body){this.body=body}};
@@ -102,7 +102,7 @@ test('A–D initial contributions receive contextual interpretation guidance rat
 });
 test('synthesis retains original dialogue, user corrections, project grounding and the existing response API',async t=>{
  const context=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');let count=0,sent;
- mock(t,context,'loadProjectContext',async()=>({currentMaterial:'사업 자료: 주민센터가 있음. 운영 시간은 미확인.',previousSummaries:{},stageHistory:[]}));
+ mock(t,context,'loadProjectContext',async()=>({currentMaterial:'사업 자료: 주민센터가 있음. 운영 시간은 미확인.',previousSummaries:{},stageHistory:history}));
  mock(t,llm,'callLLM',async request=>{count++;sent=request;return '핵심 문제: 시설 신설보다 기존 공간을 이용할 기회에 관한 문제일 수 있습니다.'});
  const history=[user('공간이 부족해요'),assistant('새 시설이 필요할 수 있겠습니다.'),user('새 시설을 원하는 것은 아니고, 저녁에도 기존 시설을 이용하고 싶어요.')];
  const res={status(n){this.code=n;return this},json(value){this.body=value}};
@@ -134,7 +134,7 @@ test('Problem Definition distinguishes a planning opinion from a factual questio
 });
 test('the reported resident-goals comparison reaches the model with a concrete conversational hand-off',async t=>{
  const context=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');let sent,calls=0;
- mock(t,context,'loadProjectContext',async()=>({currentMaterial:'사업 목표는 녹지·휴식공간 확충과 환경 회복입니다. 주민 의견수렴 결과는 등록되지 않았습니다.',previousSummaries:{},stageHistory:[{sender:'user',text:'요약만 해주세요.'}]}));
+ mock(t,context,'loadProjectContext',async()=>({currentMaterial:'사업 목표는 녹지·휴식공간 확충과 환경 회복입니다. 주민 의견수렴 결과는 등록되지 않았습니다.',previousSummaries:{},stageHistory:[{sender:'user',text:'요약만 해주세요.'},user('보행자가 차를 피해서 다녀야 하는 게 불편해요.')]}));
  mock(t,llm,'callLLM',async request=>{sent=request;calls++;return '사업의 공간 개선 목표와 주민이 체감하는 보행 안전은 판단 기준이 다를 수 있겠습니다. 보행 안전에서 어떤 변화가 가장 중요할까요?';});
  const question='주민의 요구와 행정의 목표가 다른 부분은 무엇일까요?';
  const res={status(n){this.code=n;return this},json(value){this.body=value}};
