@@ -81,3 +81,23 @@ test('failed topic validation never persists a partial result or changes sources
  await assert.rejects(()=>server.readStageTopics(f.pid,f.uid,'problem'),/불러오지 못/);assert.equal(f.writes.length,0);f.assertPreserved();
  assert.equal((await server.readStageTopics(f.pid,f.uid,'problem')).length,1);assert.equal(attempts,2);assert.equal(f.writes.length,1);f.assertPreserved();
 });
+
+test('legacy logsByStep and fenced JSON produce personalized topics without writing original records',async t=>{
+ gate(t,false);const f=fixture(t,'legacy-read',{logs:[]});f.docs.set(`ppssChatLogs_${f.pid}/${f.uid}`,{logsByStep:{problem:[{sender:'Planner',text:'대성주유소 옆 골목에 차가 들어와 불편해요.',id:'legacy-message'}]}});
+ const before=structuredClone([...f.docs]);mock(t,llm,'callLLM',async()=> '```json\n'+JSON.stringify({topics:[rawTopic()]})+'\n```');
+ const topics=await server.readStageTopics(f.pid,f.uid,'problem');assert.equal(topics[0].references[0].messageId,'legacy-message');assert.deepEqual([...f.docs],before);assert.equal(f.writes.length,0);
+});
+test('blank confirmed summary cannot hide a populated workspace summary',async t=>{
+ gate(t,false);const f=fixture(t,'blank-confirmed',{logs:[],summary:'대성주유소 옆 골목에 차가 들어와 불편해요.'});f.docs.get(`users_${f.pid}/${f.uid}`).confirmedStageSummaries.problem.text='  ';
+ mock(t,llm,'callLLM',async()=>JSON.stringify({topics:[rawTopic()]}));const result=await server.readStageTopics(f.pid,f.uid,'problem');assert.equal(result.length,1);assert.equal(result[0].sourceKind,'summary');assert.equal(f.writes.length,0);
+});
+test('source data with an empty extraction is an error rather than no prior data',async t=>{
+ gate(t,false);const f=fixture(t,'empty-extraction');mock(t,llm,'callLLM',async()=>JSON.stringify({topics:[]}));await assert.rejects(()=>server.readStageTopics(f.pid,f.uid,'problem'),/불러오지 못/);f.assertPreserved();
+});
+
+test('denied derived-store access still permits read-only extraction from authorized original records',async t=>{
+ gate(t,true);const f=fixture(t,'derived-denied'),db=admin.adminDb();
+ mock(t,admin,'adminDb',()=>({doc:path=>path.startsWith('ppssDerivedStageTopics/')?{get:async()=>{throw Object.assign(Error('permission denied'),{code:7})},create(){assert.fail('never attempt writes after derived read denial')}}:db.doc(path)}));
+ mock(t,llm,'callLLM',async()=>JSON.stringify({topics:[rawTopic()]}));
+ assert.equal((await server.readStageTopics(f.pid,f.uid,'problem')).length,1);assert.equal(f.writes.length,0);f.assertPreserved();
+});

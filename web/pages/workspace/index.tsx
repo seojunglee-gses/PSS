@@ -1800,7 +1800,8 @@ const handleSend = async (suggestedQuestion?: string) => {
       ? spatialCategory === 0 ? "facilities" : spatialCategory !== null || spatialResult || geo.result ? "spatial-result" : "spatial"
       : analysisEvidence?.papers.length ? "research" : analysisEvidence?.cases.length ? "cases" : answerSpatial ? "spatial-result" : "project";
     const baseGuide = activeStep.id === "data" && defaultGuide ? { ...defaultGuide, suggestedQuestions: dataAnalysisStarterPrompts(locale, context) } : defaultGuide;
-    const guide = continuityTopics.length && baseGuide ? {...baseGuide,suggestedQuestions:continuityTopics.map(topic=>({label:topic.title,prompt:topic.id}))} : baseGuide;
+    const topicFallbackAllowed = !previousStage(activeStep.id) || topicState.scope===topicScope && !topicState.error && !continuityTopics.length;
+    const guide = continuityTopics.length && baseGuide ? {...baseGuide,suggestedQuestions:continuityTopics.map(topic=>({label:topic.title,prompt:topic.id}))} : topicFallbackAllowed ? baseGuide : undefined;
     const displayedMessages = stepLogs;
     const hasDialogue = stepLogs.some(log => !log.activity);
     const selectStarterPrompt = (prompt: string) => {
@@ -1889,19 +1890,20 @@ const handleSend = async (suggestedQuestion?: string) => {
           followLatestRef.current = list.scrollHeight - list.clientHeight - list.scrollTop < 80;
         }}
         onWheel={(event) => { if (event.deltaY < 0) followLatestRef.current = false; }}>
-        {hasLoadedChatLogs && !hasDialogue && guide && (
+        {hasLoadedChatLogs&&previousStage(activeStep.id)&&topicState.scope!==topicScope&&<p role="status" className="mb-2 text-sm">지난 시간의 이야기를 불러오고 있어요…</p>}
+        {hasLoadedChatLogs&&topicState.scope===topicScope&&topicState.error&&<p role="alert" className="mb-2 text-sm text-amber-800">이전 이야기 조회 또는 주제 추출에 실패했어요. 대화가 없다는 뜻은 아니에요. <button type="button" className="underline" onClick={()=>setTopicRetry(n=>n+1)}>다시 불러오기</button></p>}
+        {hasLoadedChatLogs && (!hasDialogue || continuityTopics.length>0) && guide && (
           <>
-            {continuityTopics.length>0 && <section className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-slate-700" aria-label="지난 단계에서 나눈 이야기">
-              <h4 className="font-semibold">지난 단계에서 나눈 이야기</h4>
-              <p className="mt-2">지난 단계의 이야기를 정리했어요.</p>
+            {continuityTopics.length>0 && <section className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-slate-700" aria-label="지난 시간에 나눈 이야기">
+              <h4 className="font-semibold">지난 시간에 나눈 이야기</h4>
+              <p className="mt-2">지난번에 말씀해 주신 내용을 바탕으로 오늘도 이야기를 이어가 볼게요.</p>
               {continuityTopics.map(topic=><div key={topic.id} className="mt-3"><h5 className="font-semibold">{topic.title}</h5><p className="mt-1">{topic.sourceKind==='summary'?'이전 단계 요약에서: ':''}{topic.summary}</p>{topic.places.length>0&&<p className="mt-1 text-xs">관련 장소: {topic.places.join(' · ')}</p>}{topic.openQuestion&&<p className="mt-1 text-xs">함께 더 이야기할 점: {topic.openQuestion}</p>}</div>)}
               <h5 className="mt-3 font-semibold">오늘 함께 살펴볼 내용</h5><p className="mt-1">{stageBridge[activeStep.id]}</p>
               <p className="mt-3 font-semibold">오늘은 어떤 이야기를 이어가 볼까요?</p>
             </section>}
-            {topicState.scope===topicScope&&topicState.error&&<p role="status" className="mb-2 text-xs text-slate-500">이전 이야기를 불러오지 못했어요. <button type="button" className="underline" onClick={()=>setTopicRetry(n=>n+1)}>다시 불러오기</button></p>}
             {!continuityTopics.length && activeStep.id === "data" && <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-slate-700">
-              <h4 className="font-semibold">{guide.title}</h4>
-              <p className="mt-2 leading-relaxed">{guide.description}</p>
+              <h4 className="font-semibold">오늘은 어떤 이야기를 해볼까요?</h4>
+              <p className="mt-2 leading-relaxed">이전 단계에 저장된 이야기가 아직 없어요. 살펴보고 싶은 장소나 문제를 편하게 말씀해 주세요.</p>
             </div>}
             <StageChatEmptyState guide={guide} showFullPrompts={!continuityTopics.length}
               disabled={isSending || isLoadingAlternatives || isStageLocked}
