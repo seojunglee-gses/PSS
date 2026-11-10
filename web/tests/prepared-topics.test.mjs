@@ -24,7 +24,7 @@ test('verified persistence prepares once under concurrent completion requests, t
  f.reads.length=0;const topics=await service.readStoredStageTopics(f.pid,f.uid,'problem');assert.equal(topics[0].title,'시장 골목 보행');assert.ok(f.reads.every(p=>p.startsWith('ppssDerivedStageTopics/')));
  await service.prepareStageTopics(f.pid,f.uid,'problem');assert.equal(calls,1);f.preserved();
 });
-test('legacy fallback persists once without AI, and a previously displayed card resolves after preparation',async t=>{
+test('legacy fallback stays read-only without AI, and a previously displayed card resolves after preparation',async t=>{
  const f=setup(t,'legacy',true);mock(t,llm,'callLLM',async()=>JSON.stringify({topics:[{title:'안전한 골목',summary:'골목 보행을 중요하게 말씀하셨어요.',places:[],openQuestion:'',references:[{sourceIndex:0,quote:'시장 옆 골목을 안전하게 걷고 싶어요.'}]}]}));
  const first=await service.readStoredStageTopics(f.pid,f.uid,'problem');const count=f.writes.length;await service.readStoredStageTopics(f.pid,f.uid,'problem');assert.equal(f.writes.length,count);
  await service.prepareStageTopics(f.pid,f.uid,'problem');assert.ok(await service.resolveStoredTopic(f.pid,f.uid,'problem',first[0].id));f.preserved();

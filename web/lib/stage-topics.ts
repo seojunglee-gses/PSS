@@ -2,6 +2,7 @@ import type { DialogueStage } from './problem-dialogue-context';
 export const planningStages: DialogueStage[] = ['problem','data','alternatives','evaluation','report'];
 export const previousStage = (stage: string): DialogueStage | undefined => planningStages[planningStages.indexOf(stage as DialogueStage)-1];
 export type DiscussionTopic = {
+  qualityVersion?: 2; verbatim?: boolean;
   id: string; title: string; summary: string; places: string[]; openQuestion: string;
   sourceStage: DialogueStage; sourceKind: 'dialogue' | 'summary'; sourceHash: string;
   references: { sourceIndex: number; quote: string; messageId?: string; sessionId?: string; createdAt?: string }[];
@@ -18,4 +19,6 @@ export function topicContext(topic: DiscussionTopic, currentStage: string): stri
 
 export const topicSelectionInstructions='This request is a UI topic selection, not a resident utterance or adoption of a solution. Interest in discussing the topic is already expressed: begin a useful current-stage activity using supplied project material or actual retrieved evidence now, without asking permission or a confirmation question. Briefly recall the attributed prior concern, explain useful available information in 2–3 short accessible Korean sentences, and leave room for a response without forcing a question. Never claim search, GIS execution or source discovery unless actual results were supplied. If evidence is unavailable, continue conditional discussion honestly. These first-reply rules do not ban useful questions in later ordinary dialogue.';
 
-export function topicCardSummary(text:string):string{return text.split(/(?<=[.!?。])\s+|\n+/).filter(Boolean).slice(0,2).join(' ');}
+export function topicCardSummary(text:string):string{return text.trim();}
+
+export const priorTopicsHeading='지난 단계에서 나눈 이야기';

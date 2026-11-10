@@ -5,7 +5,7 @@ const require=createRequire(import.meta.url),load=p=>require(`${process.env.PSS_
 const server=load('lib/stage-topics-server.js'),llm=load('lib/llm/index.js'),admin=load('lib/firebaseAdmin.js');
 const {previousStage,topicContext}=load('lib/stage-topics.js');
 const mock=(t,obj,key,value)=>{const old=obj[key];obj[key]=value;t.after(()=>obj[key]=old)};
-const rawTopic=(quote='대성주유소 옆 골목에 차가 들어와 불편해요.')=>({title:'주유소 주변 골목길',summary:'골목으로 들어오는 차 때문에 불편하다고 말씀하셨어요.',places:['대성주유소'],openQuestion:'차가 들어오는 길과 걷는 길을 함께 살펴볼 수 있어요.',references:[{sourceIndex:0,quote}]});
+const rawTopic=(quote='대성주유소 옆 골목에 차가 들어와 불편해요.')=>({title:'주유소 주변 골목길',summary:'골목으로 들어오는 차 때문에 불편하다고 말씀하셨어요.',places:['대성주유소'],openQuestion:'차가 들어오는 길과 걷는 길은 어떻게 연결될까요?',references:[{sourceIndex:0,quote}]});
 function fixture(t,tag,{logs,summary}={}){
  const uid=`user-${tag}`,pid=`project-${tag}`,writes=[],docs=new Map();
  const stageLogs=logs??[{id:'original-message-id',sessionId:'original-session',sender:'user',text:'대성주유소 옆 골목에 차가 들어와 불편해요.',createdAt:'2026-01-01T00:00:00Z'},{sender:'assistant',text:'주민 캠페인은 어떨까요?'},{sender:'user',text:'캠페인보다 걸을 공간을 확보하고 싶어요.'}];
