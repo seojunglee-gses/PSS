@@ -23,10 +23,10 @@ test('table rendering escapes HTML and retains emphasis instead of injecting mar
  const html=renderToStaticMarkup(React.createElement(I18nProvider,null,React.createElement(Content,{text:'| A | B |\n|---|---|\n| **강조** | <script>alert(1)</script> |'})));
  assert.match(html,/<table/);assert.match(html,/<th[^>]*scope="col"/);assert.match(html,/<strong>강조<\/strong>/);assert.match(html,/&lt;script&gt;/);assert.ok(!html.includes('<script>'));
 });
-test('Data Analysis citations remain evidence buttons inside rendered table cells',()=>{
+test('Data Analysis retains table formatting with one answer-level evidence button',()=>{
  const React=require('react'),{renderToStaticMarkup}=require('react-dom/server'),{I18nProvider}=require(`${build}/lib/i18n.js`);
  const Answer=require(`${build}/components/analysis/AnalysisAnswer.js`).default;
  const answer={format:'direct',summary:'| 구분 | 근거 |\n|---|---|\n| **주민 교류** | 연구 결과 [R:W1] |',caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'',projectImplications:[],limitations:'',sources:[{sourceId:'R:W1',kind:'research',title:'Retrieved paper',authors:[],year:2025,openAlexId:'https://openalex.org/W1',doi:null,citationCount:1}]};
  const html=renderToStaticMarkup(React.createElement(I18nProvider,null,React.createElement(Answer,{answer,onViewEvidence(){}})));
- assert.match(html,/<table/);assert.match(html,/<strong>주민 교류<\/strong>/);assert.match(html,/aria-label="View evidence: Retrieved paper"/);assert.ok(!html.includes('[R:W1]'));
+ assert.match(html,/<table/);assert.match(html,/<strong>주민 교류<\/strong>/);assert.match(html,/aria-label="답변 근거 1개"/);assert.equal((html.match(/aria-haspopup="dialog"/g)||[]).length,1);assert.ok(!html.includes('[R:W1]'));
 });

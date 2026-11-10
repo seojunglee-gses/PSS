@@ -10,7 +10,6 @@ import { useGeoWorkspace } from "../../lib/spatial/use-geo";
 import { isGeoQuestion, mapPointLabel, spatialConversationQuestion, placeResultFollowUp, spatialToolRequest, isSpatialToolExplanation, isSpatialToolCancelled } from "../../lib/spatial/geo-query";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import SpatialSummary from "../../components/spatial/SpatialSummary";
 import { parseSpatialResult } from "../../lib/spatial/context";
 import type { SpatialResult } from "../../lib/spatial/types";
 function SpatialLoading() { const { t } = useI18n(); return <p className="p-6 text-sm text-slate-500">{t("spatial.loadingView")}</p>; }
@@ -54,12 +53,11 @@ import { loadGeneratedImages } from "../../lib/firebase";
 import type { SiteImage } from "../../lib/firebase";
 import { normalizeRoleId, roleLabelKeys, useI18n, localizeDefaultContent } from "../../lib/i18n";
 import SourceSelector from "../../components/analysis/SourceSelector";
-import EvidencePanel from "../../components/analysis/EvidencePanel";
+import AnswerEvidenceDialog from "../../components/analysis/AnswerEvidenceDialog";
 import AnalysisAnswerView from "../../components/analysis/AnalysisAnswer";
 import { conversationHistory, clarificationExchange } from "../../lib/chat-history";
-import type { Finding } from "../../lib/research/types";
 import { researchLabels } from "../../lib/research/labels";
-import { DEFAULT_SOURCES, usedAnswerEvidence, type AnalysisRecord, type EvidenceSource } from "../../lib/research/types";
+import { type AnalysisRecord, type EvidenceSource } from "../../lib/research/types";
 
 const providerLabel = (value: string) => /^chatgpt$/i.test(value) ? "ChatGPT" : value;
 
@@ -326,12 +324,9 @@ function AuthorizedWorkspace() {
   }, [expandedStarterScope]);
   const composerInputRef = useRef<HTMLInputElement>(null);
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
-  const [inspectedSpatial, setInspectedSpatial] = useState<SpatialResult | null>(null);
-  const [inspectedCaseFindings, setInspectedCaseFindings] = useState<Finding[]>([]);
-  const [inspectedResearchFindings, setInspectedResearchFindings] = useState<Finding[]>([]);
-  const [inspectedEvidence, setInspectedEvidence] = useState<AnalysisRecord["evidence"] | null>(null);
+  const [inspectedAnalysis, setInspectedAnalysis] = useState<AnalysisRecord | null>(null);
   const [spatialCategory, setSpatialCategory] = useState<number | null>(null);
-  const [analysisView, setAnalysisView] = useState<"cases" | "spatial" | "answer">("cases");
+  const [analysisView, setAnalysisView] = useState<"cases" | "spatial">("cases");
   const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null);
   const spatialStorageKey = userKey ? `ppss-spatial-${projectId}-${userKey}` : null;
   useEffect(() => {
@@ -353,7 +348,6 @@ function AuthorizedWorkspace() {
       }
     } catch { /* The in-memory result remains usable when storage is unavailable. */ }
   };
-  const [highlightedEvidence, setHighlightedEvidence] = useState<string | null>(null);
   const analysisAbortRef = useRef<AbortController | null>(null);
   const chatGenerationRef = useRef(0);
   useEffect(() => () => { analysisAbortRef.current?.abort(); }, [projectId, userKey]);
@@ -396,11 +390,7 @@ function AuthorizedWorkspace() {
     setSelectedImage(null);
     setSelectedAlternative(null);
     setSelectedSources([]);
-    setInspectedEvidence(null);
-    setInspectedResearchFindings([]);
-    setInspectedCaseFindings([]);
-    setInspectedSpatial(null);
-    setHighlightedEvidence(null);
+    setInspectedAnalysis(null);
     setAnalysisView("cases");
     setSpatialCategory(null);
     setExpandedStarterScope(null);
@@ -485,9 +475,6 @@ function AuthorizedWorkspace() {
     () => Object.values(chatLogsByStep).flat(),
     [chatLogsByStep]
   );
-  const latestAnalysis = [...(chatLogsByStep.data ?? [])].reverse().find((log) => log.analysis)?.analysis;
-  const answerSpatial = inspectedEvidence ? inspectedSpatial : latestAnalysis?.spatialContext;
-  const analysisEvidence = inspectedEvidence ?? (latestAnalysis ? usedAnswerEvidence(latestAnalysis) : null);
   const chatScope = `${userKey}/${projectId}/${activeStep.id}`;
   const [loadedChatScope, setLoadedChatScope] = useState<string | null>(null);
   const hasLoadedChatLogs = loadedChatScope === chatScope;
@@ -578,7 +565,7 @@ function AuthorizedWorkspace() {
     position();window.addEventListener('resize',position);window.visualViewport?.addEventListener('resize',position);window.visualViewport?.addEventListener('scroll',position);
     return()=>{window.removeEventListener('resize',position);window.visualViewport?.removeEventListener('resize',position);window.visualViewport?.removeEventListener('scroll',position);};
   },[completionOpen,summaryOpen,portalReady]);
-  useEffect(()=>{summaryResolver.current?.(null);summaryResolver.current=null;setSummaryOpen(false);setSummaryDraft("");},[projectId,userKey,activeStep.id]);
+  useEffect(()=>{setInspectedAnalysis(null);summaryResolver.current?.(null);summaryResolver.current=null;setSummaryOpen(false);setSummaryDraft("");},[projectId,userKey,activeStep.id]);
   useEffect(()=>()=>summaryResolver.current?.(null),[]);
   const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
   const [revisedAfterLock, setRevisedAfterLock] = useState<
@@ -1202,11 +1189,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         }
         return;
       }
-      setInspectedEvidence(null);
-      setInspectedResearchFindings([]);
-      setInspectedCaseFindings([]);
-      setInspectedSpatial(null);
-      setHighlightedEvidence(null);
+      setInspectedAnalysis(null);
       const controller = new AbortController();
       analysisAbortRef.current = controller;
       const response = await fetch("/api/research/answer", {
@@ -1235,11 +1218,9 @@ const handleSend = async (suggestedQuestion?: string) => {
         label: activeProvider, createdAt: new Date().toISOString(), analysis,
       }];
       if (activeStep.id === "data") {
-        setPanelView("information");
-        if (analysis.selectedSources.includes("research")) setAnalysisView("answer");
-        else if (analysis.selectedSources.includes("cases") && analysis.evidence.cases.length && analysis.evidence.cases[0].origin !== "external") {
-          setActiveTab(analysis.evidence.cases[0].id); setAnalysisView("cases"); recordCaseView(analysis.evidence.cases[0].id);
-        } else setAnalysisView("answer");
+        if (analysis.selectedSources.includes("cases") && analysis.evidence.cases.length && analysis.evidence.cases[0].origin !== "external") {
+          setPanelView("information"); setActiveTab(analysis.evidence.cases[0].id); setAnalysisView("cases"); recordCaseView(analysis.evidence.cases[0].id);
+        }
       }
       await persistChatLogs(stepId, sanitizeLogs(commitDataLogs(nextLogs)));
       return;
@@ -1354,7 +1335,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       const base=stepId==='data'?dataLogsRef.current:chatLogsByStep[stepId]??[];
       const logs:ChatLog[]=[...base,{stepId,provider:'ChatGPT',sender:'assistant',text:data.reply,label:'ChatGPT',createdAt:new Date().toISOString(),...(data.analysis?{analysis:data.analysis}:{})}];
       if(stepId==='data')commitDataLogs(logs);else setChatLogsByStep(prev=>({...prev,[stepId]:logs}));
-      if(data.analysis){setInspectedEvidence(null);setAnalysisView('answer');}
+      if(data.analysis) setInspectedAnalysis(null);
       await persistChatLogs(stepId,sanitizeLogs(logs));
     }catch(error){if(generation===chatGenerationRef.current&&!controller.signal.aborted){setSelectedContinuity(null);setErrorMessage(error instanceof Error?error.message:'이전 이야기를 이어가지 못했어요.');}}
     finally{if(topicContinuation.current===controller)topicContinuation.current=null;if(generation===chatGenerationRef.current)setIsSending(false);}
@@ -1799,9 +1780,8 @@ const handleSend = async (suggestedQuestion?: string) => {
   const renderChatPanel = () => {
     const stepLogs = chatLogs.filter((log) => log.stepId === activeStep.id);
     const defaultGuide = stageChatGuide(activeStep.id, locale, normalizedActiveRole);
-    const context = analysisView === "cases" ? "cases" : analysisView === "spatial"
-      ? spatialCategory === 0 ? "facilities" : spatialCategory !== null || spatialResult || geo.result ? "spatial-result" : "spatial"
-      : analysisEvidence?.papers.length ? "research" : analysisEvidence?.cases.length ? "cases" : answerSpatial ? "spatial-result" : "project";
+    const context = analysisView === "cases" ? "cases"
+      : spatialCategory === 0 ? "facilities" : spatialCategory !== null || spatialResult || geo.result ? "spatial-result" : "spatial";
     const baseGuide = activeStep.id === "data" && defaultGuide ? { ...defaultGuide, suggestedQuestions: dataAnalysisStarterPrompts(locale, context) } : defaultGuide;
     const topicFallbackAllowed = !previousStage(activeStep.id) || topicState.scope===topicScope && !topicState.error && !continuityTopics.length;
     const guide = continuityTopics.length && baseGuide ? {...baseGuide,suggestedQuestions:continuityTopics.map(topic=>({label:topic.title,prompt:topic.id}))} : topicFallbackAllowed ? baseGuide : undefined;
@@ -1926,24 +1906,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               <p className={`${isAssistant ? "workspace-assistant-label " : ""}text-xs font-semibold text-slate-400`}>
                 {normalizeRoleId(message.label) ? t(roleLabelKeys[normalizeRoleId(message.label)!]) : localize(providerLabel(message.label))}
               </p>
-              {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} additionalSources={[...(message.analysis.evidence.projectContext ? ["project" as const] : []), ...(message.analysis.spatialContext ? ["spatial" as const] : [])]} onViewEvidence={(sourceId) => {
-                setInspectedEvidence(usedAnswerEvidence(message.analysis!));
-                const viewedPaper = message.analysis!.evidence.papers.find(paper => paper.sourceId === sourceId);
-                if (viewedPaper) recordAnalysisActivity({type:"research",referenceId:viewedPaper.openAlexId,title:viewedPaper.title});
-                const viewedCase = message.analysis!.evidence.cases.find(item => item.sourceId === sourceId);
-                if (viewedCase) recordCaseView(viewedCase.id);
-                setInspectedResearchFindings(message.analysis!.answer.researchFindings);
-                setInspectedCaseFindings(message.analysis!.answer.caseFindings);
-                setInspectedSpatial(message.analysis!.spatialContext ?? null);
-                setAnalysisView("answer");
-                setPanelView("information");
-                setHighlightedEvidence(sourceId ?? null);
-                if (sourceId) window.setTimeout(() => {
-                  const target = document.getElementById(`evidence-${sourceId}`);
-                  const panel = target?.closest<HTMLElement>(".workspace-information");
-                  if (target && panel) panel.scrollTo({ top: panel.scrollTop + target.getBoundingClientRect().top - panel.getBoundingClientRect().top - 12, behavior: "smooth" });
-                }, 0);
-              }} />}
+              {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} record={message.analysis} onViewEvidence={() => setInspectedAnalysis(message.analysis!)} />}
               {message.text && !message.analysis && (
                 <div className="mt-2">
                   <ChatMessageContent text={geoChat?.time === message.createdAt && geo.result?.question === geoChat.question ? geo.result.reply : isAssistant && message.imageUrl ? localize(message.text) : message.text} />
@@ -2170,22 +2133,22 @@ const handleSend = async (suggestedQuestion?: string) => {
 
 
             </div>
-            <div role="tablist" aria-label={`${t("cases.heading")} / ${t("workspace.goal.spatial")} / ${analysisLabels.answerEvidence}`} className="workspace-analysis-tabs flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
-              {(["cases", "spatial", "answer"] as const).map((view) => <button key={view} type="button" role="tab"
+            <div role="tablist" aria-label={`${t("cases.heading")} / ${t("workspace.goal.spatial")}`} className="workspace-analysis-tabs flex gap-1 border-b border-slate-200 bg-slate-50 p-3">
+              {(["cases", "spatial"] as const).map((view) => <button key={view} type="button" role="tab"
                 id={`analysis-${view}-tab`} aria-controls={`analysis-${view}-panel`} aria-selected={analysisView === view}
                 tabIndex={analysisView === view ? 0 : -1}
                 onClick={() => setAnalysisView(view)}
                 onKeyDown={(event) => {
                   if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
                     event.preventDefault();
-                    const views = ["cases", "spatial", "answer"] as const;
-                    const next = views[(views.indexOf(view) + (event.key === "ArrowRight" ? 1 : 2)) % views.length];
+                    const views = ["cases", "spatial"] as const;
+                    const next = views[(views.indexOf(view) + (event.key === "ArrowRight" ? 1 : views.length - 1)) % views.length];
                     setAnalysisView(next);
                     document.getElementById(`analysis-${next}-tab`)?.focus();
                   }
                 }}
                 className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold ${analysisView === view ? "bg-white text-[var(--primary)] shadow-sm" : "text-slate-500 hover:bg-white/60"}`}>
-                {view === "cases" ? (locale === "ko" ? "실제 사례" : locale === "zh" ? "实际案例" : "Real cases") : view === "spatial" ? t("workspace.goal.spatial") : analysisLabels.answerEvidence}
+                {view === "cases" ? (locale === "ko" ? "실제 사례" : locale === "zh" ? "实际案例" : "Real cases") : t("workspace.goal.spatial")}
               </button>)}
             </div>
             {analysisView === "spatial" && <div role="tabpanel" id="analysis-spatial-panel" aria-labelledby="analysis-spatial-tab">
@@ -2193,20 +2156,6 @@ const handleSend = async (suggestedQuestion?: string) => {
                 setSpatialCategory(category); updateSpatialResult(null);
                 recordAnalysisActivity({ type: "spatial", referenceId: `category-${category}`, title: t(`boundary.category.${category}`), location: { question: t(`boundary.category.${category}`), reply: JSON.stringify({ displayedLayers: layers.map(layer => ({ id: layer.config.id, name: layer.config.label, featureCount: layer.data.features.length })), scope: "Counts cover uploaded datasets, not measured need or facility adequacy." }), places: [] } });
               }} onInspect={selection => { updateSpatialResult(null); recordAnalysisActivity({ type: "spatial", referenceId: selection.layerId && selection.featureId ? `${selection.layerId}/${selection.featureId}` : "map-point", title: selection.name, location: { question: selection.name, reply: "Selected project feature; location only.", ...(selection.scopeMeters !== undefined ? { scopeMeters: selection.scopeMeters } : {}), places: [{ id: selection.layerId && selection.featureId ? `${selection.layerId}/${selection.featureId}` : "map-point", name: selection.name, coordinate: selection.coordinate, ...(selection.layerId && selection.featureId ? {layerId: selection.layerId, featureId: selection.featureId} : {}) }] } }); }} geo={geo} key={`${projectId}-${userKey}`} projectId={projectId} result={spatialResult?.projectId === projectId ? spatialResult : null} onResult={recordSpatialResult} included={selectedSources.includes("spatial")} onInclude={(included) => setSelectedSources((prev) => included ? [...new Set([...prev, "spatial" as const])] : prev.filter((source) => source !== "spatial"))} />
-            </div>}
-            {analysisView === "answer" && <div role="tabpanel" id="analysis-answer-panel" aria-labelledby="analysis-answer-tab">
-              <button type="button" className="ml-6 mt-4 text-xs font-semibold text-blue-700" onClick={() => setAnalysisView("cases")}>{analysisLabels.backCases}</button>
-              {answerSpatial && <section className="m-6 space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-4 text-sm">
-                <h4 className="font-semibold">{t("workspace.spatialEvidence")}</h4>
-                <SpatialSummary result={answerSpatial} />
-              </section>}
-              <EvidencePanel evidence={analysisEvidence} enabled={analysisEvidence?.selectedSources ?? DEFAULT_SOURCES} loading={isSending} highlighted={highlightedEvidence}
-                caseFindings={inspectedEvidence ? inspectedCaseFindings : latestAnalysis?.answer.caseFindings ?? []}
-                researchFindings={inspectedEvidence ? inspectedResearchFindings : latestAnalysis?.answer.researchFindings ?? []}
-                availableCaseIds={(activeProject?.workspaceContent.data.cases ?? []).map((item) => item.id)}
-                onViewCase={(caseId) => { setActiveTab(caseId); setAnalysisView("cases"); recordCaseView(caseId); }}
-                onViewPaper={(paper) => recordAnalysisActivity({ type: "research", referenceId: paper.openAlexId, title: paper.title })}
-                onViewProject={() => recordAnalysisActivity({ type: "project", referenceId: "project-material", title: analysisLabels.project })} />
             </div>}
             <div role="tabpanel" id="analysis-cases-panel" aria-labelledby="analysis-cases-tab" hidden={analysisView !== "cases"}>
             <div className="border-b border-slate-200 bg-slate-50 p-4">
@@ -2714,6 +2663,11 @@ const handleSend = async (suggestedQuestion?: string) => {
         </WorkspacePanels>
       )}
       </div>
+      {activeStep.id === "data" && inspectedAnalysis && <AnswerEvidenceDialog record={inspectedAnalysis} onClose={() => setInspectedAnalysis(null)}
+        availableCaseIds={(activeProject?.workspaceContent.data.cases ?? []).map(item => item.id)}
+        onViewPaper={paper => recordAnalysisActivity({type: "research", referenceId: paper.openAlexId, title: paper.title})}
+        onViewProject={() => recordAnalysisActivity({type: "project", referenceId: "project-material", title: analysisLabels.project})}
+        onViewCase={caseId => {setInspectedAnalysis(null); setActiveTab(caseId); setAnalysisView("cases"); setPanelView("information"); recordCaseView(caseId);}} />}
       <dialog ref={caseDeleteDialog} aria-labelledby="case-delete-title" aria-describedby="case-delete-description" onCancel={() => setPendingDeleteCaseId(null)} className="m-auto w-[calc(100%_-_32px)] max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-xl backdrop:bg-slate-900/40">
         <h3 id="case-delete-title" className="text-lg font-semibold">{t("cases.deleteConfirm")}</h3>
         <p id="case-delete-description" className="mt-2 text-sm text-slate-600">{t("cases.deleteWarning")}</p>

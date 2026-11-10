@@ -248,5 +248,5 @@ test('case answers allow bold spatial candidate labels while preserving exact ci
  assert.equal(result.sources[0].sourceId,'C:1');
  const React=require('react'),{renderToStaticMarkup}=require('react-dom/server'),{I18nProvider}=load('lib/i18n.js'),Answer=load('components/analysis/AnalysisAnswer.js').default;
  const html=renderToStaticMarkup(React.createElement(I18nProvider,null,React.createElement(Answer,{answer:result,onViewEvidence(){}})));
- assert.match(html,/<strong>차량 공간 재조정<\/strong>/);assert.match(html,/View evidence: 자료에 등록된 사례/);assert.doesNotMatch(html,/\[C:1\]/);
+ assert.match(html,/<strong>차량 공간 재조정<\/strong>/);assert.match(html,/aria-label="답변 근거 1개"/);assert.doesNotMatch(html,/\[C:1\]/);
 });
