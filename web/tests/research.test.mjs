@@ -13,23 +13,23 @@ const { MODELS, selectOpenAIChatModel, callOpenAI } = load('lib/llm/openai.js');
 const searchHandler = load('pages/api/research/search.js').default;
 const answerHandler = load('pages/api/research/answer.js').default;
 
-test('OpenAI model routing reserves Fast Chat for clear simple tasks', () => {
-  assert.deepEqual(MODELS, { fastChat: 'gpt-6-luna', chat: 'gpt-6.1-sol', image: 'gpt-image-2.5-flare' });
+test('OpenAI model routing uses gpt-6.1-sol for simple and complex tasks', () => {
+  assert.deepEqual(MODELS, { fastChat: 'gpt-6.1-sol', chat: 'gpt-6.1-sol', image: 'gpt-image-2.5-flare' });
   for (const question of ['안녕하세요', '이 문장 맞춤법 고쳐줘', '다음 글을 요약해줘: 짧은 글입니다.', 'Rewrite this sentence', 'What is a glossary?']) {
-    assert.equal(selectOpenAIChatModel(question, 'problem'), MODELS.fastChat);
+    assert.equal(selectOpenAIChatModel(question, 'problem'), 'gpt-6.1-sol');
   }
   for (const question of ['공간 분석 결과를 해석해줘', '여러 근거를 종합해줘', 'Compare design alternatives', 'Rewrite the report', '다음 단계는?', 'rewrite ' + 'x'.repeat(601)]) {
     assert.equal(selectOpenAIChatModel(question, 'problem'), MODELS.chat);
   }
 });
-test('report and analysis stages cannot be routed to Fast Chat even for simple requests', () => {
+test('all workflow stages keep gpt-6.1-sol for simple requests', () => {
   for (const stage of ['report', 'summary', 'data', 'alternatives', 'evaluation']) {
     for (const question of ['요약해줘', '안녕하세요', 'Rewrite this sentence']) {
       assert.equal(selectOpenAIChatModel(question, stage), MODELS.chat);
     }
   }
 });
-test('OpenAI gateway defaults to Chat and sends a selected Fast Chat model without extra requests', async (t) => {
+test('OpenAI gateway sends gpt-6.1-sol for both default and conversion requests', async (t) => {
   const previousKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = 'mock-model-routing-key';
   t.after(() => { if (previousKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previousKey; });
@@ -42,7 +42,7 @@ test('OpenAI gateway defaults to Chat and sends a selected Fast Chat model witho
   });
   await callOpenAI({ systemText: 'unchanged prompt', userText: 'task' });
   await callOpenAI({ model: MODELS.fastChat, systemText: 'unchanged prompt', userText: 'task' });
-  assert.deepEqual(models, [MODELS.chat, MODELS.fastChat]);
+  assert.deepEqual(models, ['gpt-6.1-sol', 'gpt-6.1-sol']);
 });
 
 test('spatial AI context resolves building names on the server and keeps original codes',async t=>{
@@ -277,7 +277,7 @@ test('Korean academic queries omit conversational phrasing and keep planning top
 });
 test('unfamiliar Korean research topics convert and never replace the original question', async (t) => {
   let converted = 0;
-  mockLLM(t, async request => { converted++; assert.match(request.systemText,/English academic/); return 'flood resilience urban regeneration'; });
+  mockLLM(t, async request => { converted++; assert.equal(request.model, "gpt-6.1-sol"); assert.match(request.systemText,/English academic/); return 'flood resilience urban regeneration'; });
   let query;
   mockFetch(t, async url => { query=url.searchParams.get('search'); return Response.json({results:[work()]}); });
   const original='도시재생에서 홍수 회복탄력성에 관한 학술 논문을 찾아줘.';
