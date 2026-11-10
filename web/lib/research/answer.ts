@@ -80,6 +80,10 @@ Return JSON only, with exactly this structure:
     userText: JSON.stringify({ ...(request.analysisSession?.length ? { analysisSession: request.analysisSession } : {}), question: request.question, history: request.history ?? [], projectMaterial: evidence.projectContext, spatialContext: request.spatialContext, ...(request.registeredSpatialContext?{registeredSpatialContext:request.registeredSpatialContext}:{}), projectContext: request.projectContext, previousStageSummaries: request.previousSummaries ?? {}, cases: evidence.cases, papers: evidence.papers.filter((p) => p.usedInAnswer), searchCapabilities: { generalWebCaseSearch: !!process.env.OPENAI_API_KEY, academicSearch: "OpenAlex abstracts", placeSearch: "bounded Kakao POI lookup", externalCases: "OpenAI web_search; supplied sources only" }, retrievalWarnings: evidence.warnings }),
   });
   const answer=parseAnswer(response,evidence);
+  const searchFailure=evidence.warnings.find(w=>w.source==='research'&&/제한|연결하지 못|완료하지 못|불러오지 못|초과|접근하지 못|읽지 못/.test(w.message));
+  if(searchFailure&&!evidence.papers.some(p=>p.usedInAnswer)&&!answer.summary.includes(searchFailure.message)){
+    answer.summary=searchFailure.message+'\n\n'+answer.summary;
+  }
   if(directSpatial){
     answer.summary=[answer.summary,answer.integratedInterpretation,...answer.projectImplications,answer.limitations].filter(Boolean).filter((text,index,all)=>all.indexOf(text)===index).join("\n\n");
     answer.format='direct'; answer.integratedInterpretation=""; answer.agreement=""; answer.differences=""; answer.projectImplications=[]; answer.caseFindings=[]; answer.researchFindings=[]; answer.limitations="";

@@ -1,3 +1,4 @@
+import {openAlexRequest,openAlexDiagnostic,OPENALEX_BUSY_MESSAGE} from "./openalex-request";
 import { academicSearchQuery } from "./query";
 import type { ResearchPaper } from "./types";
 
@@ -86,7 +87,7 @@ export function researchSearchMode(question: string): "search" | "search.semanti
 
 async function fetchPapers(query: string): Promise<ResearchPaper[]> {
   const cached = cache.get(query);
-  if (cached && cached.expires > Date.now()) return cached.papers;
+  if (cached && cached.expires > Date.now()) {openAlexDiagnostic({event:'cache',cache:true,kind:'search'});return cached.papers;}
   const url = new URL("https://api.openalex.org/works");
   // Natural-language questions use semantic retrieval; concise queries use works search.
   url.searchParams.set(researchSearchMode(query), query);
@@ -96,11 +97,13 @@ async function fetchPapers(query: string): Promise<ResearchPaper[]> {
   if (process.env.OPENALEX_MAILTO) url.searchParams.set("mailto", process.env.OPENALEX_MAILTO);
   let response: Response;
   try {
-    response = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { Accept: "application/json" } });
-  } catch {
+    response = await openAlexRequest(url);
+  } catch(error) {
+    if(error instanceof Error&&error.message===OPENALEX_BUSY_MESSAGE)throw error;
     throw new Error("연구논문 검색에 연결하지 못했거나 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
   }
   if (!response.ok) {
+    await response.body?.cancel();
     // Never return provider request URLs/errors; they can contain the API key.
     if (response.status === 401 || response.status === 403) throw new Error("연구논문 검색 서비스에 접근하지 못했습니다. 검색 설정을 확인해 주세요.");
     if (response.status === 429) throw new Error("연구논문 검색 요청이 많아 잠시 제한되었습니다. 잠시 후 다시 시도해 주세요.");
@@ -123,7 +126,7 @@ const pendingQueries = new Map<string, Promise<ResearchPaper[]>>();
 export async function searchOpenAlex(question: string, provider?: "openai" | "gemini" | "deepseek", projectContext = ""): Promise<ResearchPaper[]> {
   const key = `${provider ?? "openai"}:${question.trim()}:${projectContext.slice(0, 1500)}`;
   const existing = pendingQuestions.get(key);
-  if (existing) return existing;
+  if (existing) {openAlexDiagnostic({event:'coalesced',cache:true,kind:'question'});return existing;}
   const operation = (async () => {
     const query = await academicSearchQuery(question, provider, projectContext);
     let request = pendingQueries.get(query);
@@ -131,19 +134,33 @@ export async function searchOpenAlex(question: string, provider?: "openai" | "ge
       request = fetchPapers(query).finally(() => pendingQueries.delete(query));
       pendingQueries.set(query, request);
     }
+    else openAlexDiagnostic({event:'coalesced',cache:true,kind:'query'});
     return request;
   })().finally(() => pendingQuestions.delete(key));
   pendingQuestions.set(key, operation);
   return operation;
 }
 
+const paperCache=new Map<string,{expires:number;papers:ResearchPaper[]}>();
+const pendingPapers=new Map<string,Promise<ResearchPaper[]>>();
+
 // Re-open an actually viewed paper by stable ID; do not replace it with a new ranked search.
 export async function readOpenAlexPaper(id: string): Promise<ResearchPaper[]> {
   if (!/^(?:https:\/\/openalex\.org\/)?W\d+$/.test(id)) throw new Error("선택한 논문 정보가 올바르지 않습니다.");
-  const url = new URL(`https://api.openalex.org/works/${id.split('/').pop()}`);
+  const key=id.split('/').pop()!;
+  const cached=paperCache.get(key);
+  if(cached&&cached.expires>Date.now()){openAlexDiagnostic({event:'cache',cache:true,kind:'paper'});return cached.papers;}
+  const pending=pendingPapers.get(key);if(pending){openAlexDiagnostic({event:'coalesced',cache:true,kind:'paper'});return pending;}
+  const operation=(async()=>{
+  const url = new URL(`https://api.openalex.org/works/${key}`);
   if (process.env.OPENALEX_API_KEY) url.searchParams.set("api_key", process.env.OPENALEX_API_KEY);
   if (process.env.OPENALEX_MAILTO) url.searchParams.set("mailto", process.env.OPENALEX_MAILTO);
-  const response = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { Accept: "application/json" } });
+  const response = await openAlexRequest(url);
+  if(response.status===429)throw new Error("연구논문 검색 요청이 많아 잠시 제한되었습니다. 잠시 후 다시 시도해 주세요.");
   if (!response.ok) throw new Error("선택한 논문을 불러오지 못했습니다. 다른 논문으로 대체하지 않았습니다.");
-  return selectPapers([await response.json()]);
+  const papers=selectPapers([await response.json()]).filter(p=>p.openAlexId===`https://openalex.org/${key}`);
+  if(paperCache.size>=50)paperCache.delete(paperCache.keys().next().value!);
+  paperCache.set(key,{papers,expires:Date.now()+5*60*1000});return papers;
+  })().finally(()=>pendingPapers.delete(key));
+  pendingPapers.set(key,operation);return operation;
 }
