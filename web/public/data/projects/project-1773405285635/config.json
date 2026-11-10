@@ -13,11 +13,12 @@
   "layers": [
     {
       "id": "gajwa1-boundary",
-      "label": "사업구역 경계",
+      "label": "가좌1동 행정동 참고경계",
       "type": "polygon",
       "role": "boundary",
       "source": "/data/projects/project-1773405285635/gajwa1-boundary.geojson",
-      "color": "#2563eb"
+      "color": "#2563eb",
+      "internalOnly": true
     },
     {
       "id": "gajwa-target-roads",

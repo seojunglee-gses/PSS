@@ -125,7 +125,7 @@ export default function SpatialMap({
                   source: layer.config.id,
                   paint: {
                     "fill-color": color,
-                    "fill-opacity": layer.config.role === "boundary" ? 0.08 : 0.4,
+                    "fill-opacity": layer.config.role === "boundary" || layer.config.datasetType === "project_boundary" ? 0.025 : 0.4,
                     "fill-outline-color": color,
                   },
                 }
@@ -148,6 +148,7 @@ export default function SpatialMap({
                     },
                   },
           );
+          if (layer.config.role === "boundary" || layer.config.datasetType === "project_boundary") map.addLayer({ id: `__boundary-stroke-${layer.config.id}`, type: "line", source: layer.config.id, layout: { visibility: !layer.config.internalOnly && visibleRef.current.includes(layer.config.id) ? "visible" : "none" }, paint: { "line-color": color, "line-width": 1.5, "line-opacity": 0.85 } });
         }
         map.addSource("__selection", { type: "geojson", data: overlayRef.current });
         map.addLayer({
@@ -179,13 +180,14 @@ export default function SpatialMap({
           map.setLayoutProperty(
             layer.config.id,
             "visibility",
-            visibleRef.current.includes(layer.config.id) ? "visible" : "none",
+            !layer.config.internalOnly && visibleRef.current.includes(layer.config.id) ? "visible" : "none",
           );
       });
       map.on("moveend", () => { const c = map.getCenter(); centerRef.current?.([c.lng, c.lat]); });
       map.once('load',()=>setReady(true));
       map.on("click", (event) => {
         const ids = layersRef.current
+          .filter(l => !l.config.internalOnly && l.config.role !== "boundary" && l.config.datasetType !== "project_boundary")
           .map((l) => l.config.id)
           .filter((id) => map.getLayer(id));
         const hit = map.queryRenderedFeatures(event.point, { layers: ids })[0];
@@ -227,13 +229,9 @@ export default function SpatialMap({
   useEffect(()=>{const map=mapRef.current;if(map&&extent)map.fitBounds([[extent[0],extent[1]],[extent[2],extent[3]]],{padding:35,maxZoom:17,duration:0});},[extent,resetVersion]);
   useEffect(() => {
     const map = mapRef.current;
-    for (const l of layers)
-      if (map?.getLayer(l.config.id))
-        map.setLayoutProperty(
-          l.config.id,
-          "visibility",
-          visible.includes(l.config.id) ? "visible" : "none",
-        );
+    for (const l of layers) {
+      for (const id of [l.config.id, `__boundary-stroke-${l.config.id}`]) if (map?.getLayer(id)) map.setLayoutProperty(id, "visibility", !l.config.internalOnly && visible.includes(l.config.id) ? "visible" : "none");
+    }
   }, [visible, layers]);
   useEffect(() => {
     const map = mapRef.current;
@@ -246,9 +244,9 @@ export default function SpatialMap({
     if(!geoResult)fittedResult.current='';
     if(!map||!ready||!geoResult)return;
     // Kakao POIs remain on Kakao Maps only; project-owned geometry works on either basemap.
-    const places=[...geoResult.places,...(geoResult.resolvedPlaces??[])].filter(p=>p.source!=='kakao');
+    const places=[...new Map([...geoResult.places,...(geoResult.resolvedPlaces??[])].map(p=>[p.id,p])).values()].filter(p=>p.source!=='kakao');
     const markers=places.map(place=>{
-      const index=geoResult.places.findIndex(p=>p.id===place.id),button=document.createElement('button');button.type='button';button.className='min-h-11 min-w-11 rounded-full border-2 bg-white px-3 text-sm font-semibold shadow';button.textContent=index>=0?String(index+1):place.name;button.setAttribute('aria-label',`${index+1}. ${place.name}`);button.setAttribute('aria-pressed',String(highlightedPlaceId===place.id||selectedPlaceId===place.id));button.style.borderColor=highlightedPlaceId===place.id||selectedPlaceId===place.id?'#f59e0b':'#7c3aed';button.style.opacity=selectedPlaceId&&selectedPlaceId!==place.id?'.3':'1';button.onclick=event=>{event.stopPropagation();onPlace?.(place);};return new maplibregl.Marker({element:button}).setLngLat(place.coordinate).addTo(map);
+      const active=selectedPlaceId?selectedPlaceId===place.id:highlightedPlaceId===place.id;const index=geoResult.places.findIndex(p=>p.id===place.id),button=document.createElement('button');button.type='button';button.className='spatial-place-marker';button.textContent=index>=0?String(index+1):'•';button.title=place.name;button.setAttribute('aria-label',`${index+1}. ${place.name}`);button.setAttribute('aria-pressed',String(active));button.style.borderColor=active?'#f59e0b':'#7c3aed';button.style.opacity=selectedPlaceId&&selectedPlaceId!==place.id?'.3':'1';button.onclick=event=>{event.stopPropagation();onPlace?.(place);};return new maplibregl.Marker({element:button}).setLngLat(place.coordinate).addTo(map);
     });
     const geometryExtent=overlay.features.length?bbox(overlay):undefined;
     const key=JSON.stringify([geoResult.question,places,extent,geometryExtent]);

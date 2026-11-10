@@ -78,13 +78,13 @@ export default function KakaoSpatialMap(props: SpatialMapProps & {
         let cancelled = false;
         let frame = 0;
         let index = 0;
-        const features = props.layers.filter(l => props.visible.includes(l.config.id)).flatMap(layer => layer.data.features.map((feature, index) => ({ layer, feature, index })));
+        const features = props.layers.filter(l => !l.config.internalOnly && props.visible.includes(l.config.id)).flatMap(layer => layer.data.features.map((feature, index) => ({ layer, feature, index })));
         const batch = () => {
             if (cancelled)
                 return;
             for (let n = 0; n < 100 && index < features.length; n++, index++) {
                 const { layer, feature, index: featureIndex } = features[index];
-                const objects = kakaoFeatureOverlays(api, feature, layer.config.color ?? '#64748b', () => latest.current.onSelect(layer, feature, featureIndex));
+                const objects = kakaoFeatureOverlays(api, feature, layer.config.color ?? '#64748b', () => latest.current.onSelect(layer, feature, featureIndex), false, 1, layer.config.role === "boundary" || layer.config.datasetType === "project_boundary");
                 for (const object of objects) {
                     object.setMap(instance);
                     created.push(object);
@@ -128,9 +128,9 @@ export default function KakaoSpatialMap(props: SpatialMapProps & {
         const seen = new Set<string>();
         const addPlace = (place: Place, label: string, color: string) => {
             if (seen.has(place.id)) return; seen.add(place.id);
-            const active = place.id === props.highlightedPlaceId || place.id === props.selectedPlaceId;
+            const active = props.selectedPlaceId ? place.id === props.selectedPlaceId : place.id === props.highlightedPlaceId;
             const opacity = props.selectedPlaceId && props.selectedPlaceId !== place.id && result.places.some(p=>p.id===place.id) ? .3 : 1;
-            const element = document.createElement('button'); element.type = 'button'; element.className = 'min-h-11 min-w-11 rounded-full border-2 bg-white px-3 text-xs font-semibold shadow'; element.style.borderColor = active ? '#f59e0b' : color; element.style.backgroundColor = active ? '#fef3c7' : 'white'; element.style.opacity = String(opacity); element.textContent = label; element.title = localize(place.name); element.setAttribute('aria-label', `${label}. ${localize(place.name)}`);element.setAttribute('aria-pressed',String(active)); element.onclick = () => { api.event.preventMap(); latest.current.onPlace?.(place); };
+            const element = document.createElement('button'); element.type = 'button'; element.className = 'spatial-place-marker'; element.style.borderColor = active ? '#f59e0b' : color; element.style.backgroundColor = active ? '#fef3c7' : 'white'; element.style.opacity = String(opacity); element.textContent = /^\d+$/.test(label) ? label : '•'; element.title = localize(place.name); element.setAttribute('aria-label', `${label}. ${localize(place.name)}`);element.setAttribute('aria-pressed',String(active)); element.onclick = () => { api.event.preventMap(); latest.current.onPlace?.(place); };
             const object = new api.CustomOverlay({ position: latLng(api, place.coordinate), content: element, yAnchor: 1.2 }); object.setMap(instance); created.push(object); bounds.extend(latLng(api, place.coordinate));
             if (place.source === 'project') {
                 const layer = props.layers.find(l=>l.config.id===place.layerId), feature = layer?.data.features.find((f,i)=>featureKey(f,i)===place.featureId);

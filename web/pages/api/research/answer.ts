@@ -1,3 +1,4 @@
+import { isSelectedPlaceDiscussion } from "../../../lib/spatial/geo-query";
 import { isPlanningFollowUp, recentAnswerEvidence } from "../../../lib/research/follow-up";
 import { spatialPromptContext } from "../../../lib/spatial/context";
 import { projectLayers } from "../../../lib/spatial/geo-server";
@@ -53,14 +54,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (previous) {
         request.reuseEvidence = previous;
         request.searchQuestion = request.question;
-        request.selectedSources = ["project", ...previous.selectedSources];
+        request.selectedSources = [...new Set(["project" as const, ...previous.selectedSources, ...(isSelectedPlaceDiscussion(request.question) ? ["spatial" as const] : [])])];
       }
     }
+    if (automatic && isSelectedPlaceDiscussion(request.question) && !request.selectedSources.includes("spatial")) request.selectedSources.push("spatial");
     request.analysisSession=analysisSessionContext(context.stageHistory,context.projectId,context.cases,request.selectedSources);
-    if(request.selectedSources.includes("spatial") && !request.spatialContext)request.spatialContext=canonicalBuildingContext([...activities].reverse().find(a=>a.type==="spatial")?.result);
+    if(request.selectedSources.includes("spatial") && !request.spatialContext && !isSelectedPlaceDiscussion(request.question))request.spatialContext=canonicalBuildingContext([...activities].reverse().find(a=>a.type==="spatial")?.result);
     if(request.selectedSources.includes("spatial")) {
       const data=context.spatialData??await projectLayers(context.user,context.projectId);
-      request.registeredSpatialContext=spatialPromptContext(data.layers,req.body.spatialSelection,activities,!!data.boundary,{nearbyPlaces:!!data.boundary&&!!process.env.KAKAO_REST_API_KEY,priority:!!data.priority});
+      request.registeredSpatialContext=spatialPromptContext(data.layers,req.body.spatialSelection,activities,!!data.boundary,{nearbyPlaces:!!data.boundary&&!!process.env.KAKAO_REST_API_KEY,priority:!!data.priority,boundary:data.boundary});
     }
     if(request.selectedSources.includes('cases') && !request.reuseEvidence){
       const focused=namedCases(request.searchQuestion,context.cases,contextual?[]:request.history);

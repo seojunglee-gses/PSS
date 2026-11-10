@@ -13,6 +13,7 @@ export type LayerConfig = {
   type: "polygon" | "line" | "point";
   source: string;
   defaultVisible?: boolean;
+  internalOnly?: boolean;
   color?: string;
   displayFields?: string[];
   fieldLabels?: Record<string, string>;
@@ -51,3 +52,9 @@ export type SpatialResult = {
   notes: string[];
   priorities?: { featureId: string; score: number }[];
 };
+
+// An explicitly selected uploaded boundary wins; administrative references are never a fallback.
+export function projectBoundaryLayerId(layers: LayerConfig[], activeId?: string | null, referenceId?: string): string | undefined {
+  if (activeId) return layers.find(layer => layer.id === `uploaded-${activeId}` && !layer.internalOnly)?.id;
+  return layers.find(layer => layer.id === referenceId && !layer.internalOnly)?.id;
+}

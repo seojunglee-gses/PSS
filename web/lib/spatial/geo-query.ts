@@ -12,6 +12,8 @@ export type Place = {
     coordinate: Coordinate;
     source: 'project' | 'kakao' | 'map';
     category?: string;
+    relatedCategories?: string[];
+    groupedPlaceIds?: string[];
     categoryCode?: KakaoCategoryCode;
     address?: string;
     roadAddress?: string;
@@ -46,6 +48,7 @@ export type GeoPlan = {
     walking: boolean;
     minutes?: number;
     nearby: boolean;
+    projectArea?: boolean;
     locations?: string[];
 };
 export type GeoResult = {
@@ -151,13 +154,19 @@ export function isSpatialInvestigation(question: string) {
     return location && /왜.{0,12}(?:번잡|복잡|혼잡)|(?:주변|근처).*(?:확인|뭐|무엇)|영향|몇\s*(?:개|곳)|가까운|찾아봐|확인해봐|살펴봐|investigat|congest|crowd/i.test(question)
       || /^\s*\d+(?:\.\d+)?\s*(?:m|km|미터)\s*(?:이내|주변|반경|근처)/i.test(question);
 }
+// Scope words describe the current project polygon, not a business name.
+export const PROJECT_AREA_WORDS = /우리\s*(?:지역|동네)|이\s*동네|사업\s*(?:지역|대상지|구역)|여기\s*지역|our (?:area|neighbou?rhood)|project area/gi;
+export const isProjectAreaReference = (name: string) => /^(?:우리\s*(?:지역|동네)|이\s*동네|사업\s*(?:지역|대상지|구역)|여기\s*지역|our (?:area|neighbou?rhood)|project (?:area|boundary))$/i.test(name.trim());
+export const isSelectedPlaceDiscussion = (question: string) => /여기|이곳|이\s*(?:주변|장소|지점)|선택한|선택된|아까\s*말한\s*곳|this (?:place|spot)|\bhere\b/i.test(question) && /쉼터|휴게|녹지|만들|어때|어떨|적합|문제|차량.*(?:복잡|번잡|혼잡)|rest|suitab|improv/i.test(question) && !/논문|학술|연구|사례|paper|research|case study/i.test(question);
 const reference = /^(?:지금\s*)?(여기|거기|이곳|이\s*장소|아까\s*말한\s*곳|이전에\s*말한\s*곳|이\s*건물|이\s*필지|선택한.*|선택된.*|현재\s*(지도\s*)?중심|here|this (building|parcel)|selected.*|map center)$/i;
 export const isMapReference = (name: string) => reference.test(name.trim());
 function clean(text: string) { return text.trim().replace(/(?:을|를)?\s*(?:지도(?:에|에서)\s*)?(?:보여(?:줘|주세요)|찾아(?:줘|주세요)|검색(?:해줘|해주세요)|(?:분석|확인)(?:해줘|해주세요))\s*[?.!]*$/i, '').replace(/(?:은|는|이|가)?\s*어디(?:에)?\s*있(?:어|나요|니|을까)?[?.!]*$/, '').replace(/[?.!]+$/g, '').replace(/(?:은|는|이|가)?\s*어디(?:야|인가요|에\s*있(?:어|나요))$/,'').replace(/(?:을|를)?\s*(?:찾아(?:줘|주세요)?|검색(?:해줘|해주세요)?|알려(?:줘|주세요)?|보여(?:줘|주세요)?|어디(?:야|인가요)?|있(?:어|나요)|있을까|search|find|show)(?:[?.!\s]*)$/i, '').trim(); }
 export function parseGeoPlan(question: string): GeoPlan {
     if (typeof question !== 'string' || !question.trim() || question.length > 1000)
         throw new Error('gis.invalidQuestion');
-    const q = question.trim().replace(/^이\s*(근처|주변)/, '$1');
+    const normalized = question.trim().replace(PROJECT_AREA_WORDS, '사업구역');
+    const projectArea = new RegExp(PROJECT_AREA_WORDS.source, 'i').test(question) && !/사업구역(?:이\s*아니라|\s*말고)/.test(normalized);
+    const q = normalized.replace(/사업구역(?:이\s*아니라|\s*말고)\s*/g, '').replace(/^이\s*(근처|주변)/, '$1');
     const route = q.match(/^(.+?)(?:에서|부터)\s*(.+?)(?:까지|(?:으)?로(?=\s|$))\s*(.*)$/);
     const englishRoute = q.match(/(?:from)\s+(.+?)\s+to\s+(.+?)(?:\?|$)/i);
     const walking = /도보|걸어|걸리|걸려|몇\s*분|walking|\bwalk\b/i.test(q);
@@ -167,7 +176,7 @@ export function parseGeoPlan(question: string): GeoPlan {
     if (radius < 1 || radius > 20000 || (minutes && (Number(minutes[1]) < 1 || Number(minutes[1]) > 180)))
         throw new Error('gis.invalidRadius');
     const limit = Math.min(10, Math.max(1, Number(q.match(/(\d+)\s*(?:개|곳|곳을|places)/i)?.[1] ?? 5)));
-    if (!route && !englishRoute && !/가장\s*가까|nearest|closest|주변|근처|nearby|near\b|주요\s*(?:사업)?시설|key\s*(?:project\s*)?facilit/i.test(q) && /어디|위치(?:해|하|는|를|가|에)|where (?:is|are)|locations? of/i.test(q)) {
+    if (!projectArea && !route && !englishRoute && !/가장\s*가까|nearest|closest|주변|근처|nearby|near\b|주요\s*(?:사업)?시설|key\s*(?:project\s*)?facilit/i.test(q) && /어디|위치(?:해|하|는|를|가|에)|where (?:is|are)|locations? of/i.test(q)) {
         const subject = q.replace(/^(?:where (?:is|are)|(?:the )?locations? of)\s+/i, '').split(/어디|(?:의\s*)?위치/)[0].replace(/[?.!]+$/g, '').replace(/(?:은|는|이|가|의)\s*$/, '').trim();
         const locations = subject.split(/(?:와|과)\s+|\s+및\s+|[,，]|\s+and\s+/i).map(s => clean(s).replace(/^the\s+/i, '')).filter(Boolean);
         if (locations.length && locations.length <= 4 && !(locations.length === 1 && genericCategoryCode(locations[0]))) return { intent: 'PLACE_SEARCH', query: locations[0], locations, radius, limit, walking: false, nearby: false };
@@ -214,9 +223,15 @@ export function parseGeoPlan(question: string): GeoPlan {
     if (!query || /^(?:뭐가|무엇이|뭐|무엇|어떤\s*곳|확인)(?:\s*있어)?$/i.test(query)) query = '편의시설';
     query=query.replace(/^(?:에|의)\s+/, '').replace(/^(?:어떤|어디에|무슨)\s*/,'').replace(/^(?:생활시설|편의시설|시설)(?:이|가|은|는)?$/,'편의시설');
     if (/주민.*이용.*시설|이용할.*시설/.test(query)) query = '편의시설';
+    if (projectArea && !route && !englishRoute) {
+        origin = '사업구역';
+        query = query.replace(/사업구역(?:\s*(?:안|내))?(?:에서|에는|에|의)?/g, '').trim();
+        if (/외국인.*식료품|외국\s*식료품/.test(q)) query = '외국 식료품점';
+        if (intent === 'PLACE_SEARCH') intent = 'NEARBY_SEARCH';
+    }
     if (intent === 'PLACE_SEARCH' && genericCategoryCode(query)) intent = 'CATEGORY_SEARCH';
     if (intent === 'PLACE_SEARCH' && /^(?:공원|녹지|편의시설|생활시설|시설|parks?|amenities)$/i.test(query)) intent = 'NEARBY_SEARCH';
-    return { intent, query, ...(origin ? { origin } : {}), ...(destination ? { destination } : {}), radius, limit, walking, ...(minutes ? { minutes: Number(minutes[1]) } : {}), nearby: ['NEAREST_PLACE', 'RADIUS_SEARCH', 'NEARBY_SEARCH', 'CATEGORY_SEARCH'].includes(intent) };
+    return { intent, query, ...(projectArea ? {projectArea:true} : {}), ...(origin ? { origin } : {}), ...(destination ? { destination } : {}), radius, limit, walking, ...(minutes ? { minutes: Number(minutes[1]) } : {}), nearby: ['NEAREST_PLACE', 'RADIUS_SEARCH', 'NEARBY_SEARCH', 'CATEGORY_SEARCH'].includes(intent) };
 }
 const toolPatterns = [
     ["priority", /우선\s*검토|우선\s*지역|우선순위\s*분석|priority.*(?:area|analys)/i],
@@ -230,6 +245,14 @@ export const isSpatialToolCancelled = (question: string) => toolOperations(quest
 export const isSpatialToolExplanation = (question: string) => toolOperations(question).length > 0 && /뭐야|뭔가|무엇|방법|어떤\s*(?:도구|분석|기능)|원리|설명|추천|어떻게\s*(?:쓰|사용|작동)|what\b|why\b|should I|explain|how (?:to|do|does|can)|how.*work/i.test(question) && !/(?:실행|분석|계산)해|\b(?:run|execute)\b/i.test(question);
 // Resolve an explicit clarification answer without changing the visible/saved user message.
 export function spatialConversationQuestion(question: string, history: import("../chat-history").ConversationMessage[] = []): string {
+    if (new RegExp(PROJECT_AREA_WORDS.source,'i').test(question) && /몇|식료품|가게|상점|약국|마트|공공시설/.test(question)) return question;
+    const last = history.at(-1), anchor = history.at(-2);
+    if (last?.role === 'assistant' && anchor?.role === 'user' && /사업구역.*(?:아니면|또는|or).*(?:전체|전역|whole)/i.test(last.content)) {
+        const target = parseGeoPlan(anchor.content).query.replace(/[가-힣]+\d*(?:동|읍|면|구)\s*(?:전체|전역)(?:에서|에|의)?/g,'').trim();
+        const scopeReply = clean(question).replace(/^(?:그럼|우선|네)[,\s]*/, '').replace(/(?:으로|로|만|이요|요)$/,'').trim();
+        if (/^(?:사업구역|사업지역|대상지)\s*(?:안|내)?$/.test(scopeReply)) return `사업구역 안 ${target} 보여줘`;
+        if (/^[가-힣]+\d*(?:동|읍|면|구)\s*(?:전체|전역)$/.test(scopeReply)) return `${scopeReply} ${target} 보여줘`;
+    }
     const exchange=clarificationExchange(question,history);
     if(!exchange){
         if (/^(?:그럼|그러면|다시)?\s*(?:찾아봐|찾아줘|검색해봐|검색해줘|확인해봐)[.!?\s]*$/.test(question.trim())) {
@@ -258,7 +281,7 @@ export function spatialConversationQuestion(question: string, history: import(".
     const plan=parseGeoPlan(exchange.request);
     if(plan.destination||plan.intent==='STRAIGHT_DISTANCE'||plan.intent==='WALKING_ROUTE'||plan.intent==='EXISTING_GIS_QUERY')return question;
     if(!genericCategoryCode(target)&&target.length>120)return question;
-    return `${plan.origin?plan.origin+' 주변 ':''}${plan.radius&&/\d+\s*(?:km|m|미터)/i.test(exchange.request)?plan.radius+'m 이내 ':''}${target} 보여줘`;
+    return `${plan.projectArea?'사업구역 안 ':plan.origin?plan.origin+' 주변 ':''}${plan.radius&&/\d+\s*(?:km|m|미터)/i.test(exchange.request)?plan.radius+'m 이내 ':''}${target} 보여줘`;
 }
 export function spatialToolRequest(question: string, history: import("../chat-history").ConversationMessage[] = []): { operation: typeof toolPatterns[number][0]; reference: string; exploratory: boolean } | undefined {
     if (isSpatialToolExplanation(question) || /하지\s*마|하지\s*말|실행하지|말고|취소|그만|don.?t|do not|cancel/i.test(question)) return;
@@ -284,6 +307,8 @@ export function placeResultFollowUp(question: string): "distribution" | "boundar
     if (/어느\s*(?:쪽|방향).*모|(?:이|그)\s*(?:결과|장소|시설).*분포|어디.*모여|which (?:side|direction)|(?:these|those|results).*distribut/i.test(question)) return "distribution";
 }
 export function isGeoQuestion(question: string) {
+    // Planning concerns about a selected place need current spatial context, not a POI keyword search of the sentence.
+    if (isSelectedPlaceDiscussion(question) && !/찾아|검색|보여|몇\s*(?:개|곳|미터)|반경|\d+\s*(?:m|km|미터)|\b(?:find|search|show)\b/i.test(question) && !toolOperations(question).length) return false;
     return isSpatialInvestigation(question) || !!placeCategory(question) || (/어린이집|유치원|학원|주유소|충전소|지하철|은행|중개업소|관광지|관광명소|숙박|호텔|세탁소|경로당|공방|체육관|daycare|bank|gym|laundry/i.test(question) && /보여|찾아|검색|어디|주변|근처|show|find|search|where|near/i.test(question)) || /key\s*(?:project\s*)?facilit|spatial\s*structure|주요\s*(?:사업)?시설|공간\s*구조|면적|건물\s*수|위치|어디(?:야|인가요|에\s*있)|\b(?:find|search|where (?:is|are))\b|(?:검색|찾아)(?:해)?(?:줘|주세요)|주변|근처|카페|약국|마트|음식점|식당|편의점|병원|학교|버스\s*정류장|공원|도보|걸어|몇\s*미터|가장\s*가까|지도\s*중심|까지.*거리|에서.*까지|nearby|nearest|walking|\bfrom\b.*\bto\b|\b(cafe|pharmacy|restaurant|supermarket)\b/i.test(question);
 }
 export function calculateStraightLineDistance(origin: Coordinate, destination: Coordinate) { return distance(point(coordinate(origin)), point(coordinate(destination)), { units: 'meters' }); }
@@ -342,4 +367,30 @@ export function internalPlaces(name: string, layers: LoadedLayer[], keyFor: (f: 
                 partial.push(place);
         });
     return (exact.length ? exact : partial).slice(0, 10);
+}
+
+// Group co-located sub-features for choosing a place, never unrelated tenants.
+// Charging-specific questions keep charging facilities individually addressable.
+export function groupPlaceCandidates(places: Place[], question = ''): Place[] {
+    const unique = [...new Map(places.map(place => [place.id, place])).values()];
+    if (/충전|charg(?:e|ing|er)/i.test(question)) return unique;
+    const normalize = (value = '') => value.toLowerCase().replace(/주식회사|산업|전기차\s*충전소|전기차\s*충전기|충전소|충전기|급속|완속|[\s()·.,-]/g, '');
+    const charging = (place: Place) => /전기차|충전|charg(?:ing|er)/i.test(`${place.name} ${place.category ?? ''}`);
+    const groups: Place[] = [];
+    for (const place of unique) {
+        const same = groups.find(other => {
+            if (place.source !== other.source || charging(place) === charging(other)) return false;
+            const a = normalize(place.name), b = normalize(other.name);
+            const related = Math.min(a.length,b.length) >= 3 && (a === b || a.includes(b) || b.includes(a));
+            const address = normalize(place.roadAddress || place.address), otherAddress = normalize(other.roadAddress || other.address);
+            return related && ((!!address && address === otherAddress && calculateStraightLineDistance(place.coordinate,other.coordinate) < 80) || calculateStraightLineDistance(place.coordinate,other.coordinate) < 20);
+        });
+        if (!same) { groups.push({...place}); continue; }
+        const primary = charging(same) && !charging(place) ? place : same;
+        const category = (p: Place) => p.category?.split('>').at(-1)?.trim();
+        const relatedCategories = [...new Set([...(same.relatedCategories ?? []), category(same), category(place)].filter((value): value is string => !!value))].slice(0,6);
+        const groupedPlaceIds = [...new Set([...(same.groupedPlaceIds ?? [same.id]), place.id])].slice(0,15);
+        Object.assign(same, primary, {relatedCategories, groupedPlaceIds});
+    }
+    return groups;
 }

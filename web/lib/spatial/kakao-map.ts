@@ -67,12 +67,12 @@ export function loadKakaoMaps(key: string): Promise<KakaoSDK> {
 }
 export function latLng(sdk: KakaoSDK, p: Coordinate) { const c = coordinate(p); return new sdk.LatLng(c[1], c[0]); }
 // Read-only projection adapter. Polygon rings stay together, so interior rings remain holes.
-export function kakaoFeatureOverlays(sdk: KakaoSDK, feature: Feature<Geometry>, color: string, select: () => void, selected = false, opacity = 1): KakaoOverlay[] {
+export function kakaoFeatureOverlays(sdk: KakaoSDK, feature: Feature<Geometry>, color: string, select: () => void, selected = false, opacity = 1, referenceOnly = false): KakaoOverlay[] {
     const geometry = feature.geometry;
     if (!geometry)
         return [];
     const overlays: KakaoOverlay[] = [];
-    const style = { strokeWeight: selected ? 4 : 2, strokeColor: color, strokeOpacity: opacity, fillColor: color, fillOpacity: (selected ? .3 : .25) * opacity };
+    const style = { strokeWeight: selected ? 4 : 2, strokeColor: color, strokeOpacity: opacity, fillColor: color, fillOpacity: (referenceOnly ? .025 : selected ? .3 : .25) * opacity };
     const line = (coordinates: number[][]) => new sdk.Polyline({ ...style, path: coordinates.map(c => latLng(sdk, coordinate(c.slice(0,2)))) });
     const polygon = (coordinates: number[][][]) => new sdk.Polygon({ ...style, path: coordinates.map(ring => ring.map(c => latLng(sdk, coordinate(c.slice(0,2))))) });
     const marker = (position: number[]) => {
@@ -106,10 +106,10 @@ export function kakaoFeatureOverlays(sdk: KakaoSDK, feature: Feature<Geometry>, 
             geometry.coordinates.forEach(c => overlays.push(polygon(c)));
             break;
         case 'GeometryCollection':
-            geometry.geometries.forEach(g => overlays.push(...kakaoFeatureOverlays(sdk, { ...feature, geometry: g }, color, select, selected)));
+            geometry.geometries.forEach(g => overlays.push(...kakaoFeatureOverlays(sdk, { ...feature, geometry: g }, color, select, selected, opacity, referenceOnly)));
             break;
     }
     for (const overlay of overlays)
-        if (!['Point','MultiPoint','GeometryCollection'].includes(geometry.type)) sdk.event.addListener(overlay, 'click', () => { sdk.event.preventMap(); select(); });
+        if (!referenceOnly && !['Point','MultiPoint','GeometryCollection'].includes(geometry.type)) sdk.event.addListener(overlay, 'click', () => { sdk.event.preventMap(); select(); });
     return overlays;
 }

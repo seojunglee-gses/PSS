@@ -66,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             try {
                 const answer = await answerFromEvidence({ question: req.body.question, selectedSources: ['project','spatial'], cases: [], projectContext: context.currentMaterial,
                     previousSummaries: context.previousSummaries, history, ...(result.computedResult ? {spatialContext: result.computedResult} : {}),
-                    registeredSpatialContext: spatialPromptContext(layers, req.body.context, [], !!boundary, { nearbyPlaces: !!boundary && !!process.env.KAKAO_REST_API_KEY, priority: !!priority }),
+                    registeredSpatialContext: spatialPromptContext(layers, req.body.context, [], !!boundary, { nearbyPlaces: !!boundary && !!process.env.KAKAO_REST_API_KEY, priority: !!priority, boundary }),
                     analysisSession: [{ id: 'current-spatial-result', projectId: context.projectId, type: 'spatial', referenceId: 'current-result', title: req.body.question,
                         ...(result.computedResult ? {result:result.computedResult} : {}), location: { question: req.body.question, reply: result.reply, places: result.places.slice(0,12).map(({id,name,coordinate,layerId,featureId}) => ({id,name,coordinate,...(layerId&&featureId?{layerId,featureId}:{})})) } }],
                     provider: req.body.provider?.toLowerCase() === 'gemini' ? 'gemini' : req.body.provider?.toLowerCase() === 'deepseek' ? 'deepseek' : 'openai'
