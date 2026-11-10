@@ -23,7 +23,7 @@ test('case discovery intents stay distinct from planning judgment and research',
 });
 
 test('query concepts retain operating constraints and never use the raw conversational sentence',async t=>{
- mock(t,llm,'callLLM',async req=>{assert.match(req.systemText,/REAL implemented project/);assert.equal(JSON.parse(req.userText).question,'참여가 줄어도 유지되는 사례 있어?');return JSON.stringify({problem:'참여 감소',intervention:'녹지 관리',spaceType:'골목',management:'대체 관리 조직',priorities:'지속 운영',query:'municipal green space maintenance fallback management community decline case'})});
+ mock(t,llm,'callLLM',async req=>{assert.equal(req.model,"gpt-6.1-sol");assert.match(req.systemText,/REAL implemented project/);assert.equal(JSON.parse(req.userText).question,'참여가 줄어도 유지되는 사례 있어?');return JSON.stringify({problem:'참여 감소',intervention:'녹지 관리',spaceType:'골목',management:'대체 관리 조직',priorities:'지속 운영',query:'municipal green space maintenance fallback management community decline case'})});
  const result=await external.caseSearchConcepts(input('참여가 줄어도 유지되는 사례 있어?'));assert.match(result.query,/fallback management/);assert.equal(result.management,'대체 관리 조직');
 });
 

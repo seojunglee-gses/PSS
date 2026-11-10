@@ -1,3 +1,4 @@
+import { MODELS } from "../../lib/llm/openai";
 import { createPortal } from "react-dom";
 import { spatialGoals } from "../../lib/spatial/goals";
 import type { GeoResult } from "../../lib/spatial/geo-query";
@@ -68,7 +69,7 @@ const getChatModelByProvider = (provider: string) => {
   if (provider.toLowerCase() === "deepseek") {
     return "deepseek-chat";
   }
-  return "gpt-5-mini"; // openai default
+  return MODELS.chat;
 };
 
 
