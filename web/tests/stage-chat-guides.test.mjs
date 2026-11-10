@@ -36,7 +36,7 @@ test('changing stage, stakeholder or locale selects the corresponding questions 
  const publicProblem=stageChatGuide('problem','ko','public');
  assert.equal(publicProblem.suggestedQuestions[0].prompt,'우리 동네에서 가장 먼저 바뀌었으면 하는 것은 무엇일까요?');
  assert.equal(stageChatGuide('problem','ko','government').suggestedQuestions[0].prompt,'사업을 추진하고 운영할 때 가장 먼저 해결해야 할 문제는 무엇일까요?');
- assert.equal(stageChatGuide('data','ko','public').suggestedQuestions[0].prompt,'우리 동네의 생활 불편을 어떤 자료로 확인할 수 있을까요?');
+ assert.equal(stageChatGuide('data','ko','public').suggestedQuestions[0].prompt,'앞서 이야기한 우리 동네의 불편을 줄이려면 공간을 어떻게 바꿀 수 있을까요?');
  assert.equal(stageChatGuide('alternatives','ko','planners').suggestedQuestions[0].prompt,'대상지의 기존 자원을 활용한 서로 다른 계획 대안을 만들어 볼까요?');
  assert.equal(stageChatGuide('report','en','business').suggestedQuestions[1].prompt,'What compromise could both residents and local businesses accept?');
  assert.deepEqual(stageChatGuide('problem','ko','public'),publicProblem);

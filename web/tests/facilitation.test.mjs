@@ -157,7 +157,7 @@ test('stage summaries use flexible themes, distinct stage focuses and evidence-a
  assert.doesNotMatch(summaryAttributionRules,/with five short labeled sections|one or two concise sentences each/);
  const focus=['problem','data','alternatives','evaluation','report'].map(stageSummaryInstructions);
  assert.equal(new Set(focus).size,5);
- for(const [index,pattern]of [/problem framing/,/changes in the initial understanding/,/design possibilities evolved/,/trade-offs/,/decision rationale/].entries())assert.match(focus[index],pattern);
+ for(const [index,pattern]of [/problem framing/,/how ideas developed/,/design possibilities evolved/,/trade-offs/,/decision rationale/].entries())assert.match(focus[index],pattern);
 });
 test('all five summary stages retain the JSON contract and natural prose with optional participant perspective',async t=>{
  const context=load('lib/project-context-server.js'),admin=load('lib/firebaseAdmin.js');let current;
@@ -223,7 +223,7 @@ test('Stage 2 shares exploratory physical interventions across chat, evidence an
  const {stage2InterventionInstructions}=load('lib/facilitation.js');
  const prompt=facilitationInstructions('data','텃밭이 관리되지 않아 미관이 안 좋다');
  assert.equal(prompt.split('Stage 2 spatial solution scope:').length,2);
- for(const pattern of [/2–4 plausible physical\/spatial/,/short \*\*bold\*\* label/,/1–2 short sentences/,/NOT a final design/,/must not replace a spatial intervention/,/supporting conditions/,/Do not finalize exact locations, dimensions, quantities, shapes or layouts/,/Missing details.*question-only reply/,/at most ONE useful final question/,/not a compulsory tool sequence/])assert.match(prompt,pattern);
+ for(const pattern of [/engage with that idea first/,/generally use 2–3|generally 2–3/,/NOT a final design/,/must not replace a spatial intervention/,/supporting conditions/,/Participants may suggest specific locations/,/Do not finalize exact dimensions/,/Missing details.*question-only reply/,/at most ONE concrete, non-leading question/,/not a compulsory tool sequence/])assert.match(prompt,pattern);
  for(const stage of ['problem','alternatives','evaluation','report'])assert.ok(!facilitationInstructions(stage,'어떻게 개선할까?').includes(stage2InterventionInstructions));
  assert.match(facilitationInstructions('data','우리 동네 쓰레기 문제가 걱정돼요.'),/missing site details alone must not suppress conditional spatial options/);
  assert.match(facilitationInstructions('data','질문 없이 해결방향만 알려줘'),/Adaptive follow-up policy: NONE/);

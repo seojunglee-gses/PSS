@@ -72,18 +72,18 @@ test('selected-place planning concerns use spatial context instead of POI keywor
 test('Stage 2 converts missing conditions to local observation and conditional branches, respecting explicit refusals',()=>{
  const history=[{role:'assistant',content:'사람들이 이곳을 자주 이용하나요?'}];
  const prompt=facilitation.facilitationInstructions('data','지금은 차가 많이 지나는 곳이야',history);
- assert.match(prompt,/Adaptive follow-up policy: OPTIONAL/);assert.match(prompt,/NEW, material local observation/);assert.match(prompt,/never end at a bare uncertainty/);assert.match(prompt,/current conditional judgment → the condition/);assert.match(prompt,/whether maintenance responsibility is absent versus difficult/);assert.match(prompt,/revise\/remove\/combine/);assert.match(prompt,/end with ONE concrete local-observation question/);
+ assert.match(prompt,/Adaptive follow-up policy: OPTIONAL/);assert.match(prompt,/materially help adapt, compare or develop/);assert.match(prompt,/Never end at a bare uncertainty/);assert.match(prompt,/how a relevant condition would change the idea/);assert.match(prompt,/revise\/remove\/combine/);assert.match(prompt,/Do not always finish with a question/);
  assert.equal(facilitation.followUpPolicy("이 위치는 쉼터로 어때?",history,"data").mode,"optional");
  assert.equal(facilitation.followUpPolicy("이 공원 면적은 얼마야?",history,"data").mode,"none");
  assert.match(facilitation.facilitationInstructions('data','질문하지 말아줘',history),/Adaptive follow-up policy: NONE/);
- assert.ok(!facilitation.facilitationInstructions('problem','문제를 정리해줘').includes('never end at a bare uncertainty'));
+ assert.ok(!facilitation.facilitationInstructions('problem','문제를 정리해줘').includes('Never end at a bare uncertainty'));
 });
 
 test('current selected point reaches the answer API without reusing metrics from a different historical selection',async t=>{
  const loader=load('lib/project-context-server.js'),llm=load('lib/llm/index.js'),handler=load('pages/api/research/answer.js').default;
  const activity={id:'old',projectId:'p',type:'spatial',referenceId:'old-result',title:'old place',result:{projectId:'p',type:'area',timestamp:new Date().toISOString(),layerIds:['old'],parameters:{},metrics:{areaSqm:999999},notes:[]}};
  mock(t,loader,'loadProjectContext',async()=>({projectId:'p',user:{uid:'u'},currentMaterial:'텃밭을 녹지와 쉼터로 바꾸는 방향을 논의 중',previousSummaries:{problem:'관리 부담'},cases:[],stageHistory:[{stepId:'data',activity}],spatialData:{layers:[active,administrative],boundary:actual}}));
- mock(t,llm,'callLLM',async req=>{const data=JSON.parse(req.userText);assert.equal(data.spatialContext,undefined);assert.deepEqual(data.registeredSpatialContext.selectedMapPoint.coordinate,[127.0019,37.001]);assert.equal(data.registeredSpatialContext.computedSpatialRelations[0].inside,true);assert.match(req.systemText,/one concrete participant observation/);return JSON.stringify({summary:'선택 지점은 사업구역 안입니다. **녹지와 짧은 쉼터**, **완충녹지와 보행공간**을 비교할 수 있습니다. 주변은 사람들이 자주 걷는 곳인가요?',caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'',projectImplications:[],limitations:''})});
+ mock(t,llm,'callLLM',async req=>{const data=JSON.parse(req.userText);assert.equal(data.spatialContext,undefined);assert.deepEqual(data.registeredSpatialContext.selectedMapPoint.coordinate,[127.0019,37.001]);assert.equal(data.registeredSpatialContext.computedSpatialRelations[0].inside,true);assert.match(req.systemText,/at most ONE concrete, non-leading question/);return JSON.stringify({summary:'선택 지점은 사업구역 안입니다. **녹지와 짧은 쉼터**, **완충녹지와 보행공간**을 비교할 수 있습니다. 주변은 사람들이 자주 걷는 곳인가요?',caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'',projectImplications:[],limitations:''})});
  const result={};await handler({method:'POST',headers:{},body:{question:'여기는 쉼터로 어때?',selectedSources:[],spatialSelection:{point:[127.0019,37.001]}}},{setHeader(){},status(code){result.status=code;return this},json(body){result.body=body}});
  assert.equal(result.status,200);assert.match(result.body.reply,/주변은 사람들이 자주 걷는 곳인가요/);
 });

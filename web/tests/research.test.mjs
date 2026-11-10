@@ -159,8 +159,8 @@ test('synthesis prompt uses abstract scope, project context and only usable pape
     assert.match(input.systemText, /untrusted/);
     assert.match(input.systemText, /Return limitations=""/);
     assert.match(input.systemText, /at the end of the relevant answer/);
-    assert.match(input.systemText, /one natural, concrete next question OR a short offer of help/);
-    assert.match(input.systemText, /If the policy is NONE, omit optional/);
+    assert.match(input.systemText, /Do not force a question or help offer/);
+    assert.match(input.systemText, /NONE means no optional facilitation follow-up/);
     const payload = JSON.parse(input.userText);
     assert.equal(payload.papers.length, 1);
     assert.equal(payload.projectContext, 'Seoul project');
