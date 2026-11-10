@@ -87,8 +87,9 @@ export function spatialResultSummary(result: SpatialResult): string[] {
 // Reuse uploaded dataset types and legacy layer roles; boundary stays visible in every category.
 export function spatialCategoryLayerIds(layers: LayerConfig[], category: number | null, activeBoundaryId?: string | null, boundaryLayerId?: string): string[] {
   return layers.filter(layer => {
+    if (layer.internalOnly) return false;
     if (layer.role === "boundary" || layer.datasetType === "project_boundary" || layer.id === `uploaded-${activeBoundaryId}`)
-      return boundaryLayerId ? layer.id === boundaryLayerId : !activeBoundaryId || layer.id === `uploaded-${activeBoundaryId}`;
+      return activeBoundaryId ? layer.id === `uploaded-${activeBoundaryId}` : boundaryLayerId ? layer.id === boundaryLayerId : !layer.id.startsWith("uploaded-");
     return category === 1 ? layer.role === "roads" || layer.datasetType === "roads"
       : category === 2 ? layer.role === "buildings" || ["buildings", "parcels"].includes(layer.datasetType ?? "")
       : category === 3 ? layer.role === "green" || layer.datasetType === "green"

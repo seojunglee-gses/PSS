@@ -1,3 +1,4 @@
+import { projectBoundaryLayerId } from "./types";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { SpatialConfig, LayerConfig, LoadedLayer } from "./types";
 import { buildingDisplayConfig, buildingUseCode, normalizeBuildings, type BuildingUse } from "./building-use";
@@ -188,7 +189,8 @@ export async function loadSpatialConfig(
     else warnings.push(`${dataset.name}: 좌표가 없는 CSV입니다. 파일은 보관되지만 지도와 공간 계산에는 사용할 수 없습니다.`);
   }
   if (new Set(config.layers.map((l) => l.id)).size !== config.layers.length) throw new Error("공간정보 레이어 ID가 중복됩니다.");
-  return { ...config, spatialSettings, ...(warnings.length ? { datasetWarnings: warnings } : {}) };
+  const boundaryLayerId = projectBoundaryLayerId(config.layers, spatialSettings?.activeBoundaryDatasetId, config.boundaryLayerId);
+  return { ...config, layers: config.layers.map(layer => layer.id === boundaryLayerId ? {...layer, role: "boundary" as const, color: layer.color ?? "#2563eb"} : layer), boundaryLayerId, spatialSettings, ...(warnings.length ? { datasetWarnings: warnings } : {}) };
 }
 export async function loadLayer(config: LayerConfig, token?: string): Promise<LoadedLayer> {
   if (config.source.startsWith("/api/projects/spatial-datasets?")) {

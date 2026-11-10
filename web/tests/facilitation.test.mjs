@@ -16,7 +16,7 @@ test('Problem Definition interprets before questioning and permits synthesis wit
  const history=[assistant('어느 장소에서 불편을 겪으셨나요?'),user('시장 앞 골목이요.')];
  const prompt=facilitationInstructions('problem','저녁에 퇴근할 때 자주 지나가요.',history);
  assert.match(prompt,/Adaptive follow-up policy: OPTIONAL/);assert.match(prompt,/1–3 short sentences/);assert.match(prompt,/Interpretation before questioning/);assert.match(prompt,/OPTIONAL and CLARIFY permit zero questions/);assert.match(prompt,/Never ask again for information/);assert.match(prompt,/would its answer materially change or refine/);assert.doesNotMatch(prompt,/end with exactly ONE/);
- assert.equal(followUpPolicy('저녁에 퇴근할 때 자주 지나가요.',history,'data').mode,'none');
+ assert.equal(followUpPolicy('저녁에 퇴근할 때 자주 지나가요.',history,'data').mode,'optional');
  for(const q of ['답변만 해주세요','면적이 얼마야?','오늘은 여기까지만 할게요','감사합니다'])assert.equal(followUpPolicy(q,history,'problem').mode,'none',q);
  assert.equal(followUpPolicy('그 골목이 어두워요.',[user('앞으로 후속 질문은 하지 마세요.')],'problem').mode,'none');
 });

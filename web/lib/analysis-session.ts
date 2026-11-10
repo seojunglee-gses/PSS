@@ -1,4 +1,4 @@
-import { isSpatialInvestigation, isGeoQuestion } from "./spatial/geo-query";
+import { isSpatialInvestigation, isGeoQuestion, isSelectedPlaceDiscussion } from "./spatial/geo-query";
 import { parseSpatialResult } from "./spatial/context";
 import type { SpatialResult } from "./spatial/types";
 import type { CaseMaterial, EvidenceSource } from "./research/types";
@@ -52,7 +52,7 @@ export const isPaperReference = (question: string) => !/다른\s*논문|새로�
 
 // Extend retrieval context only for a referential follow-up; never alter the displayed question.
 export function analysisSessionQuestion(question: string, activities: AnalysisActivity[], cases: CaseMaterial[] = []): string {
-  if (isSpatialInvestigation(question) || isGeoQuestion(question) && !/논문|연구|학술|사례|\b(?:research|stud(?:y|ies)|cases?)\b/i.test(question)) return question;
+  if (isSelectedPlaceDiscussion(question) || isSpatialInvestigation(question) || isGeoQuestion(question) && !/논문|연구|학술|사례|\b(?:research|stud(?:y|ies)|cases?)\b/i.test(question)) return question;
   if (!/여기|거기|아까\s*말한\s*곳|(?:방금|최근|아까).{0,12}(?:사례|논문|연구)|(?:이|그|해당)\s*(?:사례|자료|논문|연구|결과|분석)|우리\s*(?:지역|사업)|적용할|관련\s*(?:연구|논문)|\b(?:here|there|this|that|apply|related)\b/i.test(question)) return question;
   const referenceType = /(?:이|그|해당)\s*사례|(?:방금|최근|아까).{0,12}사례|\b(?:this|that) case\b/i.test(question) ? "cases"
     : isPaperReference(question) ? "research"

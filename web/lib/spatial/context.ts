@@ -1,4 +1,5 @@
-import { featureNames, representativePoint, parseGeoContext } from "./geo-query";
+import { booleanPointInPolygon, point, pointToPolygonDistance, bearing } from "@turf/turf";
+import { featureNames, representativePoint, parseGeoContext, calculateStraightLineDistance } from "./geo-query";
 import { featureKey } from "./engine";
 import type { AnalysisActivity } from "../analysis-session";
 import type { LoadedLayer, SpatialResult } from "./types";
@@ -87,7 +88,7 @@ export function parseSpatialResult(input: unknown): SpatialResult | undefined {
 }
 
 // Compact authorized dataset observations, not a reconstruction of browser layer visibility.
-export function spatialPromptContext(layers: LoadedLayer[], selection: unknown, activities: AnalysisActivity[], boundaryAvailable: boolean, tools?: { nearbyPlaces: boolean; priority: boolean }) {
+export function spatialPromptContext(layers: LoadedLayer[], selection: unknown, activities: AnalysisActivity[], boundaryAvailable: boolean, tools?: { nearbyPlaces: boolean; priority: boolean; boundary?: import("./boundary").ProjectBoundary }) {
   const mapContext = parseGeoContext(selection);
   const selected = mapContext.selected;
   const latest = [...activities].reverse().find(activity => activity.type === "spatial");
@@ -96,27 +97,35 @@ export function spatialPromptContext(layers: LoadedLayer[], selection: unknown, 
     const payload = JSON.parse(latest?.location?.reply ?? "null");
     if (Array.isArray(payload?.displayedLayers)) viewedIds = payload.displayedLayers.flatMap((layer: { id?: unknown }) => typeof layer?.id === "string" ? [layer.id] : []);
   } catch { /* No recorded layer-visibility snapshot. */ }
-  const authorizedIds = new Set(layers.map(layer => layer.config.id));
+  const usableLayers = layers.filter(layer => !layer.config.internalOnly);
+  const authorizedIds = new Set(usableLayers.map(layer => layer.config.id));
   const lastViewedLayerIds = viewedIds.filter(id => authorizedIds.has(id)).slice(0, 20);
-  const chosen = selected ? layers.find(layer => layer.config.id === selected.layerId) : undefined;
+  const chosen = selected ? usableLayers.find(layer => layer.config.id === selected.layerId && layer.config.role!=="boundary" && layer.config.datasetType!=="project_boundary") : undefined;
   const selectedIndex = chosen?.data.features.findIndex((feature, index) => featureKey(feature, index) === selected?.featureId) ?? -1;
   const sample = (layer: LoadedLayer, index: number) => {
     const feature = layer.data.features[index];
     try { return { layerId: layer.config.id, featureId: featureKey(feature, index).slice(0, 150), name: (featureNames(feature)[0] ?? layer.config.label).slice(0, 200), geometryType: feature.geometry.type, ...representativePoint(feature) }; }
     catch { return undefined; }
   };
-  const candidates = lastViewedLayerIds.length ? layers.filter(layer => lastViewedLayerIds.includes(layer.config.id)) : layers;
+  const candidates = lastViewedLayerIds.length ? usableLayers.filter(layer => lastViewedLayerIds.includes(layer.config.id)) : usableLayers;
   const features = candidates.slice(0, 20).flatMap(layer => layer.data.features.slice(0, 2).flatMap((_, index) => { const value = sample(layer, index); return value ? [value] : []; })).slice(0, 24);
+  const location = mapContext.point ?? (chosen && selectedIndex >= 0 ? sample(chosen, selectedIndex)?.coordinate : undefined);
+  const computedSpatialRelations: { type: string; inside: boolean; boundaryDistanceMeters: number; directionFromCenter: string; basis: string }[] = [];
+  if (location && tools?.boundary) {
+    const boundary = tools.boundary;
+    const heading = (bearing(point(boundary.center), point(location)) + 360) % 360;
+    computedSpatialRelations.push({ type: "selected_point_project_boundary", inside: booleanPointInPolygon(point(location), boundary.geometry), boundaryDistanceMeters: Math.round(Math.abs(pointToPolygonDistance(point(location), boundary.geometry, {units:"meters"}))), directionFromCenter: calculateStraightLineDistance(boundary.center, location) < 1 ? "center" : ["north","northeast","east","southeast","south","southwest","west","northwest"][Math.round(heading/45)%8], basis: "server calculation from selected coordinate and actual active project boundary; not site feasibility or ownership" });
+  }
   return {
     visibility: { status: lastViewedLayerIds.length ? "last_recorded_view_only" : "unknown", lastViewedLayerIds, note: "Current browser layer on/off state is not supplied; never claim these are all currently visible layers." },
-    registeredLayers: layers.slice(0, 20).map(layer => ({ id: layer.config.id, name: layer.config.label.slice(0, 200), geometryType: layer.config.type, ...(layer.config.role ? { role: layer.config.role } : {}), ...(layer.config.datasetType ? { datasetType: layer.config.datasetType } : {}), metadata: { uploadedFeatureCount: layer.data.features.length } })),
+    registeredLayers: layers.slice(0, 20).map(layer => ({ id: layer.config.id, name: layer.config.label.slice(0, 200), geometryType: layer.config.type, ...(layer.config.internalOnly ? { purpose: "internal_administrative_reference_not_project_boundary" } : {}), ...(layer.config.role ? { role: layer.config.role } : {}), ...(layer.config.datasetType ? { datasetType: layer.config.datasetType } : {}), metadata: { uploadedFeatureCount: layer.data.features.length } })),
     boundary: { available: boundaryAvailable },
     ...(mapContext.point ? { selectedMapPoint: { coordinate: mapContext.point, ...(mapContext.pointLabel ? { name: mapContext.pointLabel, nameSource: "participant_or_selected_place" } : {}) } } : {}),
-    availableTools: { distance: !!mapContext.point || layers.some(layer=>layer.data.features.length>0), registeredLocations: layers.some(layer=>layer.data.features.length>0), areaStatistics: boundaryAvailable || layers.some(layer=>layer.config.type==="polygon"&&layer.data.features.length>0), buffer: layers.some(layer=>layer.data.features.length>0), overlap: layers.length>1&&layers.some(layer=>layer.config.type==="polygon"), nearbyPlaces: tools?.nearbyPlaces ?? false, priority: tools?.priority ?? false },
+    availableTools: { distance: !!mapContext.point || usableLayers.some(layer=>layer.data.features.length>0), registeredLocations: usableLayers.some(layer=>layer.data.features.length>0), areaStatistics: boundaryAvailable || usableLayers.some(layer=>layer.config.type==="polygon"&&layer.data.features.length>0), buffer: usableLayers.some(layer=>layer.data.features.length>0), overlap: usableLayers.length>1&&usableLayers.some(layer=>layer.config.type==="polygon"), nearbyPlaces: tools?.nearbyPlaces ?? false, priority: tools?.priority ?? false },
     ...(chosen && selectedIndex >= 0 ? { selectedFeature: sample(chosen, selectedIndex) } : {}),
     featureSamples: features,
     sampling: "At most 24 representative feature coordinates; these are samples of authorized datasets, not a complete inventory or GIS analysis. Polygon/line points are representative locations, not complete geometry.",
-    computedSpatialRelations: [],
+    computedSpatialRelations,
   };
 }
 export type SpatialPromptContext = ReturnType<typeof spatialPromptContext>;

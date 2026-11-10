@@ -78,8 +78,9 @@ export default function SpatialAnalysis({
       try {
         const token = await user?.getIdToken();
         const c = await loadSpatialConfig(projectId, controller.signal, token);
+        const clientLayers = c.layers.filter(layer => !layer.internalOnly);
         const results = await Promise.allSettled(
-          c.layers.map((layer) => loadLayer(layer, token)),
+          clientLayers.map((layer) => loadLayer(layer, token)),
         );
         if (!current) return;
         const available: LoadedLayer[] = [];
@@ -89,8 +90,8 @@ export default function SpatialAnalysis({
             ? available.push(r.value)
             : failed.push(
                 r.reason instanceof Error
-                  ? `${c.layers[i].label}: ${r.reason.message}`
-                  : `${c.layers[i].label}: ${"spatial.loadFailed"}`,
+                  ? `${clientLayers[i].label}: ${r.reason.message}`
+                  : `${clientLayers[i].label}: ${"spatial.loadFailed"}`,
               ),
         );
         setConfig(c);
@@ -146,6 +147,7 @@ export default function SpatialAnalysis({
     feature: Feature<Geometry>,
     index: number,
   ) => {
+    if (layer.config.internalOnly || layer.config.role === "boundary" || layer.config.datasetType === "project_boundary") return;
     setShowResults(true);
     setSelected({ layer, feature, index });
     const point = representativePoint(feature);
@@ -196,7 +198,7 @@ export default function SpatialAnalysis({
           <details className="rounded-xl border border-slate-200 p-3"><summary className="cursor-pointer text-sm font-semibold">{t("spatial.chooseLayers")}</summary><fieldset>
 
             <div className="flex flex-wrap gap-x-4 gap-y-2">
-              {config.layers.filter(layer => layer.id !== config.placeSearch?.roadLayerId).map((l) => (
+              {config.layers.filter(layer => !layer.internalOnly && layer.id !== config.placeSearch?.roadLayerId && (!(layer.role === "boundary" || layer.datasetType === "project_boundary") || layer.id === boundaryLayerId)).map((l) => (
                 <label key={l.id} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"

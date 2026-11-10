@@ -10,8 +10,9 @@ import { validateConfig, validateGeoJSON } from './loader';
 import { featureKey, featureCollection, resultFor, isArea, touches, createBuffer, intersectionAreas, overlayArea, scorePriority } from './engine';
 import { bbox, bearing, point, booleanPointInPolygon, pointToPolygonDistance, nearestPointOnLine, lineString } from '@turf/turf';
 import type { Identity } from '../membership/server';
+import { projectBoundaryLayerId } from "./types";
 import type { LoadedLayer, SpatialConfig } from './types';
-import { coordinate, mapPointLabel, spatialConversationQuestion, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, genericCategoryCode, spatialToolRequest, isMapReference, isProjectStreetReference, projectStreetCorrection, featureNames, type Place, type GeoContext, type GeoResult, type PlaceSearchSnapshot } from './geo-query';
+import { coordinate, groupPlaceCandidates, isProjectAreaReference, mapPointLabel, spatialConversationQuestion, parseGeoContext, parseGeoPlan, internalPlaces, representativePoint, calculateStraightLineDistance, placeResultFollowUp, genericCategoryCode, spatialToolRequest, isMapReference, isProjectStreetReference, projectStreetCorrection, featureNames, type Place, type GeoContext, type GeoResult, type PlaceSearchSnapshot } from './geo-query';
 import { getWalkingRoute, searchBoundaryPlaces } from './kakao-server';
 import { translate, type Locale } from '../i18n';
 const geometryCache = new Map<string, {
@@ -83,8 +84,9 @@ export async function projectLayers(user: Identity, projectId: string, signal?: 
             warnings.push('gis.layerUnavailable');
     }
     const settings=spatialSettings(listed.spatialSettings);
-    const boundaryLayerId=reference?.boundaryLayerId;
-    const active=layers.find(l=>l.config.id===(boundaryLayerId??`uploaded-${settings.activeBoundaryDatasetId}`));
+    const boundaryLayerId=projectBoundaryLayerId(layers.map(layer=>layer.config),settings.activeBoundaryDatasetId,reference?.boundaryLayerId);
+    const active=layers.find(l=>l.config.id===boundaryLayerId);
+    if (active) active.config = {...active.config, role:"boundary", color:active.config.color??"#2563eb"};
     let boundary:ProjectBoundary|undefined;
     if(active){try{boundary=deriveBoundary(boundaryGeoJSON(active.data));}catch{warnings.push('boundary.invalid');}}
     return { layers, warnings, boundary, settings, priority, boundaryLayerId, placeSearch: reference?.placeSearch };
@@ -105,7 +107,7 @@ function defaultOrigin(context: GeoContext, layers: LoadedLayer[]): Place | unde
     const selected = selectedPlace(context, layers);
     if (selected)
         return selected;
-    const boundary = layers.filter(l => l.config.role === 'boundary').flatMap(l => l.data.features);
+    const boundary = layers.filter(l => l.config.role === 'boundary' && !l.config.internalOnly).flatMap(l => l.data.features);
     if (boundary.length) {
         const b = bbox(featureCollection(boundary));
         return { id: 'project-center', name: 'gis.projectCenter', coordinate: coordinate([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]), source: 'project', approximate: true };
@@ -240,6 +242,7 @@ export async function executeGeoQuery(input: {
         if(genericCategoryCode(plan.query)){if(plan.intent==='PLACE_SEARCH')plan.intent='CATEGORY_SEARCH';if(plan.locations?.length===1){plan.locations=undefined;plan.intent='CATEGORY_SEARCH';}if(!plan.destination)plan.nearby=true;}
         if(plan.origin&&[region,reference.regionName].includes(plan.origin.trim()))plan.origin='사업구역';
     }
+    if (context.selected && layers.some(layer=>layer.config.id===context.selected!.layerId&&layer.config.internalOnly)) delete context.selected;
     const boundary=options?.boundary,settings=spatialSettings(options?.settings);
     const scopeMeters=context.scopeMeters??settings.defaultNearbyMeters;
     const boundaryLayerId=options?.boundaryLayerId??(settings.activeBoundaryDatasetId?`uploaded-${settings.activeBoundaryDatasetId}`:undefined);
@@ -258,13 +261,17 @@ export async function executeGeoQuery(input: {
         return result;
     }
     if(clarification){result.reply=clarification;return result;}
+    const regionName = reference?.regionName.split(/\s+/).at(-1);
+    if (plan.projectArea && regionName && input.question.includes(regionName) && new RegExp(`${regionName}\\s*(?:전체|전역)`).test(input.question)) {
+        result.reply = t('gis.scopeChoice', {region:regionName}); return result;
+    }
     let tool = spatialToolRequest(input.question, input.history);
     const exploring = tool?.exploratory;
     const offerNext = followUpPolicy(input.question,input.history??[],"data").mode!=="none";
     let explorationTargets: LoadedLayer[] = [];
     const nearbyAvailable = !!boundary && !!process.env.KAKAO_REST_API_KEY;
     if (exploring) {
-        const regions = layers.filter(layer => boundaryLayerId ? layer.config.id === boundaryLayerId : layer.config.role === "boundary" || layer.config.datasetType === "project_boundary");
+        const regions = layers.filter(layer => !layer.config.internalOnly && (boundaryLayerId ? layer.config.id === boundaryLayerId : layer.config.role === "boundary" || layer.config.datasetType === "project_boundary"));
         const role = /녹지|공원|green|park/i.test(input.question) ? "green" : /건물|건축|building/i.test(input.question) ? "buildings" : "facilities";
         const subjects = layers.filter(layer => layer.config.role === role || (role === "facilities" && layer.config.datasetType === "public_facilities"));
         if (regions.length === 1 && subjects.length === 1 && subjects[0] !== regions[0]) {
@@ -282,7 +289,7 @@ export async function executeGeoQuery(input: {
         const match = (text: string) => {
             const exact = layers.filter(layer => [layer.config.label, layer.config.id].some(name => normalize(name).length > 1 && normalize(text).includes(normalize(name))));
             const generic = layers.filter(layer => signals[layer.config.role ?? layer.config.datasetType ?? ""]?.test(text) || (layer.config.datasetType === "public_facilities" && signals.facilities.test(text)));
-            const candidates = [...new Map([...exact,...generic].map(layer=>[layer.config.id,layer])).values()];
+            const candidates = [...new Map([...exact,...generic].filter(layer=>!layer.config.internalOnly).map(layer=>[layer.config.id,layer])).values()];
             return candidates.filter(layer => !(layer.config.role === "boundary" || layer.config.datasetType === "project_boundary") || exact.includes(layer) || !boundaryLayerId || layer.config.id === boundaryLayerId);
         };
         let targets = explorationTargets.length ? explorationTargets : match(input.question);
@@ -409,6 +416,9 @@ export async function executeGeoQuery(input: {
     }
     origin = plan.origin ? undefined : defaultOrigin(context, options ? layers.filter(l=>l.config.role!=='boundary') : layers);
     if(!plan.origin&&!context.selected&&!context.point&&boundary)origin={id:'project-center',name:'gis.projectCenter',source:'project',coordinate:boundary.center,approximate:true};
+    const regionToken = reference?.regionName.split(/\s+/).at(-1);
+    const administrativeLayer = reference && regionToken && !plan.projectArea && input.question.replace(/\s/g,'').includes(regionToken.replace(/\s/g,'')) && !reference.roadNames.some(name=>input.question.includes(name)) ? layers.find(layer=>layer.config.internalOnly&&layer.config.role==='boundary') : undefined;
+    const administrativeBoundary = administrativeLayer ? deriveBoundary(boundaryGeoJSON(administrativeLayer.data)) : undefined;
     let remainingCalls = 16;
     const external = async (query: string, resolvingOrigin = false) => {
         if (!boundary) { if (!warnings.includes(t('picker.needBoundary'))) warnings.push(t('picker.needBoundary')); return []; }
@@ -418,23 +428,23 @@ export async function executeGeoQuery(input: {
             const normalize=(value:string)=>value.replace(/\s/g,'').replace(/번길/g,'길');
             const regionToken=reference.regionName.split(/\s+/).at(-1)!;
             const namedRoad=plan.origin?reference.roadNames.find(name=>normalize(name)===normalize(plan.origin!)):undefined;
-            const wholeRegion=context.scopeMeters===0||/사업구역\s*(?:안|내|전체)|(?:entire|whole) project/i.test(input.question)||(normalize(input.question).includes(normalize(regionToken))&&(!reference.roadNames.some(name=>normalize(input.question).includes(normalize(name)))||/전체/.test(input.question)));
+            const wholeRegion=(plan.projectArea&&!explicitRadius)||context.scopeMeters===0||/사업구역\s*(?:안|내|전체)|(?:entire|whole) project/i.test(input.question)||(normalize(input.question).includes(normalize(regionToken))&&(!reference.roadNames.some(name=>normalize(input.question).includes(normalize(name)))||/전체/.test(input.question)));
             const explicitOrigin=!!context.point || !!context.selected || !!plan.origin&&!namedRoad&&!isProjectStreetReference(plan.origin)&&!/^(?:사업구역|대상지)$/.test(plan.origin);
-            const useRoads=!resolvingOrigin&&!wholeRegion&&!explicitOrigin;
+            const useRoads=!!(namedRoad || plan.origin && isProjectStreetReference(plan.origin))&&!plan.projectArea&&!resolvingOrigin&&!wholeRegion&&!explicitOrigin;
             const radius=explicitRadius?Math.min(2000,plan.radius):context.scopeMeters||reference.radiusMeters;
             const roads=layers.find(layer=>layer.config.id===reference.roadLayerId);
             if(useRoads&&!roads)throw new Error('gis.referenceUnavailable');
             const roadData=namedRoad&&roads?{...roads.data,features:roads.data.features.filter(feature=>featureNames(feature).some(name=>normalize(name)===normalize(namedRoad)))}:roads?.data;
-            const geometry=useRoads?roadSearchScope(boundary,roadData!,radius):boundary.geometry;
+            const geometry=administrativeBoundary ? administrativeBoundary.geometry : plan.projectArea&&explicitRadius ? boundaryScope(boundary,Math.min(2000,plan.radius)) : useRoads?roadSearchScope(boundary,roadData!,radius):boundary.geometry;
             const found=await searchBoundaryPlaces(query,geometry,signal,Math.min(6,remainingCalls));remainingCalls-=found.calls;
-            result.scopeMeters=useRoads?radius:0;
-            searchScopeLabel=t(useRoads?'gis.referenceRoadScope':'gis.referenceRegionScope',{region:reference.regionName,roads:(namedRoad?[namedRoad]:reference.roadNames).join('·'),meters:radius});
+            result.scopeMeters=plan.projectArea&&explicitRadius ? Math.min(2000,plan.radius) : useRoads?radius:0;
+            searchScopeLabel=plan.projectArea&&explicitRadius ? t("gis.searchScope",{meters:Math.min(2000,plan.radius)}) : useRoads ? t("gis.referenceRoadScope",{region:reference.regionName,roads:(namedRoad?[namedRoad]:reference.roadNames).join('·'),meters:radius}) : administrativeBoundary ? t("gis.referenceRegionScope",{region:reference.regionName}) : t("boundary.scope.0");
             if(!warnings.includes(t('boundary.partialSearch')))warnings.push(t('boundary.partialSearch'));
             let places=found.places;
             if(!resolvingOrigin&&plan.nearby&&origin&&!origin.boundaryTarget&&explicitOrigin)places=places.filter(p=>calculateStraightLineDistance(origin!.coordinate,p.coordinate)<=plan.radius);
             return places;
         }
-        const distances = context.scopeMeters === 0 ? [0] : explicitRadius && plan.nearby && origin?.boundaryTarget ? [Math.min(2000, plan.radius)] : [...new Set([0, scopeMeters, 1000, 2000])].sort((a,b) => a-b);
+        const distances = plan.projectArea && !explicitRadius || context.scopeMeters === 0 ? [0] : explicitRadius && plan.nearby && origin?.boundaryTarget ? [Math.min(2000, plan.radius)] : [...new Set([0, scopeMeters, 1000, 2000])].sort((a,b) => a-b);
         for (const meters of distances) {
             signal?.throwIfAborted();
             if (!remainingCalls) break;
@@ -475,7 +485,7 @@ export async function executeGeoQuery(input: {
             }
             if(!streetOptions.length&&!boundary){result.reply=t('picker.needBoundary');return;}
         }
-        if (/^(?:이\s*)?(?:사업구역|사업\s*경계|대상지|project (?:area|boundary))$/i.test(name) && boundary)
+        if ((isProjectAreaReference(name) || /^(?:이\s*)?(?:사업\s*경계|대상지)$/i.test(name)) && boundary)
             return { id: 'project-boundary', name: t('upload.boundary'), source: 'project' as const, coordinate: boundary.center, approximate: true, boundaryTarget: true };
         const binding = scope(user.uid, projectId, input.question, name);
         const token = input.choices && Object.prototype.hasOwnProperty.call(input.choices, name) ? input.choices[name] : undefined;
@@ -484,12 +494,12 @@ export async function executeGeoQuery(input: {
             selected = (streetOptions ?? await resolvePlaceReference(name, context, layers)).find(p => 'project:' + p.id === token);
         else
             selected = verifyChoice(token, binding);
-        if (selected?.source === 'kakao' && (!boundary || !filterBoundaryPlaces([selected], boundaryScope(boundary, context.scopeMeters === 0 ? 0 : 2000)).length)) throw new Error('gis.choiceExpired');
+        if (selected?.source === 'kakao' && (!boundary || !filterBoundaryPlaces([selected], administrativeBoundary?.geometry ?? boundaryScope(boundary, context.scopeMeters === 0 ? 0 : 2000)).length)) throw new Error('gis.choiceExpired');
         if (selected)
             return selected;
         if (token)
             throw new Error('gis.choiceExpired');
-        const options = streetOptions ?? await resolvePlaceReference(name, context, layers, query=>external(query,role==='origin'));
+        const options = groupPlaceCandidates(streetOptions ?? await resolvePlaceReference(name, context, layers, query=>external(query,role==='origin')), input.question);
         const ambiguousGeneric = /^(경로당|주민센터|건강생활지원센터)$/.test(name.trim());
         if (options.length === 1 && !ambiguousGeneric)
             return options[0];
@@ -608,9 +618,9 @@ export async function executeGeoQuery(input: {
         result.places = [place];
     } else {
         const requestedRadius = /\d+(?:\.\d+)?\s*(?:m|km|미터|킬로미터)/i.test(input.question);
-        const projectSearchArea = boundary && options?.placeSearch ? boundary.geometry : boundary && origin?.boundaryTarget ? boundaryScope(boundary, requestedRadius ? Math.min(2000, plan.radius) : scopeMeters) : undefined;
+        const projectSearchArea = administrativeBoundary?.geometry ?? (boundary && options?.placeSearch ? plan.projectArea&&requestedRadius ? boundaryScope(boundary,Math.min(2000,plan.radius)) : boundary.geometry : boundary && origin?.boundaryTarget ? boundaryScope(boundary, requestedRadius ? Math.min(2000, plan.radius) : scopeMeters) : undefined);
         const internal = internalPlaces(plan.query, layers, featureKey).filter(p => projectSearchArea ? filterBoundaryPlaces([p], projectSearchArea).length > 0 : !origin || (!plan.origin && !requestedRadius) || calculateStraightLineDistance(origin.coordinate,p.coordinate) <= plan.radius);
-        const candidates = (genericCategoryCode(plan.query) ? await external(plan.query) : internal.length ? internal : await external(plan.query)).map(p => ({...p,distanceMeters:origin?calculateStraightLineDistance(origin.coordinate,p.coordinate):undefined})).sort((a,b)=>(a.distanceMeters??0)-(b.distanceMeters??0));
+        const candidates = groupPlaceCandidates((genericCategoryCode(plan.query) ? await external(plan.query) : internal.length ? internal : await external(plan.query)), input.question).map(p => ({...p,distanceMeters:origin?calculateStraightLineDistance(origin.coordinate,p.coordinate):undefined})).sort((a,b)=>(a.distanceMeters??0)-(b.distanceMeters??0));
         result.places = candidates.slice(0,plan.limit);
         if (/\d+(?:\.\d+)?\s*(?:m|km|미터|킬로미터)/i.test(input.question)) result.radiusMeters=plan.radius;
         if (plan.intent === 'NEAREST_PLACE') {
