@@ -1,4 +1,4 @@
-import { previousStage, priorTopicsHeading, topicCardSummary, type DiscussionTopic } from "../../lib/stage-topics";
+import { previousStage, priorTopicsHeading, topicCardSummary, topicSummaryNotice, semanticTopicForDisplay, type TopicSummaryState, type DiscussionTopic } from "../../lib/stage-topics";
 import { MODELS } from "../../lib/llm/openai";
 import { createPortal } from "react-dom";
 import { spatialGoals } from "../../lib/spatial/goals";
@@ -276,7 +276,7 @@ function AuthorizedWorkspace() {
   const activeStepStorageKey = `ppss-active-step-${projectId}`;
   const [activeStep, setActiveStep] = useState(steps[0]);
   const topicScope = `${projectId}/${userKey}/${activeStep.id}`;
-  const [topicState,setTopicState]=useState<{scope:string;topics:DiscussionTopic[];error:boolean;canPrepare?:boolean;needsPreparation?:boolean;preparing?:boolean;preparationMessage?:string}>({scope:'',topics:[],error:false});
+  const [topicState,setTopicState]=useState<{scope:string;topics:DiscussionTopic[];error:boolean;canPrepare?:boolean;needsPreparation?:boolean;preparing?:boolean;preparationMessage?:string;status?:TopicSummaryState['status'];reason?:TopicSummaryState['reason']}>({scope:'',topics:[],error:false});
   const [topicRetry,setTopicRetry]=useState(0);
   const topicContinuation=useRef<AbortController|null>(null);
   const topicPreparation=useRef<AbortController|null>(null);
@@ -292,7 +292,7 @@ function AuthorizedWorkspace() {
         const response=await fetch('/api/stage-topics',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({projectId,currentStage:activeStep.id})});
         if(!response.ok)throw Error('topics');
         const data=await response.json();
-        if(!controller.signal.aborted)setTopicState({scope:topicScope,topics:data.topics??[],error:false,canPrepare:data.canPrepare===true,needsPreparation:data.needsPreparation===true});
+        if(!controller.signal.aborted)setTopicState({scope:topicScope,topics:(data.topics??[]).filter(semanticTopicForDisplay),error:false,canPrepare:data.canPrepare===true,needsPreparation:data.needsPreparation===true,status:data.status,reason:data.reason});
       }catch{if(!controller.signal.aborted)setTopicState({scope:topicScope,topics:[],error:true});}
     })();
     return()=>controller.abort();
@@ -305,10 +305,10 @@ function AuthorizedWorkspace() {
     try{
       const response=await fetch('/api/stage-topics',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({projectId,currentStage:prior,action:'extract'})});
       const result=await response.json();
-      if(!response.ok)throw Error('prepare');
+      if(!response.ok&&!result.status)throw Error('prepare');
       if(!controller.signal.aborted){
         if(result.status==='ready')setTopicRetry(value=>value+1);
-        else setTopicState(state=>state.scope===topicScope?{...state,preparationMessage:result.status==='unavailable'?'안전한 저장 설정이 확인되지 않아 기존 기록을 유지합니다.':result.status==='cooldown'?'잠시 후 다시 정리해 주세요. 기존 기록은 그대로 볼 수 있어요.':'다른 요청에서 정리 중입니다. 잠시 후 다시 불러와 주세요.'}:state);
+        else setTopicState(state=>state.scope===topicScope?{...state,preparationMessage:result.status==='unavailable'?topicSummaryNotice({status:'blocked'}):result.status==='failed'?topicSummaryNotice({status:'failed',reason:result.reason}):result.status==='no_source'?'원문을 찾지 못해 요약을 만들지 못했어요. 이전 단계 기록을 확인해 주세요.':result.status==='cooldown'?'잠시 후 다시 정리해 주세요. 기존 기록은 그대로 볼 수 있어요.':'다른 요청에서 정리 중입니다. 잠시 후 다시 불러와 주세요.'}:state);
       }
     }catch{if(!controller.signal.aborted)setTopicState(state=>state.scope===topicScope?{...state,preparationMessage:'요약을 정리하지 못했어요. 기존 기록은 그대로 볼 수 있어요.'}:state);}
     finally{if(topicPreparation.current===controller)topicPreparation.current=null;if(!controller.signal.aborted)setTopicState(state=>state.scope===topicScope?{...state,preparing:false}:state);}
@@ -1428,9 +1428,15 @@ const handleSend = async (suggestedQuestion?: string) => {
         setSavedSummaries(mergedStageSummaries);
       }
       setCompletedStages(nextCompletedStages);
-      // Non-blocking, derived-only extraction; existing completion records are never rewritten here.
-      void user!.getIdToken().then(token=>fetch('/api/stage-topics',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({projectId,currentStage:activeStep.id,action:'extract'})})).catch(()=>{});
-      setFinishNotice({ status: "success", message: t("workspace.reportTitle") + " ✓" });
+      // Original completion has already committed. Await the derived-only request and
+      // keep completion successful even if topic preparation is blocked or fails.
+      let topicsReady=activeStep.id==='report';
+      if(!topicsReady)try{
+        const response=await fetch('/api/stage-topics',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user!.getIdToken()}`},body:JSON.stringify({projectId,currentStage:activeStep.id,action:'extract'})});
+        const result=await response.json();topicsReady=response.ok&&result.status==='ready';
+        if(!topicsReady)console.warn('Stage topic preparation:',result.status??'request_failed');
+      }catch{console.warn('Stage topic preparation: request_failed');}
+      setFinishNotice({ status: "success", message: t("workspace.reportTitle") + " ✓" + (topicsReady?'':' · 대화는 저장됐어요. 다음 단계에서 주제 요약을 준비해 주세요.') });
       return true;
     } catch (error) {
       setFinishNotice({
@@ -1800,7 +1806,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     const context = analysisView === "cases" ? "cases"
       : spatialCategory === 0 ? "facilities" : spatialCategory !== null || spatialResult || geo.result ? "spatial-result" : "spatial";
     const baseGuide = activeStep.id === "data" && defaultGuide ? { ...defaultGuide, suggestedQuestions: dataAnalysisStarterPrompts(locale, context) } : defaultGuide;
-    const topicFallbackAllowed = !previousStage(activeStep.id) || topicState.scope===topicScope && !topicState.error && !continuityTopics.length;
+    const topicFallbackAllowed = !previousStage(activeStep.id) || topicState.scope===topicScope && !topicState.error && !topicState.needsPreparation && !continuityTopics.length;
     const guide = continuityTopics.length && baseGuide ? {...baseGuide,suggestedQuestions:continuityTopics.map(topic=>({label:topic.title,prompt:topic.id}))} : topicFallbackAllowed ? baseGuide : undefined;
     const displayedMessages = stepLogs;
     const hasDialogue = stepLogs.some(log => !log.activity);
@@ -1893,13 +1899,19 @@ const handleSend = async (suggestedQuestion?: string) => {
         onWheel={(event) => { if (event.deltaY < 0) followLatestRef.current = false; }}>
         {hasLoadedChatLogs&&previousStage(activeStep.id)&&topicState.scope!==topicScope&&<p role="status" className="mb-2 text-sm">지난 단계의 이야기를 불러오고 있어요…</p>}
         {hasLoadedChatLogs&&topicState.scope===topicScope&&topicState.error&&<p role="alert" className="mb-2 text-sm text-amber-800">이전 이야기 조회 또는 주제 추출에 실패했어요. 대화가 없다는 뜻은 아니에요. <button type="button" className="underline" onClick={()=>setTopicRetry(n=>n+1)}>다시 불러오기</button></p>}
+        {hasLoadedChatLogs&&previousStage(activeStep.id)&&topicState.scope===topicScope&&topicState.needsPreparation&&!continuityTopics.length&&<section aria-label={priorTopicsHeading} className="mb-3 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+          <h4 className="font-semibold text-blue-950">{priorTopicsHeading}</h4>
+          <p role="status" className="text-sm text-slate-600">{topicState.preparationMessage??topicSummaryNotice({status:topicState.status??'missing',reason:topicState.reason})}</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="min-h-11 rounded-full border border-blue-200 px-3 text-sm font-semibold text-blue-800 disabled:opacity-50" disabled={!topicState.canPrepare||Boolean(topicState.preparing)||isSending||isLoadingAlternatives} onClick={()=>void preparePriorTopics()}>{topicState.preparing?'주제를 정리하고 있어요…':'주제 요약 생성'}</button>
+            <button type="button" className="min-h-11 rounded-full border px-3 text-sm" onClick={()=>{const prior=steps.find(step=>step.id===previousStage(activeStep.id));if(prior){setActiveStep(prior);setPanelView('chat');}}}>이전 단계 대화 보기</button>
+            <button type="button" className="min-h-11 rounded-full border px-3 text-sm" onClick={()=>setTopicRetry(value=>value+1)} disabled={Boolean(topicState.preparing)}>다시 불러오기</button>
+          </div>
+        </section>}
         {hasLoadedChatLogs && (!hasDialogue || continuityTopics.length>0) && !hasParticipantDialogue && !continuityTopicId && guide && (
           <>
             {continuityTopics.length>0 && <section className="space-y-3" aria-label={priorTopicsHeading}>
               <h4 className="font-semibold text-blue-950">{priorTopicsHeading}</h4>
-              {continuityTopics.some(topic=>topic.verbatim)&&<p className="text-sm text-slate-500">아직 주제별로 정리하지 않은 이전 발언을 그대로 표시합니다.</p>}
-              {topicState.needsPreparation&&topicState.canPrepare&&<button type="button" onClick={()=>void preparePriorTopics()} disabled={Boolean(topicState.preparing)||isSending||isLoadingAlternatives} className="min-h-11 rounded-full border border-blue-200 px-3 text-sm font-semibold text-blue-800 disabled:opacity-50">{topicState.preparing?'주제를 정리하고 있어요…':'주제 요약 다듬기'}</button>}
-              {topicState.preparationMessage&&<p role="status" className="text-sm text-slate-600">{topicState.preparationMessage}</p>}
               <StageChatEmptyState guide={guide} cards questions={Object.fromEntries(continuityTopics.filter(topic=>topic.qualityVersion===2&&topic.openQuestion).map(topic=>[topic.id,topic.openQuestion]))} summaries={Object.fromEntries(continuityTopics.map(topic=>[topic.id,topicCardSummary(topic.summary)]))} disabled={isSending||isLoadingAlternatives||isStageLocked||Boolean(topicState.preparing)} onSelect={selectStarterPrompt} />
             </section>}
             {!continuityTopics.length && activeStep.id === "data" && <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-slate-700">

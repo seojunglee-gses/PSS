@@ -7,6 +7,24 @@ export type DiscussionTopic = {
   sourceStage: DialogueStage; sourceKind: 'dialogue' | 'summary'; sourceHash: string;
   references: { sourceIndex: number; quote: string; messageId?: string; sessionId?: string; createdAt?: string }[];
 };
+export const topicAcknowledgement=(text:string)=>/^(?:(?:안녕하세요|감사합니다|네|예|응|아니요|알겠습니다|알겠어요|좋아요|고마워요|맞아요)[.!?。！？\s]*)+$/u.test(text.trim());
+export function semanticTopicForDisplay(topic:DiscussionTopic):boolean{
+  if(!topic||typeof topic.title!=='string'||typeof topic.summary!=='string'||topic.verbatim||/^이전 단계 발언(?:\s|$)/u.test(topic.title))return false;
+  const normalize=(value:string)=>value.replace(/[\s\p{P}]/gu,'').toLowerCase();
+  return !!topic.title.trim()&&!!topic.summary.trim()&&normalize(topic.title)!==normalize(topic.summary)&&Array.isArray(topic.references)&&topic.references.some(ref=>typeof ref?.quote==='string'&&ref.quote.trim()&&!topicAcknowledgement(ref.quote));
+}
+export type TopicSummaryState = {
+  topics: DiscussionTopic[];
+  status: 'ready'|'missing'|'processing'|'failed'|'blocked'|'empty';
+  reason?: 'not_prepared'|'safety_not_verified'|'derived_access_denied'|'generation_failed'|'save_failed'|'source_unavailable'|'input_too_large';
+  needsPreparation: boolean; canPrepare: boolean;
+};
+export const topicSummaryNotice=(state:Pick<TopicSummaryState,'status'|'reason'>):string=>
+  state.status==='blocked'?'주제 요약을 준비할 수 없는 상태입니다. 관리자에게 요약 준비를 요청해 주세요. 원문은 그대로 보존되어 있어요.'
+  :state.status==='processing'?'이전 단계 전체 대화에서 주제를 정리하고 있어요. 잠시 후 다시 불러와 주세요.'
+  :state.status==='failed'?(state.reason==='save_failed'?'주제 요약을 저장하지 못했어요. 원문과 기존 요약은 그대로 보존되어 있어요.':'주제 요약을 만들지 못했어요. 원문과 기존 요약은 그대로 보존되어 있어요.')
+  :'이전 단계의 주제 요약이 아직 준비되지 않았어요. 전체 대화를 한 번 정리하면 이후에는 저장된 주제를 볼 수 있어요.';
+export const topicMessageIds=(topic:DiscussionTopic)=>[...new Set(topic.references.flatMap(ref=>ref.messageId?[ref.messageId]:[]))];
 export const stageBridge: Record<string,string> = {
   data: '관심 있는 장소와 문제를 바탕으로 관련 공간 자료와 사례를 함께 살펴볼 수 있어요.',
   alternatives: '앞서 살펴본 자료와 생각을 바탕으로 공간을 바꾸는 계획 아이디어를 발전시킬 수 있어요.',

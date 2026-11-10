@@ -12,10 +12,10 @@ function setup(t,name,enabled=false){
  mock(t,admin,'adminDb',()=>db);
  return {pid,uid,docs,reads,writes,preserved(){assert.equal(JSON.stringify([...docs].filter(([p])=>!p.startsWith('ppssDerivedStageTopics/'))),before)}};
 }
-test('entry and repeated reads use resident excerpts with zero AI and zero DB writes in safe mode',async t=>{
+test('entry and repeated reads report blocked preparation without raw cards, AI or DB writes',async t=>{
  const f=setup(t,'readonly');mock(t,llm,'callLLM',()=>assert.fail('entry must not invoke AI'));
  const lists=await Promise.all(Array.from({length:8},()=>service.readStoredStageTopics(f.pid,f.uid,'problem')));
- assert.ok(lists.every(list=>list[0].summary==='시장 옆 골목을 안전하게 걷고 싶어요.'));assert.ok(lists.every(list=>list[0].id===lists[0][0].id));assert.equal(f.writes.length,0);f.preserved();
+ assert.ok(lists.every(list=>list.length===0));assert.equal((await service.readStoredStageTopicState(f.pid,f.uid,'problem')).status,'blocked');assert.equal(f.writes.length,0);f.preserved();
 });
 test('verified persistence prepares once under concurrent completion requests, then serves only saved data',async t=>{
  const f=setup(t,'prepare',true);let calls=0;
@@ -26,8 +26,9 @@ test('verified persistence prepares once under concurrent completion requests, t
 });
 test('legacy fallback stays read-only without AI, and a previously displayed card resolves after preparation',async t=>{
  const f=setup(t,'legacy',true);mock(t,llm,'callLLM',async()=>JSON.stringify({topics:[{title:'안전한 골목',summary:'골목 보행을 중요하게 말씀하셨어요.',places:[],openQuestion:'',references:[{sourceIndex:0,quote:'시장 옆 골목을 안전하게 걷고 싶어요.'}]}]}));
- const first=await service.readStoredStageTopics(f.pid,f.uid,'problem');const count=f.writes.length;await service.readStoredStageTopics(f.pid,f.uid,'problem');assert.equal(f.writes.length,count);
- await service.prepareStageTopics(f.pid,f.uid,'problem');assert.ok(await service.resolveStoredTopic(f.pid,f.uid,'problem',first[0].id));f.preserved();
+ const legacyPath='ppssDerivedStageTopics/prepared-'+require('node:crypto').createHash('sha256').update(JSON.stringify([f.pid,f.uid,'problem'])).digest('hex');f.docs.set(legacyPath,{status:'ready',mode:'extractive',projectId:f.pid,userId:f.uid,sourceStage:'problem',topics:[{id:'old-card',verbatim:true,title:'이전 단계 발언 1',summary:'시장 옆 골목을 안전하게 걷고 싶어요.',references:[{sourceIndex:0,quote:'시장 옆 골목을 안전하게 걷고 싶어요.'}]}]});
+ const first=await service.readStoredStageTopics(f.pid,f.uid,'problem');assert.equal(first.length,0);const count=f.writes.length;await service.readStoredStageTopics(f.pid,f.uid,'problem');assert.equal(f.writes.length,count);
+ await service.prepareStageTopics(f.pid,f.uid,'problem');assert.ok(await service.resolveStoredTopic(f.pid,f.uid,'problem','old-card'));f.preserved();
 });
 test('older continuation requests forward to existing chat handlers without invoking a separate topic agent',async t=>{
  const api=load('pages/api/stage-topics.js').default,chat=load('pages/api/chat.js'),research=load('pages/api/research/answer.js');let calls=0;

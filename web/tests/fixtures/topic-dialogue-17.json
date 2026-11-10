@@ -1,0 +1,212 @@
+{
+  "synthetic": true,
+  "logs": [
+    {
+      "id": "synthetic-user-1",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "안녕하세요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-ai-0",
+      "sessionId": "synthetic-session",
+      "sender": "assistant",
+      "stepId": "problem",
+      "text": "말씀하신 경험과 관련해서 더 이야기해 주실 수 있나요?",
+      "provider": "ChatGPT",
+      "label": "ChatGPT"
+    },
+    {
+      "id": "synthetic-user-2",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "화분이 있어서 보기는 좋아요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-user-3",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "그런데 물을 안 주면 금방 시들더라고요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-user-4",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "새로 놓는 것보다 지금 있는 것부터 꾸준히 돌봤으면 좋겠어요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-ai-3",
+      "sessionId": "synthetic-session",
+      "sender": "assistant",
+      "stepId": "problem",
+      "text": "말씀하신 경험과 관련해서 더 이야기해 주실 수 있나요?",
+      "provider": "ChatGPT",
+      "label": "ChatGPT"
+    },
+    {
+      "id": "synthetic-user-5",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "가게 주인하고 주민이 같이 관리할 수도 있겠죠.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-user-6",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "몇 사람한테만 계속 맡기면 힘들 것 같아요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-user-7",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "화분 관리에 관심을 갖는 사람이 적어요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-user-8",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "주민들이 부담 없이 화분 관리에 참여할 방법이 있으면 좋겠어요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-ai-7",
+      "sessionId": "synthetic-session",
+      "sender": "assistant",
+      "stepId": "problem",
+      "text": "말씀하신 경험과 관련해서 더 이야기해 주실 수 있나요?",
+      "provider": "ChatGPT",
+      "label": "ChatGPT"
+    },
+    {
+      "id": "synthetic-user-9",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "골목에 차가 서 있어서 걸을 때 차도로 나가야 해요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-user-10",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "차가 빨리 지나갈 때는 특히 불안해요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-user-11",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "캠페인보다 편하게 걸을 공간을 먼저 확보했으면 해요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-ai-10",
+      "sessionId": "synthetic-session",
+      "sender": "assistant",
+      "stepId": "problem",
+      "text": "말씀하신 경험과 관련해서 더 이야기해 주실 수 있나요?",
+      "provider": "ChatGPT",
+      "label": "ChatGPT"
+    },
+    {
+      "id": "synthetic-user-12",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "그렇지만 주차를 전부 없애는 것도 걱정돼요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-user-13",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "근처 가게를 이용하는 사람이 차를 세울 곳도 필요해요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-ai-12",
+      "sessionId": "synthetic-session",
+      "sender": "assistant",
+      "stepId": "problem",
+      "text": "말씀하신 경험과 관련해서 더 이야기해 주실 수 있나요?",
+      "provider": "ChatGPT",
+      "label": "ChatGPT"
+    },
+    {
+      "id": "synthetic-user-14",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "쓰레기가 쌓이면 걷는 길까지 막혀요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-user-15",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "쓰레기 놓는 자리하고 걷는 자리는 나누면 좋겠어요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-user-16",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "집하 자리가 어디인지 잘 보이면 좋겠어요.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    },
+    {
+      "id": "synthetic-ai-15",
+      "sessionId": "synthetic-session",
+      "sender": "assistant",
+      "stepId": "problem",
+      "text": "말씀하신 경험과 관련해서 더 이야기해 주실 수 있나요?",
+      "provider": "ChatGPT",
+      "label": "ChatGPT"
+    },
+    {
+      "id": "synthetic-user-17",
+      "sessionId": "synthetic-session",
+      "sender": "user",
+      "stepId": "problem",
+      "text": "네. 감사합니다.",
+      "provider": "ChatGPT",
+      "label": "Citizen"
+    }
+  ]
+}
