@@ -218,3 +218,35 @@ test('known clarification questions render as direct dialogue without report hea
  const evidence=await research.retrieveEvidence(request);const result=await answer.answerFromEvidence(request,evidence);
  assert.equal(result.format,'direct');assert.deepEqual(result.sources,[]);assert.deepEqual(result.projectImplications,[]);assert.equal(evidence.projectContext,undefined);
 });
+
+test('Stage 2 shares exploratory physical interventions across chat, evidence and GIS, without changing other stages',()=>{
+ const {stage2InterventionInstructions}=load('lib/facilitation.js');
+ const prompt=facilitationInstructions('data','텃밭이 관리되지 않아 미관이 안 좋다');
+ assert.equal(prompt.split('Stage 2 spatial solution scope:').length,2);
+ for(const pattern of [/2–4 plausible physical\/spatial/,/short \*\*bold\*\* label/,/1–2 short sentences/,/NOT a final design/,/must not replace a spatial intervention/,/supporting conditions/,/Do not finalize exact locations, dimensions, quantities, shapes or layouts/,/Missing details.*question-only reply/,/at most ONE useful final question/,/not a compulsory tool sequence/])assert.match(prompt,pattern);
+ for(const stage of ['problem','alternatives','evaluation','report'])assert.ok(!facilitationInstructions(stage,'어떻게 개선할까?').includes(stage2InterventionInstructions));
+ assert.match(facilitationInstructions('data','우리 동네 쓰레기 문제가 걱정돼요.'),/missing site details alone must not suppress conditional spatial options/);
+ assert.match(facilitationInstructions('data','질문 없이 해결방향만 알려줘'),/Adaptive follow-up policy: NONE/);
+});
+
+test('recognizable Stage 2 problems reach the existing answer call with provisional options and no forced factual findings',async t=>{
+ const llm=load('lib/llm/index.js'),{answerFromEvidence}=load('lib/research/answer.js');let calls=0;
+ mock(t,llm,'callLLM',async input=>{calls++;assert.match(input.systemText,/Stage 2 spatial solution scope/);assert.match(input.systemText,/never invent project-specific facts/);return JSON.stringify({summary:'현재는 **공간 기능 축소**와 **저관리형 녹지 전환**을 비교해볼 수 있습니다. 관리 부담과 이용 목적을 함께 검토하는 방향입니다.',caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'',projectImplications:[],limitations:''})});
+ for(const question of ['텃밭이 관리되지 않아 미관이 안 좋다','고속도로 진입로가 동네 가까이에 생겨서 너무 번잡하다','쓰레기가 계속 쌓여']){
+  const request={question,selectedSources:['project'],cases:[],projectContext:'부지 치수와 통행량은 아직 확인되지 않음',provider:'openai'};
+  const result=await answerFromEvidence(request,{question,selectedSources:['project'],projectContext:request.projectContext,cases:[],papers:[],warnings:[]});
+  assert.match(result.summary,/\*\*저관리형 녹지 전환\*\*/);assert.deepEqual(result.sources,[]);assert.equal(result.format,'direct');
+ }
+ assert.equal(calls,3);
+});
+
+test('case answers allow bold spatial candidate labels while preserving exact citations and existing UI rendering',async t=>{
+ const llm=load('lib/llm/index.js'),{answerFromEvidence}=load('lib/research/answer.js');
+ const question='이 사례를 참고해서 우리 지역은 어떻게 개선할 수 있을까?',c={id:'fixture',sourceId:'C:1',label:'사례',title:'자료에 등록된 사례',text:'일부 차량 공간을 보행공간으로 전환했다.',relevanceTerms:[]};
+ mock(t,llm,'callLLM',async input=>{assert.doesNotMatch(input.systemText,/without Markdown headings or bold markers/);assert.match(input.systemText,/Use \*\*bold\*\* for short spatial intervention labels/);return JSON.stringify({summary:'자료의 보행공간 전환을 참고할 수 있습니다. [C:1]\n**차량 공간 재조정**과 **보행 우선 공간 확보**를 비교해볼 수 있습니다.',caseFindings:[],researchFindings:[],agreement:'',differences:'',integratedInterpretation:'',projectImplications:[],limitations:''})});
+ const result=await answerFromEvidence({question,selectedSources:['cases'],cases:[c],projectContext:'지역의 구체적 조건은 미확인',provider:'openai'},{question,selectedSources:['cases'],cases:[c],papers:[],warnings:[]});
+ assert.equal(result.sources[0].sourceId,'C:1');
+ const React=require('react'),{renderToStaticMarkup}=require('react-dom/server'),{I18nProvider}=load('lib/i18n.js'),Answer=load('components/analysis/AnalysisAnswer.js').default;
+ const html=renderToStaticMarkup(React.createElement(I18nProvider,null,React.createElement(Answer,{answer:result,onViewEvidence(){}})));
+ assert.match(html,/<strong>차량 공간 재조정<\/strong>/);assert.match(html,/View evidence: 자료에 등록된 사례/);assert.doesNotMatch(html,/\[C:1\]/);
+});
