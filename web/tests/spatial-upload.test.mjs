@@ -51,3 +51,11 @@ test('invalid uploads, missing components, oversized ZIP expansion and incompati
  await assert.rejects(analyzeUpload(bytes(point([127,37])),'json',undefined,'project_boundary'));
  await assert.rejects(analyzeUpload(Buffer.from('longitude,latitude\n127,'),'csv'));
 });
+
+test('key_facility upload preview maps real names while preserving classification and all original attributes',async()=>{
+ const f=point([127,37.5]);f.properties={fac_gajwa:'가좌 시설',og_name:'기존 시설',fac_type:'공공기관',notes:'시설 설명',display_name:'공공기관'};
+ const original=bytes(f),before=original.toString();const result=await analyzeUpload(original,'geojson');
+ assert.equal(result.data.features[0].properties.display_name,'가좌 시설');
+ for(const field of ['fac_gajwa','og_name','fac_type','notes'])assert.equal(result.data.features[0].properties[field],f.properties[field]);
+ assert.equal(original.toString(),before);
+});

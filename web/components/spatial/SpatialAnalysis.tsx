@@ -1,4 +1,4 @@
-import { representativePoint, featureNames, type Place } from "../../lib/spatial/geo-query";
+import { representativePoint, featureNames, hasKeyFacilityProperties, type Place } from "../../lib/spatial/geo-query";
 import { deriveBoundary, boundaryGeoJSON } from '../../lib/spatial/boundary';
 import NaturalLanguageGIS from "./NaturalLanguageGIS";
 import SpatialEntityPicker from "./SpatialEntityPicker";
@@ -142,6 +142,14 @@ export default function SpatialAnalysis({
       setError(e instanceof Error ? e.message : t("spatial.runFailed"));
     }
   };
+  const keyFacility = selected && hasKeyFacilityProperties(selected.feature);
+  const selectedFields = keyFacility
+    ? ['fac_gajwa', 'og_name', 'fac_type', 'notes'].flatMap(field => {
+        const key = Object.keys(selected.feature.properties ?? {}).find(key => key.toLowerCase() === field);
+        return key ? [{ field: key, label: t(`spatial.facility.${field}`) }] : [];
+      })
+    : (selected?.layer.config.displayFields ?? []).map(field => ({ field, label: selected?.layer.config.fieldLabels?.[field] ?? field }));
+
   const choose = (
     layer: LoadedLayer,
     feature: Feature<Geometry>,
@@ -226,21 +234,22 @@ export default function SpatialAnalysis({
           {selected && (
             <section className="rounded-xl bg-slate-50 p-3 text-sm">
               <h4 className="font-semibold">
-                {selected.layer.config.label} {t("spatial.infoSuffix")}</h4>
+                {keyFacility ? featureNames(selected.feature)[0] ?? t("boundary.layer.facilities") : `${selected.layer.config.label} ${t("spatial.infoSuffix")}`}</h4>
               <p className="text-xs text-slate-500">
                 {t("spatial.featureId")}{featureKey(selected.feature, selected.index)}
               </p>
               <dl className="mt-2 space-y-1">
-                {(selected.layer.config.displayFields ?? []).map((field) => {
+                {selectedFields.map(({ field, label }) => {
                   const value = selected.feature.properties?.[field];
                   return value !== null &&
                     value !== undefined &&
+                    (!keyFacility || typeof value !== "string" || value.trim() !== "") &&
                     (typeof value === "string" ||
                       typeof value === "number" ||
                       typeof value === "boolean") ? (
                     <div key={field} className="flex flex-wrap gap-2 break-all">
                       <dt>
-                        {selected.layer.config.fieldLabels?.[field] ?? field}:
+                        {label}:
                       </dt>
                       <dd>{String(value)}</dd>
                     </div>

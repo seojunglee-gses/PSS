@@ -525,3 +525,16 @@ test('project reference selection is shared by uploaded-layer loading and the se
  mock(t,datasets,'listDatasets',async()=>({datasets:[],spatialSettings:{activeBoundaryDatasetId:null}}));const other=await server.projectLayers(user,'unrelated-project-reference-test');assert.equal(other.boundary,undefined);assert.equal(other.placeSearch,undefined);assert.equal(other.boundaryLayerId,undefined);
  assert.throws(()=>loader.validateConfig({...config,placeSearch:{...config.placeSearch,radiusMeters:50000}},config.projectId));assert.throws(()=>loader.validateConfig({...config,boundaryLayerId:'missing'},config.projectId));
 });
+
+test('key_facility names outrank stale category labels and fall back only to the original facility name',()=>{
+ const named=point('공공기관');named.properties={...named.properties,display_name:'공공기관',nameField:'fac_type',fac_gajwa:'회복의 숲, 쉼터',og_name:'기존 시설',fac_type:'공공기관',notes:'주민을 위한 공간'};
+ const before=JSON.stringify(named);
+ assert.equal(geo.featureNames(named)[0],'회복의 숲, 쉼터');assert.equal(geo.featureNames(named)[1],'기존 시설');assert.ok(!geo.featureNames(named).includes('공공기관'));assert.equal(JSON.stringify(named),before);
+ for(const missing of [null,undefined,'','  ']){
+  const f={...named,properties:{...named.properties,fac_gajwa:missing}};assert.equal(geo.featureNames(f)[0],'기존 시설');
+ }
+ const unnamed={...named,properties:{...named.properties,fac_gajwa:null,og_name:'  '}};assert.deepEqual(geo.featureNames(unnamed),[]);
+ const upper={...named,properties:{FAC_GAJWA:'새 시설명',OG_NAME:'옛 시설명',FAC_TYPE:'공공기관'}};assert.equal(geo.featureNames(upper)[0],'새 시설명');
+ // Other layers retain their generic-name priority even if they have a classification field.
+ const other={...named,properties:{display_name:'기존 표기명',name:'일반 시설명',fac_type:'공공기관'}};assert.equal(geo.featureNames(other)[0],'기존 표기명');
+});

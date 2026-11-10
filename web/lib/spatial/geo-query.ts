@@ -332,12 +332,26 @@ export function representativePoint(feature: Feature<Geometry>): {
         candidate = pointOnFeature(feature);
     return { coordinate: coordinate(candidate.geometry.coordinates.slice(0,2)), approximate: true };
 }
+// Identify the key_facility attribute schema even for uploaded layers with generated IDs.
+export function hasKeyFacilityProperties(feature: Feature<Geometry>): boolean {
+    const keys = Object.keys(feature.properties ?? {}).map(key => key.toLowerCase());
+    return ['fac_gajwa', 'og_name'].some(key => keys.includes(key));
+}
 export function featureNames(feature: Feature<Geometry>): string[] {
     const p = feature.properties ?? {};
     const names: string[] = [];
     const preferred = typeof p.nameField === 'string' ? p.nameField : '';
-    const fields = ['display_name', preferred, 'name', 'title', 'label', 'facility_name', 'building_name', 'parcel_name', '시설명', '건물명', '명칭', 'aliases', 'alias', '별칭'];
+    const keyFacility = hasKeyFacilityProperties(feature);
+    const fields = keyFacility
+        ? ['aliases', 'alias', '별칭']
+        : ['display_name', preferred, 'name', 'title', 'label', 'facility_name', 'building_name', 'parcel_name', '시설명', '건물명', '명칭', 'aliases', 'alias', '별칭'];
     const actualKeys = Object.keys(p);
+    if (keyFacility) for (const field of ['fac_gajwa', 'og_name']) {
+        const key = actualKeys.find(key => key.toLowerCase() === field);
+        const value = key ? p[key] : undefined;
+        if (typeof value === 'string' && value.trim()) names.push(value.trim().slice(0, 200));
+    }
+    // A facility category or stale display_name must never outrank the actual names.
     for (const key of [...fields.map(field => actualKeys.find(key => key.toLowerCase() === field.toLowerCase()) ?? field), ...actualKeys.filter(key => /alias|alternate.?names?|별칭/i.test(key))]) {
         if (!key) continue;
         const value = p[key];
