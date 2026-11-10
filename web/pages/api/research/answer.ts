@@ -1,3 +1,4 @@
+import {answerFailureType,logAnswerFailure} from "../../../lib/research/diagnostics";
 import { isSelectedPlaceDiscussion } from "../../../lib/spatial/geo-query";
 import { isPlanningFollowUp, recentAnswerEvidence } from "../../../lib/research/follow-up";
 import { spatialPromptContext } from "../../../lib/spatial/context";
@@ -56,9 +57,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (recent) request.searchQuestion = `${request.question}\n앞서 논의한 방법: ${recent.slice(0, 1800)}`;
       }
     }
-    if (automatic && isPlanningFollowUp(request.question)) {
+    if (automatic && (isPlanningFollowUp(request.question) || /(?:이|그|해당)\s*(?:논문|연구).*(?:쉽게|풀어|설명|요약|정리)|\b(?:explain|summari[sz]e|rephrase)\b.*\b(?:this|that) (?:paper|study)\b/i.test(request.question) && !/찾|검색|새로운|다른\s*(?:논문|연구)|\b(?:find|search|new|other)\b/i.test(request.question))) {
       const previous = recentAnswerEvidence(context.stageHistory);
-      if (previous) {
+      if (previous && (!request.selectedPaperId || previous.papers.some(p=>p.openAlexId===request.selectedPaperId))) {
         request.reuseEvidence = previous;
         request.searchQuestion = request.question;
         request.selectedSources = [...new Set(["project" as const, ...previous.selectedSources, ...(isSelectedPlaceDiscussion(request.question) ? ["spatial" as const] : [])])];
@@ -82,7 +83,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const answer = await answerFromEvidence(request, evidence);
     res.status(200).json({ reply: answerText(answer), analysis: { selectedSources: request.selectedSources, ...(request.spatialContext ? { spatialContext: request.spatialContext } : {}), answer, evidence: compactEvidence(evidence) } });
-  } catch {
+  } catch(error) {
+    logAnswerFailure(answerFailureType(error),evidence.warnings.some(w=>w.source==='research'));
     res.status(502).json({ error: "찾은 자료를 바탕으로 답변을 만들지 못했습니다. 잠시 후 다시 시도해 주세요.", evidence: compactEvidence(evidence) });
   }
 }
