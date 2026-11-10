@@ -59,3 +59,12 @@ const zh: Labels = {
   sourceHelp: "手动选择时仅使用所选资料。清除选择后恢复自动选择。", evidenceError: "无法完成回答。检索到的证据显示如下。",
 };
 export const researchLabels = (locale: Locale): Labels => ({ en, ko, zh })[locale];
+
+// Evidence dialog interface remains Korean; original source titles/text are preserved.
+export const answerEvidenceLabels = {
+  title: "답변 근거", count: (count: number) => `답변 근거 ${count}개`, total: (count: number) => `총 ${count}개`,
+  types: {research: "학술 연구", spatial: "공간 분석", cases: "사례 자료", project: "프로젝트 자료", web: "웹 검색", unknown: "출처 미분류"},
+  empty: "저장된 근거가 없습니다.", key: "핵심 근거", original: "저장된 원문 보기", claims: "연결된 답변 문장", close: "닫기", fullCase: "사례 전체 보기",
+  unavailable: "근거 정보를 불러오지 못했습니다. 저장된 출처 정보가 부족합니다.",
+  noExcerpt: "저장된 근거 본문이 없습니다. 출처 정보와 연결된 답변 문장을 확인해 주세요.",
+};

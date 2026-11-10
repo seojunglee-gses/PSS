@@ -1,5 +1,7 @@
+import { answerEvidenceItems } from "../../lib/research/answer-evidence";
+import SpatialSummary from "../spatial/SpatialSummary";
 import { useI18n } from "../../lib/i18n";
-import { researchLabels } from "../../lib/research/labels";
+import { answerEvidenceLabels as copy, researchLabels } from "../../lib/research/labels";
 import type { AnalysisRecord, EvidenceSource, Finding } from "../../lib/research/types";
 
 // A reading preview of already retrieved text; retrieval and stored originals stay unchanged.
@@ -19,7 +21,8 @@ function relevantSnippet(text: string, question: string, relevanceTerms: string[
   return preview.length > 360 ? `${preview.slice(0, 357).trim()}…` : preview;
 }
 
-export default function EvidencePanel({ evidence, enabled, loading, highlighted, onViewCase, onViewPaper, onViewProject, availableCaseIds = [], researchFindings = [], caseFindings = [] }: {
+export default function EvidencePanel({ evidence, enabled, loading, highlighted, onViewCase, onViewPaper, onViewProject, availableCaseIds = [], researchFindings = [], caseFindings = [], record }: {
+  record?: AnalysisRecord;
   evidence: AnalysisRecord["evidence"] | null; enabled: EvidenceSource[]; loading: boolean; highlighted: string | null;
   onViewPaper?: (paper: NonNullable<AnalysisRecord["evidence"]>["papers"][number]) => void;
   onViewProject?: () => void;
@@ -32,6 +35,38 @@ export default function EvidencePanel({ evidence, enabled, loading, highlighted,
   const labels = researchLabels(locale);
   const snippetLabel = locale === "ko" ? "핵심 근거" : locale === "zh" ? "核心依据" : "Key evidence";
   const originalLabel = locale === "ko" ? "원문 보기" : locale === "zh" ? "查看原文" : "View original";
+  if (record) {
+    const items = answerEvidenceItems(record);
+    const types = copy.types;
+    return <div className="evidence-panel space-y-4 p-4 [overflow-wrap:anywhere]">
+      {record.evidence.warnings?.map((warning, index) => <p key={index} role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{warning.message}</p>)}
+      {!items.length && <p role="status" className="text-sm text-slate-500">{copy.empty}</p>}
+      {items.map(item => <article key={item.key} className="min-w-0 rounded-2xl border border-blue-100 bg-slate-50 p-4">
+        <p className="text-sm font-semibold text-blue-700">{types[item.kind]}</p>
+        <h4 className="mt-1 font-semibold text-slate-900">{item.title}</h4>
+        {item.details.length > 0 && <p className="mt-2 text-sm text-slate-500">{item.details.join(" · ")}</p>}
+        {item.excerpts.length > 0 && <>
+          <p className="mt-3 text-sm font-semibold text-blue-700">{copy.key}</p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{relevantSnippet(item.excerpts.join("\n"), record.evidence.question)}</p>
+          <details className="mt-2 text-sm text-slate-600" onToggle={event => {
+            if (!event.currentTarget.open) return;
+            if (item.kind === "project") onViewProject?.();
+            const paper = record.evidence.papers.find(paper => item.sourceIds.includes(paper.sourceId));
+            if (paper) onViewPaper?.(paper);
+          }}><summary className="min-h-11 cursor-pointer py-3 text-blue-700">{copy.original}</summary>
+            {item.excerpts.map((text, index) => <p key={index} className="mt-2 whitespace-pre-wrap">{text}</p>)}
+          </details>
+        </>}
+        {item.spatial && <div className="mt-3"><SpatialSummary result={item.spatial} /></div>}
+        {item.claims.length > 0 && <details className="mt-2 text-sm text-slate-700"><summary className="min-h-11 cursor-pointer py-3 text-blue-700">{copy.claims}</summary><ul className="list-disc space-y-2 pl-5">{item.claims.map((claim, index) => <li key={index} className="whitespace-pre-wrap">{claim}</li>)}</ul></details>}
+        {!item.excerpts.length && !item.spatial && <p className="mt-3 text-sm text-slate-500">{item.kind === "unknown" ? copy.unavailable : copy.noExcerpt}</p>}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {item.links.map(link => <a key={link.url} href={link.url} onClick={() => { const paper = record.evidence.papers.find(paper => item.sourceIds.includes(paper.sourceId)); if (paper) onViewPaper?.(paper); }} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-full border border-blue-200 bg-white px-3 text-sm text-blue-700 underline">{link.label}</a>)}
+          {item.caseIds.filter(id => availableCaseIds.includes(id)).map(id => <button key={id} type="button" onClick={() => onViewCase?.(id)} className="min-h-11 rounded-full border border-blue-200 bg-white px-3 text-sm text-blue-700">{copy.fullCase}</button>)}
+        </div>
+      </article>)}
+    </div>;
+  }
   const papers = evidence?.papers ?? [];
   const years = papers.flatMap((p) => p.year ? [p.year] : []);
   const topics = new Map<string, number>();
