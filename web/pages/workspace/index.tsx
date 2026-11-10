@@ -556,20 +556,6 @@ function AuthorizedWorkspace() {
     completionResolver.current?.(confirmed);
     completionResolver.current = null;
   };
-  useEffect(() => {
-    if (completionOpen) completionDialog.current?.showModal();
-    else completionDialog.current?.close();
-    if (!completionOpen) return;
-    const position = () => {
-      const dialog = completionDialog.current, viewport = window.visualViewport;
-      if (!dialog) return;
-      dialog.style.left = `${(viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth) / 2}px`;
-      dialog.style.top = `${(viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight) / 2}px`;
-      dialog.style.maxHeight = `${Math.max(100, (viewport?.height ?? window.innerHeight) - 32)}px`;
-    };
-    position(); window.addEventListener("resize", position); window.visualViewport?.addEventListener("resize", position); window.visualViewport?.addEventListener("scroll", position);
-    return () => { window.removeEventListener("resize", position); window.visualViewport?.removeEventListener("resize", position); window.visualViewport?.removeEventListener("scroll", position); };
-  }, [completionOpen, portalReady]);
   useEffect(() => () => completionResolver.current?.(false), []);
   const [summaryOpen,setSummaryOpen]=useState(false);
   const [summaryDraft,setSummaryDraft]=useState("");
@@ -577,7 +563,21 @@ function AuthorizedWorkspace() {
   const summaryResolver=useRef<((value:{text:string}|null)=>void)|null>(null);
   const reviewGeneratedSummary=(text:string)=>new Promise<{text:string}|null>(resolve=>{summaryResolver.current=resolve;setSummaryDraft(text);setSummaryOpen(true);});
   const closeSummaryReview=(confirmed:boolean)=>{summaryResolver.current?.(confirmed?{text:summaryDraft.trim()}:null);summaryResolver.current=null;setSummaryOpen(false);};
-  useEffect(()=>{if(summaryOpen)summaryDialog.current?.showModal();else summaryDialog.current?.close();},[summaryOpen]);
+  useEffect(()=>{
+    const dialogs=[{dialog:completionDialog.current,open:completionOpen},{dialog:summaryDialog.current,open:summaryOpen}];
+    for(const {dialog,open} of dialogs){if(open)dialog?.showModal();else dialog?.close();}
+    const position=()=>{
+      const viewport=window.visualViewport;
+      for(const {dialog,open} of dialogs){
+        if(!dialog||!open)continue;
+        dialog.style.left=`${(viewport?.offsetLeft??0)+(viewport?.width??window.innerWidth)/2}px`;
+        dialog.style.top=`${(viewport?.offsetTop??0)+(viewport?.height??window.innerHeight)/2}px`;
+        dialog.style.maxHeight=`${Math.max(100,(viewport?.height??window.innerHeight)-32)}px`;
+      }
+    };
+    position();window.addEventListener('resize',position);window.visualViewport?.addEventListener('resize',position);window.visualViewport?.addEventListener('scroll',position);
+    return()=>{window.removeEventListener('resize',position);window.visualViewport?.removeEventListener('resize',position);window.visualViewport?.removeEventListener('scroll',position);};
+  },[completionOpen,summaryOpen,portalReady]);
   useEffect(()=>{summaryResolver.current?.(null);summaryResolver.current=null;setSummaryOpen(false);setSummaryDraft("");},[projectId,userKey,activeStep.id]);
   useEffect(()=>()=>summaryResolver.current?.(null),[]);
   const [lockedStages, setLockedStages] = useState<Record<string, boolean>>({});
@@ -1378,7 +1378,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     if (!confirmed && !await confirmCompletion()) return;
     const summaryGeneration=chatGenerationRef.current;
     setIsSummarizing(true);
-    setFinishNotice({ status: "uploading", message: t("workspace.finishStage") + "..." });
+    setFinishNotice({ status: "uploading", message: t("facilitation.summarizing") });
     
     try {
       const response = await fetch("/api/workspace-summary", {
@@ -1403,8 +1403,10 @@ const handleSend = async (suggestedQuestion?: string) => {
       };
       if(summaryGeneration!==chatGenerationRef.current)return;
       const generated=(payload.workspaceSummary.stageSummaries?.[activeStep.id]?.trim()??"").slice(0,12000);
+      setFinishNotice({status:"uploading",message:t("facilitation.reviewTitle")});
       const reviewed=await reviewGeneratedSummary(generated);
       if(!reviewed||summaryGeneration!==chatGenerationRef.current)return;
+      setFinishNotice({status:"uploading",message:t("facilitation.savingSummary")});
       const stageSummary=reviewed.text;
       const mergedStageSummaries = {
         ...savedSummaries,
@@ -2732,12 +2734,12 @@ const handleSend = async (suggestedQuestion?: string) => {
           <button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-5 py-2 text-sm font-semibold text-white" onClick={() => closeCompletion(true)}>{t("workspace.finishStage")}</button>
         </div>
       </dialog>, document.body)}
-      <dialog ref={summaryDialog} aria-labelledby="summary-review-title" className="m-auto w-[calc(100%_-_32px)] max-w-xl rounded-3xl border border-slate-200 bg-white p-5 shadow-xl backdrop:bg-slate-900/40" onCancel={event=>{event.preventDefault();closeSummaryReview(false);}}>
+      {portalReady && createPortal(<dialog ref={summaryDialog} aria-labelledby="summary-review-title" className="workspace-completion-dialog w-[calc(100%_-_32px)] max-w-xl rounded-3xl border border-slate-200 bg-white p-5 shadow-xl backdrop:bg-slate-900/40" onCancel={event=>{event.preventDefault();closeSummaryReview(false);}}>
         <h3 id="summary-review-title" className="text-lg font-semibold">{t("facilitation.reviewTitle")}</h3>
         <p className="mt-2 text-sm text-slate-600">{t("facilitation.reviewHint")}</p>
         <textarea aria-label={t("facilitation.summary")} value={summaryDraft} onChange={event=>setSummaryDraft(event.target.value)} maxLength={12000} className="mt-3 h-[min(45dvh,360px)] min-h-36 w-full rounded-xl border p-3 text-sm"/>
         <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" className="min-h-11 rounded-full border px-4" onClick={()=>closeSummaryReview(false)}>{t("workspace.cancel")}</button><button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-4 text-white disabled:opacity-50" disabled={!summaryDraft.trim()} onClick={()=>closeSummaryReview(true)}>{t("facilitation.confirmSummary")}</button></div>
-      </dialog>
+      </dialog>, document.body)}
       {selectedImage && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4"

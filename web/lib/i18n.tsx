@@ -46,6 +46,8 @@ const STORAGE_KEY = "ppss-locale";
 
 export const messagesByLocale: Record<Locale, Messages> = {
   en: {
+    "facilitation.summarizing": "We are summarizing this stage’s conversation. Please wait.",
+    "facilitation.savingSummary": "Saving your reviewed summary. Please wait.",
     "spatial.facility.fac_gajwa": "Facility name",
     "spatial.facility.og_name": "Original facility name",
     "spatial.facility.fac_type": "Facility type",
@@ -837,6 +839,8 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.compareSearchesMissing": "Two recent place search results could not be verified. Please search for the places again before comparing.",
   },
   ko: {
+    "facilitation.summarizing": "이 단계에서 나눈 이야기를 정리하고 있어요. 잠시만 기다려 주세요.",
+    "facilitation.savingSummary": "확인한 요약을 저장하고 있어요. 잠시만 기다려 주세요.",
     "spatial.facility.fac_gajwa": "시설명",
     "spatial.facility.og_name": "기존 시설명",
     "spatial.facility.fac_type": "시설 유형",
@@ -951,7 +955,7 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "dataset.population": "인구·통계",
     "facilitation.mySummary": "내가 확인한 단계 요약",
     "facilitation.reviewTitle": "단계 요약을 검토해주세요",
-    "facilitation.reviewHint": "내 생각과 다르게 정리된 부분을 수정해주세요. 확인한 요약은 프로젝트 참여자와 공동 보고서에 공유되며 다음 단계에서도 활용됩니다. 확인한 뒤에 단계가 완료됩니다.",
+    "facilitation.reviewHint": "요약이 내 생각과 맞는지 확인해 주세요. 필요한 부분을 고친 뒤 ‘요약 확인 후 단계 완료’를 눌러 주세요. 확인한 요약은 프로젝트 참여자와 공동 보고서에 공유되며 다음 단계에서도 활용됩니다.",
     "facilitation.summary": "수정할 단계 요약",
     "facilitation.confirmSummary": "요약 확인 후 단계 완료",
 
@@ -1628,6 +1632,8 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.compareSearchesMissing": "비교할 최근 두 장소 검색 결과를 확인할 수 없습니다. 비교할 장소를 다시 검색해주세요.",
   },
   zh: {
+    "facilitation.summarizing": "正在整理本阶段的对话，请稍候。",
+    "facilitation.savingSummary": "正在保存您确认的摘要，请稍候。",
     "spatial.facility.fac_gajwa": "设施名称",
     "spatial.facility.og_name": "原设施名称",
     "spatial.facility.fac_type": "设施类型",
