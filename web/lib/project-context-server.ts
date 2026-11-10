@@ -49,6 +49,17 @@ export async function loadProjectContext(req: NextApiRequest, stage: string, inc
   const savedDialogue=includeStageHistory?(stage==='data'?privateData:await db.doc(`users_${projectId}/${user.uid}/steps/${stage}`).get()):undefined;
   const stageHistory=Array.isArray(savedDialogue?.data()?.logs)?savedDialogue!.data()!.logs:[];
 
+  if (typeof req.body?.continuityTopicId === 'string') {
+    const {previousStage,topicContext}=await import('./stage-topics');
+    const priorStage=previousStage(stage);
+    if(priorStage){
+      const {readStageTopics}=await import('./stage-topics-server');
+      const topic=(await readStageTopics(projectId,user.uid,priorStage)).find(topic=>topic.id===req.body.continuityTopicId);
+      if(!topic)throw new AccessError(409,'선택한 이전 논의 주제를 다시 확인해주세요.');
+      currentMaterial+='\n'+topicContext(topic,stage);
+    }
+  }
+
   const backgroundSourceIds=Array.isArray(background.data()?.sourceIds)?background.data()!.sourceIds.filter((id:unknown):id is string=>typeof id==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(id)).slice(0,10):undefined;
   return { projectId, user, project, currentMaterial, hasBackground:background.exists, backgroundSourceIds, previousSummaries, stageHistory, spatialData,
     cases: (Array.isArray(content?.data?.cases) ? content.data.cases : []).filter((c) => c && typeof c.id === "string" && typeof c.text === "string").map((c) => ({ id: c.id, label: c.label, title: c.title, text: plain(c.text), ...(Array.isArray(c.aliases)?{aliases:c.aliases.filter((a):a is string=>typeof a==='string').slice(0,20)}:{}) })) };

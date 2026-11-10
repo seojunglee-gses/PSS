@@ -2,7 +2,7 @@ import { normalizeRoleId, type Locale, type RoleId } from "./i18n";
 
 export type ChatStage = "problem" | "data" | "alternatives" | "evaluation" | "report";
 export type StarterPrompt = { label: string; prompt: string };
-export type StageChatGuide = { title: string; description: string; suggestedQuestions: readonly [StarterPrompt, StarterPrompt, StarterPrompt] };
+export type StageChatGuide = { title: string; description: string; suggestedQuestions: readonly StarterPrompt[] };
 
 const guides: Record<Locale, Record<ChatStage, Omit<StageChatGuide, "suggestedQuestions">>> = {
   ko: {
