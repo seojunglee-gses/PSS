@@ -10,7 +10,7 @@ import {policyHistory} from "../../../lib/facilitation";
 import { loadProjectContext } from "../../../lib/project-context-server";
 import { AccessError } from "../../../lib/membership/server";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { parseAnalysisRequest, retrieveEvidence } from "../../../lib/research/evidence";
+import { parseAnalysisRequest, retrieveEvidence, selectCases } from "../../../lib/research/evidence";
 import { answerFromEvidence, answerText } from "../../../lib/research/answer";
 import { compactEvidence } from "../../../lib/research/types";
 import { namedCases,resolveSources,sourceRoutingQuestion, wantsNewCases, wantsResearch } from "../../../lib/research/routing";
@@ -27,6 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const context = await loadProjectContext(req, "data", true, true);
     request.projectContext = context.currentMaterial;
+    request.continuityContext=context.continuityContext;
     request.authorizedProjectId=context.projectId;
     request.hasBackground=context.hasBackground;
     request.backgroundSourceIds=context.backgroundSourceIds;
@@ -68,15 +69,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (automatic && isSelectedPlaceDiscussion(request.question) && !request.selectedSources.includes("spatial")) request.selectedSources.push("spatial");
     request.analysisSession=analysisSessionContext(context.stageHistory,context.projectId,context.cases,request.selectedSources);
     if(request.selectedSources.includes("spatial") && !request.spatialContext && !isSelectedPlaceDiscussion(request.question))request.spatialContext=canonicalBuildingContext([...activities].reverse().find(a=>a.type==="spatial")?.result);
-    if(request.selectedSources.includes("spatial")) {
+    if(req.body.topicSelection!==true&&request.selectedSources.includes("spatial")) {
       const data=context.spatialData??await projectLayers(context.user,context.projectId);
       request.registeredSpatialContext=spatialPromptContext(data.layers,req.body.spatialSelection,activities,!!data.boundary,{nearbyPlaces:!!data.boundary&&!!process.env.KAKAO_REST_API_KEY,priority:!!data.priority,boundary:data.boundary});
     }
-    if(request.selectedSources.includes('cases') && !request.reuseEvidence){
+    if(req.body.topicSelection!==true&&request.selectedSources.includes('cases') && !request.reuseEvidence){
       const focused=namedCases(request.searchQuestion,context.cases,contextual?[]:request.history);
       request.casePassages=await readCasePassages(context.projectId,!wantsNewCases(request.question)&&focused.length?focused:context.cases);
     }
     request.facilitationHistory=policyHistory(context.stageHistory,[],"data");
+    if(req.body.topicSelection===true&&context.continuityTopic){
+      request.topicSelection=true;
+      const topic=context.continuityTopic;
+      const cases=selectCases(topic.title+' '+topic.summary,context.cases).filter(c=>c.relevanceTerms.length>0);
+      request.selectedSources=['project',...(cases.length?['cases' as const]:[])];
+      request.reuseEvidence={question:request.question,selectedSources:request.selectedSources,projectContext:context.currentMaterial,cases,papers:[],warnings:[]};
+    }
   } catch (error) { res.status(error instanceof AccessError ? error.status : 503).json({ error: error instanceof AccessError ? error.message : "사업 자료를 불러오지 못했습니다." }); return; }
   // Retrieve on the server, not from client-provided paper claims or URLs.
   const evidence = await retrieveEvidence(request);

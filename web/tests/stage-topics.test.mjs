@@ -53,15 +53,15 @@ test('assistant-only citations, invented places and duplicate titles are rejecte
  assert.throws(()=>server.validateTopics([rawTopic(),rawTopic()],source,'problem','hash','dialogue'),/출처/);
 });
 
-test('all four transitions resolve only the authenticated participant and continue using the existing stage facilitation',async t=>{
+test('all four transitions read only the authenticated participant topics without invoking AI',async t=>{
  const context=load('lib/project-context-server.js'),api=load('pages/api/stage-topics.js').default;
  mock(t,context,'loadProjectContext',async(req,stage)=>({projectId:'own-project',user:{uid:'own-user'},currentMaterial:'현재 단계 자료',previousSummaries:{},stageHistory:[]}));
  mock(t,admin,'adminDb',()=>assert.fail('no unmocked database access'));
- mock(t,load('lib/stage-topics-server.js'),'readStageTopics',async(pid,uid,stage)=>{assert.equal(pid,'own-project');assert.equal(uid,'own-user');return [{...rawTopic(),id:'topic',sourceKind:'dialogue',sourceStage:stage,sourceHash:'hash'}]});
+ mock(t,load('lib/stage-topics-server.js'),'readStoredStageTopics',async(pid,uid,stage)=>{assert.equal(pid,'own-project');assert.equal(uid,'own-user');return [{...rawTopic(),id:'topic',sourceKind:'dialogue',sourceStage:stage,sourceHash:'hash'}]});
  mock(t,llm,'callLLM',async req=>{assert.match(req.systemText,/UI topic selection, not a resident utterance/);assert.match(req.systemText,/not agreement/);assert.match(req.systemText,/This text endpoint has not executed tools/);return '앞서 말씀하신 골목길 이야기를 이어가 볼 수 있어요.'});
  for(const [from,to]of [['problem','data'],['data','alternatives'],['alternatives','evaluation'],['evaluation','report']]){
   assert.equal(previousStage(to),from);const res={setHeader(){},status(n){this.code=n;return this},json(v){this.body=v}};
-  await api({method:'POST',headers:{},body:{currentStage:to,action:'continue',topicId:'topic',uid:'someone-else'}},res);assert.equal(res.code,200);assert.equal(res.body.topics[0].sourceStage,from);assert.match(res.body.reply,/골목길/);
+  await api({method:'POST',headers:{},body:{currentStage:to,action:'read',topicId:'topic',uid:'someone-else'}},res);assert.equal(res.code,200);assert.equal(res.body.topics[0].sourceStage,from);assert.equal(res.body.reply,undefined);
  }
 });
 
@@ -69,9 +69,9 @@ test('normal chat context resolves the topic server-side from the same project/u
  const context=load('lib/project-context-server.js'),topicServer=load('lib/stage-topics-server.js');
  mock(t,admin,'verifyUserRequest',async()=>({uid:'context-owner',email:'resident@example.test'}));
  mock(t,admin,'adminDb',()=>({doc:path=>({get:async()=>({exists:true,data:()=>path==='ppssProjects/context-project'?{projectName:'본인 사업',projectAdmin:'admin@example.test',workspaceContent:{data:{text:'현재 자료',cases:[]}}}:path==='users/context-owner/projectMemberships/context-project'?{role:'participant'}:{}})})}));
- mock(t,topicServer,'readStageTopics',async(pid,uid,stage)=>{assert.equal(pid,'context-project');assert.equal(uid,'context-owner');assert.equal(stage,'problem');return [{...rawTopic(),id:'owned-topic',sourceKind:'dialogue',sourceStage:'problem',sourceHash:'owned'}]});
+ mock(t,topicServer,'resolveStoredTopic',async(pid,uid,stage,id)=>{assert.equal(pid,'context-project');assert.equal(uid,'context-owner');assert.equal(stage,'problem');return id==='owned-topic'?{...rawTopic(),id:'owned-topic',sourceKind:'dialogue',sourceStage:'problem',sourceHash:'owned'}:undefined});
  const req={headers:{authorization:'Bearer mock-token'},body:{projectId:'context-project',continuityTopicId:'owned-topic'}};
- const result=await context.loadProjectContext(req,'data');assert.match(result.currentMaterial,/대성주유소/);assert.match(result.currentMaterial,/not a new participant statement/);
+ const result=await context.loadProjectContext(req,'data');assert.match(result.continuityContext,/대성주유소/);assert.match(result.continuityContext,/not a new participant statement/);assert.doesNotMatch(result.currentMaterial,/대성주유소/);
  await assert.rejects(()=>context.loadProjectContext({...req,body:{...req.body,continuityTopicId:'other-user-topic'}},'data'),/다시 확인/);
 });
 

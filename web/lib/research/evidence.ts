@@ -13,6 +13,8 @@ import type { ConversationMessage } from "../chat-history";
 import type { CaseEvidence, CaseMaterial, EvidenceBundle, EvidenceSource } from "./types";
 
 export type AnalysisRequest = {
+  topicSelection?: boolean;
+  continuityContext?: string;
   analysisSession?: import("../analysis-session").AnalysisActivity[];
   facilitationHistory?: ConversationMessage[];
   question: string;
@@ -79,6 +81,8 @@ export async function retrieveEvidence(request: AnalysisRequest): Promise<Eviden
   const evidence: EvidenceBundle = { question: request.question, selectedSources: request.selectedSources, cases: [], papers: [], warnings: [] };
   request.clarification=requestClarification(request.searchQuestion??request.question,request.history,request.projectContext,/[가-힣]/.test(request.question)?"ko":"en");
   if(request.clarification)return evidence;
+  // Topic selections already carry server-verified local material; do not fan out into searches.
+  if(request.topicSelection&&request.reuseEvidence)return {...request.reuseEvidence,question:request.question};
   if (request.selectedSources.includes("project")) {
     let projectMaterial=request.projectContext;
     if(request.authorizedProjectId&&request.hasBackground&&needsBackgroundOriginal(request.searchQuestion??request.question)){

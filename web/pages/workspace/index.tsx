@@ -1,4 +1,4 @@
-import { previousStage, stageBridge, type DiscussionTopic } from "../../lib/stage-topics";
+import { previousStage, topicCardSummary, type DiscussionTopic } from "../../lib/stage-topics";
 import { MODELS } from "../../lib/llm/openai";
 import { createPortal } from "react-dom";
 import { spatialGoals } from "../../lib/spatial/goals";
@@ -1347,15 +1347,16 @@ const handleSend = async (suggestedQuestion?: string) => {
     followLatestRef.current=true;setIsSending(true);setSendingChatScope(chatScope);setErrorMessage(null);setExpandedStarterScope(null);
     setSelectedContinuity({scope:topicScope,id:topic.id});
     try{
-      const response=await fetch('/api/stage-topics',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({projectId,currentStage:stepId,action:'continue',topicId:topic.id})});
+      const response=await fetch(stepId==='data'?'/api/research/answer':'/api/chat',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({projectId,stepId,continuityTopicId:topic.id,topicSelection:true,provider:'openai',...(stepId==='data'?{question:'선택한 이전 주제로 현재 단계의 자료 확인을 시작해 주세요. 확인을 묻지 말고 제공된 자료로 설명해 주세요.',selectedSources:['project']}:{message:'선택한 이전 주제로 현재 단계의 활동을 시작해 주세요. 확인을 묻지 말고 제공된 맥락으로 설명해 주세요.',history:conversationHistory(chatLogsByStep[stepId]??[])})})});
       const data=await response.json();if(!response.ok||typeof data.reply!=='string')throw Error(data.error??'이전 이야기를 이어가지 못했어요.');
       if(generation!==chatGenerationRef.current||controller.signal.aborted)return;
       // A topic click is navigation. Save only the actual AI reply, never a fabricated user turn.
       const base=stepId==='data'?dataLogsRef.current:chatLogsByStep[stepId]??[];
-      const logs:ChatLog[]=[...base,{stepId,provider:'ChatGPT',sender:'assistant',text:data.reply,label:'ChatGPT',createdAt:new Date().toISOString()}];
+      const logs:ChatLog[]=[...base,{stepId,provider:'ChatGPT',sender:'assistant',text:data.reply,label:'ChatGPT',createdAt:new Date().toISOString(),...(data.analysis?{analysis:data.analysis}:{})}];
       if(stepId==='data')commitDataLogs(logs);else setChatLogsByStep(prev=>({...prev,[stepId]:logs}));
+      if(data.analysis){setInspectedEvidence(null);setAnalysisView('answer');}
       await persistChatLogs(stepId,sanitizeLogs(logs));
-    }catch(error){if(generation===chatGenerationRef.current&&!controller.signal.aborted)setErrorMessage(error instanceof Error?error.message:'이전 이야기를 이어가지 못했어요.');}
+    }catch(error){if(generation===chatGenerationRef.current&&!controller.signal.aborted){setSelectedContinuity(null);setErrorMessage(error instanceof Error?error.message:'이전 이야기를 이어가지 못했어요.');}}
     finally{if(topicContinuation.current===controller)topicContinuation.current=null;if(generation===chatGenerationRef.current)setIsSending(false);}
   };
 
@@ -1806,6 +1807,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     const guide = continuityTopics.length && baseGuide ? {...baseGuide,suggestedQuestions:continuityTopics.map(topic=>({label:topic.title,prompt:topic.id}))} : topicFallbackAllowed ? baseGuide : undefined;
     const displayedMessages = stepLogs;
     const hasDialogue = stepLogs.some(log => !log.activity);
+    const hasParticipantDialogue=stepLogs.some(log=>!log.activity&&log.sender==='user');
     const selectStarterPrompt = (prompt: string) => {
       const topic=continuityTopics.find(topic=>topic.id===prompt);
       if(topic){void continueTopic(topic);return;}
@@ -1894,22 +1896,19 @@ const handleSend = async (suggestedQuestion?: string) => {
         onWheel={(event) => { if (event.deltaY < 0) followLatestRef.current = false; }}>
         {hasLoadedChatLogs&&previousStage(activeStep.id)&&topicState.scope!==topicScope&&<p role="status" className="mb-2 text-sm">지난 시간의 이야기를 불러오고 있어요…</p>}
         {hasLoadedChatLogs&&topicState.scope===topicScope&&topicState.error&&<p role="alert" className="mb-2 text-sm text-amber-800">이전 이야기 조회 또는 주제 추출에 실패했어요. 대화가 없다는 뜻은 아니에요. <button type="button" className="underline" onClick={()=>setTopicRetry(n=>n+1)}>다시 불러오기</button></p>}
-        {hasLoadedChatLogs && (!hasDialogue || continuityTopics.length>0) && guide && (
+        {hasLoadedChatLogs && (!hasDialogue || continuityTopics.length>0) && !hasParticipantDialogue && !continuityTopicId && guide && (
           <>
-            {continuityTopics.length>0 && <section className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-slate-700" aria-label="지난 시간에 나눈 이야기">
+            {continuityTopics.length>0 && <section className="space-y-3" aria-label="지난 시간에 나눈 이야기">
               <h4 className="font-semibold">지난 시간에 나눈 이야기</h4>
-              <p className="mt-2">지난번에 말씀해 주신 내용을 바탕으로 오늘도 이야기를 이어가 볼게요.</p>
-              {continuityTopics.map(topic=><div key={topic.id} className="mt-3"><h5 className="font-semibold">{topic.title}</h5><p className="mt-1">{topic.sourceKind==='summary'?'이전 단계 요약에서: ':''}{topic.summary}</p>{topic.places.length>0&&<p className="mt-1 text-xs">관련 장소: {topic.places.join(' · ')}</p>}{topic.openQuestion&&<p className="mt-1 text-xs">함께 더 이야기할 점: {topic.openQuestion}</p>}</div>)}
-              <h5 className="mt-3 font-semibold">오늘 함께 살펴볼 내용</h5><p className="mt-1">{stageBridge[activeStep.id]}</p>
-              <p className="mt-3 font-semibold">오늘은 어떤 이야기를 이어가 볼까요?</p>
+              <StageChatEmptyState guide={guide} cards summaries={Object.fromEntries(continuityTopics.map(topic=>[topic.id,topicCardSummary(topic.summary)]))} disabled={isSending||isLoadingAlternatives||isStageLocked} onSelect={selectStarterPrompt} />
             </section>}
             {!continuityTopics.length && activeStep.id === "data" && <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-slate-700">
               <h4 className="font-semibold">오늘은 어떤 이야기를 해볼까요?</h4>
-              <p className="mt-2 leading-relaxed">이전 단계에 저장된 이야기가 아직 없어요. 살펴보고 싶은 장소나 문제를 편하게 말씀해 주세요.</p>
+              <p className="mt-2 leading-relaxed">이어갈 주제가 아직 준비되지 않았어요. 살펴보고 싶은 장소나 문제를 편하게 말씀해 주세요.</p>
             </div>}
-            <StageChatEmptyState guide={guide} showFullPrompts={!continuityTopics.length}
+            {!continuityTopics.length&&<StageChatEmptyState guide={guide} showFullPrompts
               disabled={isSending || isLoadingAlternatives || isStageLocked}
-              onSelect={selectStarterPrompt} />
+              onSelect={selectStarterPrompt} />}
           </>
         )}
         {displayedMessages.map((message, index) => {
@@ -1977,9 +1976,9 @@ const handleSend = async (suggestedQuestion?: string) => {
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M9 18h6M10 21h4M8.5 14.5a6 6 0 1 1 7 0c-.9.7-1.5 1.6-1.5 3.5h-4c0-1.9-.6-2.8-1.5-3.5Z" /></svg>
         </button>
         {expandedStarterScope === chatScope && (starterOverlay && portalReady ? createPortal(
-          <div id="workspace-starter-prompts" className="workspace-tablet-help-overlay" style={starterOverlay}><StageChatEmptyState guide={guide} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} /></div>, document.body
+          <div id="workspace-starter-prompts" className="workspace-tablet-help-overlay" style={starterOverlay}><StageChatEmptyState guide={guide} summaries={continuityTopics.length?Object.fromEntries(continuityTopics.map(topic=>[topic.id,topicCardSummary(topic.summary)])):undefined} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} /></div>, document.body
         ) : <div id="workspace-starter-prompts" className="workspace-help-popover max-h-36 overflow-y-auto overscroll-contain">
-          <StageChatEmptyState guide={guide} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} />
+          <StageChatEmptyState guide={guide} summaries={continuityTopics.length?Object.fromEntries(continuityTopics.map(topic=>[topic.id,topicCardSummary(topic.summary)])):undefined} disabled={isSending || isLoadingAlternatives || isStageLocked} onSelect={selectStarterPrompt} />
         </div>)}
       </div>}
 
