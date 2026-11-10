@@ -14,7 +14,7 @@ const searchHandler = load('pages/api/research/search.js').default;
 const answerHandler = load('pages/api/research/answer.js').default;
 
 test('OpenAI model routing uses gpt-6.1-sol for simple and complex tasks', () => {
-  assert.deepEqual(MODELS, { fastChat: 'gpt-6.1-sol', chat: 'gpt-6.1-sol', image: 'gpt-image-2.5-flare' });
+  assert.deepEqual(MODELS, { fastChat: 'gpt-6.1-sol', chat: 'gpt-6.1-sol', image: 'gpt-image-2.6-flare' });
   for (const question of ['안녕하세요', '이 문장 맞춤법 고쳐줘', '다음 글을 요약해줘: 짧은 글입니다.', 'Rewrite this sentence', 'What is a glossary?']) {
     assert.equal(selectOpenAIChatModel(question, 'problem'), 'gpt-6.1-sol');
   }

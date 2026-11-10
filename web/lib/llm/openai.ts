@@ -1,7 +1,7 @@
 export const MODELS = {
   fastChat: "gpt-6.1-sol",
   chat: "gpt-6.1-sol",
-  image: "gpt-image-2.5-flare",
+  image: "gpt-image-2.6-flare",
 } as const;
 
 export function selectOpenAIChatModel(message: string, stepId?: string): string {
