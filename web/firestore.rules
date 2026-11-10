@@ -48,7 +48,7 @@ service cloud.firestore {
     match /ppssUserDesignSubmissions/{documentId} { allow read, write: if signedIn(); }
     // Exclude protected paths: a permissive wildcard would override the restrictions above.
     match /{collectionId}/{document=**} {
-      allow read, write: if signedIn() && collectionId != 'users' && collectionId != 'ppssProjects' && !scoped(collectionId);
+      allow read, write: if signedIn() && collectionId != 'users' && collectionId != 'ppssProjects' && collectionId != 'ppssDerivedStageTopics' && !scoped(collectionId);
     }
   }
 }

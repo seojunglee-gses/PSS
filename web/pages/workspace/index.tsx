@@ -1,3 +1,4 @@
+import { previousStage, stageBridge, type DiscussionTopic } from "../../lib/stage-topics";
 import { MODELS } from "../../lib/llm/openai";
 import { createPortal } from "react-dom";
 import { spatialGoals } from "../../lib/spatial/goals";
@@ -276,6 +277,27 @@ function AuthorizedWorkspace() {
   const providerStorageKey = `${providerStorageKeyBase}-${projectId}`;
   const activeStepStorageKey = `ppss-active-step-${projectId}`;
   const [activeStep, setActiveStep] = useState(steps[0]);
+  const topicScope = `${projectId}/${userKey}/${activeStep.id}`;
+  const [topicState,setTopicState]=useState<{scope:string;topics:DiscussionTopic[];error:boolean}>({scope:'',topics:[],error:false});
+  const [topicRetry,setTopicRetry]=useState(0);
+  const topicContinuation=useRef<AbortController|null>(null);
+  useEffect(()=>()=>{topicContinuation.current?.abort();},[topicScope]);
+  const [selectedContinuity,setSelectedContinuity]=useState<{scope:string;id:string}|null>(null);
+  const continuityTopicId=selectedContinuity?.scope===topicScope?selectedContinuity.id:undefined;
+  const continuityTopics=topicState.scope===topicScope?topicState.topics:[];
+  useEffect(()=>{
+    if(!user||!previousStage(activeStep.id))return;
+    const controller=new AbortController();
+    void (async()=>{
+      try{
+        const response=await fetch('/api/stage-topics',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({projectId,currentStage:activeStep.id})});
+        if(!response.ok)throw Error('topics');
+        const data=await response.json();
+        if(!controller.signal.aborted)setTopicState({scope:topicScope,topics:data.topics??[],error:false});
+      }catch{if(!controller.signal.aborted)setTopicState({scope:topicScope,topics:[],error:true});}
+    })();
+    return()=>controller.abort();
+  },[topicScope,topicRetry,user,projectId,activeStep.id]);
   const [panelRatio, setPanelRatio] = useState(DEFAULT_PANEL_RATIO);
   const [panelView, setPanelView] = useState<WorkspacePanelView>("information");
   const [compactHeader, setCompactHeader] = useState(true);
@@ -1117,7 +1139,7 @@ const handleSend = async (suggestedQuestion?: string) => {
   if (!userKey || !hasLoadedChatLogs) return;
   if (lockedStages[activeStep.id] || completedStages.includes(activeStep.id)) return;
 
-  if (sendingRef.current) return;
+  if (sendingRef.current || topicContinuation.current && !topicContinuation.current.signal.aborted) return;
   if (activeStep.id === "alternatives" && isLoadingAlternatives) {
     setErrorMessage(t("workspace.imageBusy"));
     return;
@@ -1194,6 +1216,7 @@ const handleSend = async (suggestedQuestion?: string) => {
         body: JSON.stringify({
           projectId,
           question: userMessage,
+          ...(continuityTopicId?{continuityTopicId}:{}),
           history,
           spatialSelection:geo.context,
           selectedSources,
@@ -1275,6 +1298,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           model: getChatModelByProvider(activeProvider),
           stepId,
           message: finalMessage,
+          ...(continuityTopicId?{continuityTopicId}:{}),
           history,
         }),
       });
@@ -1315,6 +1339,25 @@ const handleSend = async (suggestedQuestion?: string) => {
         }
       }
     };
+
+  const continueTopic = async (topic:DiscussionTopic) => {
+    if(!user||!hasLoadedChatLogs||sendingRef.current||topicContinuation.current&&!topicContinuation.current.signal.aborted||isLoadingAlternatives||lockedStages[activeStep.id]||completedStages.includes(activeStep.id)||!previousStage(activeStep.id))return;
+    const stepId=activeStep.id,generation=chatGenerationRef.current,controller=new AbortController();
+    topicContinuation.current=controller;
+    followLatestRef.current=true;setIsSending(true);setSendingChatScope(chatScope);setErrorMessage(null);setExpandedStarterScope(null);
+    setSelectedContinuity({scope:topicScope,id:topic.id});
+    try{
+      const response=await fetch('/api/stage-topics',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({projectId,currentStage:stepId,action:'continue',topicId:topic.id})});
+      const data=await response.json();if(!response.ok||typeof data.reply!=='string')throw Error(data.error??'이전 이야기를 이어가지 못했어요.');
+      if(generation!==chatGenerationRef.current||controller.signal.aborted)return;
+      // A topic click is navigation. Save only the actual AI reply, never a fabricated user turn.
+      const base=stepId==='data'?dataLogsRef.current:chatLogsByStep[stepId]??[];
+      const logs:ChatLog[]=[...base,{stepId,provider:'ChatGPT',sender:'assistant',text:data.reply,label:'ChatGPT',createdAt:new Date().toISOString()}];
+      if(stepId==='data')commitDataLogs(logs);else setChatLogsByStep(prev=>({...prev,[stepId]:logs}));
+      await persistChatLogs(stepId,sanitizeLogs(logs));
+    }catch(error){if(generation===chatGenerationRef.current&&!controller.signal.aborted)setErrorMessage(error instanceof Error?error.message:'이전 이야기를 이어가지 못했어요.');}
+    finally{if(topicContinuation.current===controller)topicContinuation.current=null;if(generation===chatGenerationRef.current)setIsSending(false);}
+  };
 
   const handleCompleteStep = async (confirmed = false) => {
     if (isSummarizing || completedStages.includes(activeStep.id)) return;
@@ -1384,6 +1427,8 @@ const handleSend = async (suggestedQuestion?: string) => {
         setSavedSummaries(mergedStageSummaries);
       }
       setCompletedStages(nextCompletedStages);
+      // Non-blocking, derived-only extraction; existing completion records are never rewritten here.
+      void user!.getIdToken().then(token=>fetch('/api/stage-topics',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({projectId,currentStage:activeStep.id,action:'extract'})})).catch(()=>{});
       setFinishNotice({ status: "success", message: t("workspace.reportTitle") + " ✓" });
       return true;
     } catch (error) {
@@ -1754,10 +1799,13 @@ const handleSend = async (suggestedQuestion?: string) => {
     const context = analysisView === "cases" ? "cases" : analysisView === "spatial"
       ? spatialCategory === 0 ? "facilities" : spatialCategory !== null || spatialResult || geo.result ? "spatial-result" : "spatial"
       : analysisEvidence?.papers.length ? "research" : analysisEvidence?.cases.length ? "cases" : answerSpatial ? "spatial-result" : "project";
-    const guide = activeStep.id === "data" && defaultGuide ? { ...defaultGuide, suggestedQuestions: dataAnalysisStarterPrompts(locale, context) } : defaultGuide;
+    const baseGuide = activeStep.id === "data" && defaultGuide ? { ...defaultGuide, suggestedQuestions: dataAnalysisStarterPrompts(locale, context) } : defaultGuide;
+    const guide = continuityTopics.length && baseGuide ? {...baseGuide,suggestedQuestions:continuityTopics.map(topic=>({label:topic.title,prompt:topic.id}))} : baseGuide;
     const displayedMessages = stepLogs;
     const hasDialogue = stepLogs.some(log => !log.activity);
     const selectStarterPrompt = (prompt: string) => {
+      const topic=continuityTopics.find(topic=>topic.id===prompt);
+      if(topic){void continueTopic(topic);return;}
       setInputValue(prompt);
       setExpandedStarterScope(null);
       composerInputRef.current?.focus({ preventScroll: true });
@@ -1843,11 +1891,19 @@ const handleSend = async (suggestedQuestion?: string) => {
         onWheel={(event) => { if (event.deltaY < 0) followLatestRef.current = false; }}>
         {hasLoadedChatLogs && !hasDialogue && guide && (
           <>
-            {activeStep.id === "data" && <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-slate-700">
+            {continuityTopics.length>0 && <section className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-slate-700" aria-label="지난 단계에서 나눈 이야기">
+              <h4 className="font-semibold">지난 단계에서 나눈 이야기</h4>
+              <p className="mt-2">지난 단계의 이야기를 정리했어요.</p>
+              {continuityTopics.map(topic=><div key={topic.id} className="mt-3"><h5 className="font-semibold">{topic.title}</h5><p className="mt-1">{topic.sourceKind==='summary'?'이전 단계 요약에서: ':''}{topic.summary}</p>{topic.places.length>0&&<p className="mt-1 text-xs">관련 장소: {topic.places.join(' · ')}</p>}{topic.openQuestion&&<p className="mt-1 text-xs">함께 더 이야기할 점: {topic.openQuestion}</p>}</div>)}
+              <h5 className="mt-3 font-semibold">오늘 함께 살펴볼 내용</h5><p className="mt-1">{stageBridge[activeStep.id]}</p>
+              <p className="mt-3 font-semibold">오늘은 어떤 이야기를 이어가 볼까요?</p>
+            </section>}
+            {topicState.scope===topicScope&&topicState.error&&<p role="status" className="mb-2 text-xs text-slate-500">이전 이야기를 불러오지 못했어요. <button type="button" className="underline" onClick={()=>setTopicRetry(n=>n+1)}>다시 불러오기</button></p>}
+            {!continuityTopics.length && activeStep.id === "data" && <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-slate-700">
               <h4 className="font-semibold">{guide.title}</h4>
               <p className="mt-2 leading-relaxed">{guide.description}</p>
             </div>}
-            <StageChatEmptyState guide={guide} showFullPrompts
+            <StageChatEmptyState guide={guide} showFullPrompts={!continuityTopics.length}
               disabled={isSending || isLoadingAlternatives || isStageLocked}
               onSelect={selectStarterPrompt} />
           </>
