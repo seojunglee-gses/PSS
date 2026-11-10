@@ -1842,9 +1842,15 @@ const handleSend = async (suggestedQuestion?: string) => {
         }}
         onWheel={(event) => { if (event.deltaY < 0) followLatestRef.current = false; }}>
         {hasLoadedChatLogs && !hasDialogue && guide && (
-          <StageChatEmptyState guide={guide} showFullPrompts
-            disabled={isSending || isLoadingAlternatives || isStageLocked}
-            onSelect={selectStarterPrompt} />
+          <>
+            {activeStep.id === "data" && <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-slate-700">
+              <h4 className="font-semibold">{guide.title}</h4>
+              <p className="mt-2 leading-relaxed">{guide.description}</p>
+            </div>}
+            <StageChatEmptyState guide={guide} showFullPrompts
+              disabled={isSending || isLoadingAlternatives || isStageLocked}
+              onSelect={selectStarterPrompt} />
+          </>
         )}
         {displayedMessages.map((message, index) => {
           if (activeStep.id === "data" && message.activity) return <div key={message.activity.id} className="mx-auto w-full rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500" data-analysis-activity={message.activity.type}>{analysisActivityText(message.activity, locale)}</div>;

@@ -4,7 +4,7 @@ import { spatialPromptContext } from "../../../lib/spatial/context";
 import { projectLayers } from "../../../lib/spatial/geo-server";
 import { canonicalBuildingContext } from "../../../lib/spatial/building-use-server";
 import { analysisActivities, analysisSessionContext, analysisSessionQuestion, isPaperReference } from "../../../lib/analysis-session";
-import { clarificationExchange } from "../../../lib/chat-history";
+import { conversationHistory, clarificationExchange } from "../../../lib/chat-history";
 import {policyHistory} from "../../../lib/facilitation";
 import { loadProjectContext } from "../../../lib/project-context-server";
 import { AccessError } from "../../../lib/membership/server";
@@ -31,6 +31,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     request.backgroundSourceIds=context.backgroundSourceIds;
     request.previousSummaries = context.previousSummaries;
     request.cases = context.cases;
+    // The workspace persists the latest user turn before calling this endpoint.
+    // Prefer this participant's authorized saved dialogue over a stale client snapshot.
+    if (Array.isArray(context.stageHistory) && context.stageHistory.length) {
+      const saved = context.stageHistory.filter(log => !log?.stepId || log.stepId === "data");
+      request.history = conversationHistory(saved);
+      if (request.history.at(-1)?.role === "user" && request.history.at(-1)?.content === request.question) request.history.pop();
+    }
     const activities=analysisActivities(context.stageHistory,context.projectId);
     request.searchQuestion=clarificationExchange(request.question,request.history)?sourceRoutingQuestion(request.question,request.history??[]):analysisSessionQuestion(request.question,activities,context.cases);
     const contextual=request.searchQuestion!==request.question;
@@ -68,7 +75,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const focused=namedCases(request.searchQuestion,context.cases,contextual?[]:request.history);
       request.casePassages=await readCasePassages(context.projectId,!wantsNewCases(request.question)&&focused.length?focused:context.cases);
     }
-    request.facilitationHistory=policyHistory(context.stageHistory);
+    request.facilitationHistory=policyHistory(context.stageHistory,[],"data");
   } catch (error) { res.status(error instanceof AccessError ? error.status : 503).json({ error: error instanceof AccessError ? error.message : "사업 자료를 불러오지 못했습니다." }); return; }
   // Retrieve on the server, not from client-provided paper claims or URLs.
   const evidence = await retrieveEvidence(request);

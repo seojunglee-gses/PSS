@@ -11,8 +11,8 @@ const guides: Record<Locale, Record<ChatStage, Omit<StageChatGuide, "suggestedQu
       description: "현재 사업의 배경과 이해관계자 의견을 바탕으로 주요 문제와 우려사항을 함께 정리할 수 있어요.",
     },
     data: {
-      title: "무엇을 살펴볼까요?",
-      description: "사례와 학술자료를 바탕으로 이 사업에 참고할 만한 전략과 시사점을 찾아볼 수 있어요.",
+      title: "우리 동네를 어떻게 바꾸면 좋을까요?",
+      description: "지난 단계에서 이야기한 불편한 점을 어떻게 바꾸면 좋을지 함께 생각해 봐요. 자주 다니는 길이나 익숙한 장소를 떠올리며 ‘여기는 이렇게 바뀌면 좋겠다’고 편하게 이야기해 주세요. 정확한 장소 이름을 몰라도 괜찮아요. 다른 지역의 사례와 자료도 참고하며 가능한 방법을 함께 찾아볼게요.",
     },
     alternatives: {
       title: "어떤 계획안을 만들어볼까요?",
@@ -29,14 +29,14 @@ const guides: Record<Locale, Record<ChatStage, Omit<StageChatGuide, "suggestedQu
   },
   en: {
     problem: { title: "What matters most in this project?", description: "Identify key problems and concerns using the project background and stakeholder perspectives.",  },
-    data: { title: "What would you like to explore?", description: "Explore cases and research to find strategies and insights for this project.",  },
+    data: { title: "What would you like to explore?", description: "Explore ways to address the concerns from the previous stage. Tell us what you would like to change along a familiar street or place; an exact place name is not required. We can use cases and evidence to develop possible approaches together.",  },
     alternatives: { title: "What plans could we develop?", description: "Build planning ideas from the problems and analysis identified in earlier stages.",  },
     evaluation: { title: "How should we compare the plans?", description: "Compare the strengths and weaknesses of proposed plans from stakeholder perspectives.",  },
     report: { title: "Which plan is the best fit?", description: "Bring together evaluation results and stakeholder perspectives to support the final decision.",  },
   },
   zh: {
     problem: { title: "一起梳理最重要的问题吧", description: "结合项目背景和利益相关方的意见，梳理主要问题与担忧。",  },
-    data: { title: "您想了解哪些资料？", description: "从案例和学术研究中寻找可供本项目参考的策略与启示。",  },
+    data: { title: "您想了解哪些资料？", description: "一起探索如何改善上一阶段提到的问题。可以说说熟悉的街道或地点希望怎样改变，不知道准确地名也没关系。我们会参考案例与资料，一起发展可能的办法。",  },
     alternatives: { title: "可以提出哪些规划方案？", description: "根据前面阶段的问题和分析结果，探索不同的规划思路。",  },
     evaluation: { title: "用哪些标准比较方案？", description: "比较各方案的优缺点，并从利益相关方的角度进行评估。",  },
     report: { title: "哪个方案最合适？", description: "综合评估结果和利益相关方的意见，整理最终决策。",  },
@@ -69,9 +69,9 @@ const suggestedQuestions: Record<Locale, Record<ChatStage, Record<RoleId, StageC
     },
     data: {
       public: [
-        { label: "생활 불편과 자료", prompt: "우리 동네의 생활 불편을 어떤 자료로 확인할 수 있을까요?" },
+        { label: "동네 개선 아이디어", prompt: "앞서 이야기한 우리 동네의 불편을 줄이려면 공간을 어떻게 바꿀 수 있을까요?" },
         { label: "비슷한 지역의 해결법", prompt: "비슷한 지역에서는 이런 문제를 어떻게 해결했을까요?" },
-        { label: "자료에 없는 경험", prompt: "지금 자료에서 잘 드러나지 않는 주민들의 경험은 무엇일까요?" },
+        { label: "익숙한 장소 바꾸기", prompt: "제가 자주 다니는 길에 나무나 쉴 곳이 생기면 좋겠어요. 함께 생각해 볼까요?" },
       ],
       business: [
         { label: "상권 변화와 접근성", prompt: "지역 상권의 변화와 접근성을 어떤 자료로 살펴볼 수 있을까요?" },

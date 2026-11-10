@@ -74,7 +74,8 @@ test('API retrieves the currently viewed case rather than a stale case in chat h
   assert.equal(sent.question, '우리 지역에 적용할 만한 점은 뭐야?');
   assert.equal(sent.analysisSession[0].material, cases[0].text);
   assert.deepEqual(sent.cases.map(c => c.id), ['forest']);
-  assert.equal(calls.length, 2); // Existing passage retrieval + answer, no activity/routing LLM call.
+  assert.equal(calls.length, 1); // Saved viewing context resolves the case without the stale client subject or a routing call.
+  assert.doesNotMatch(JSON.stringify(sent.history), /Guildford Lane/);
 });
 
 test('restored GIS activity supplies actual metrics without triggering case/OpenAlex searches', async t => {
@@ -224,7 +225,7 @@ test('spatial answer guidance leads with feasible actions/results and knows serv
  const context=spatialPromptContext([],{},[],true,{nearbyPlaces:false,priority:false});
  const pointContext=spatialPromptContext([],{point:[127,37.5]},[],false,{nearbyPlaces:false,priority:false});assert.deepEqual(pointContext.selectedMapPoint.coordinate,[127,37.5]);assert.equal(pointContext.availableTools.distance,true);
  assert.equal(context.availableTools.nearbyPlaces,false);assert.equal(context.availableTools.areaStatistics,true);assert.equal(context.availableTools.priority,false);
- assert.match(spatialAnswerRules,/what this platform can do NOW/);assert.match(spatialAnswerRules,/Do not open with data insufficiency/);assert.match(spatialAnswerRules,/optionally ONE next action/);assert.match(spatialAnswerRules,/A limitation must not outweigh the actual result/);
+ assert.match(spatialAnswerRules,/what this platform can do NOW/);assert.match(spatialAnswerRules,/Do not open with data insufficiency/);assert.match(spatialAnswerRules,/Do not force a next action or question/);assert.match(spatialAnswerRules,/A limitation must not outweigh the actual result/);
  assert.match(spatialAnswerRules,/Never compute or infer distance/);assert.match(spatialAnswerRules,/Activity is not a spatial analysis result/);
  const project=load('lib/project-context-server.js'),llm=load('lib/llm/index.js');
  const original=process.env.KAKAO_REST_API_KEY;delete process.env.KAKAO_REST_API_KEY;t.after(()=>original===undefined?delete process.env.KAKAO_REST_API_KEY:process.env.KAKAO_REST_API_KEY=original);
