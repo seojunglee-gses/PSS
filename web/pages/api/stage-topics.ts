@@ -1,7 +1,7 @@
 import type {NextApiRequest,NextApiResponse} from 'next';
 import {loadProjectContext} from '../../lib/project-context-server';
 import {AccessError} from '../../lib/membership/server';
-import {readStoredStageTopicState,prepareStageTopics,topicWritesEnabled,TopicPreparationError} from '../../lib/stage-topics-server';
+import {readStoredStageTopicState,readWithLegacyStage1Repair,prepareLegacyStage1Topics,prepareStageTopics,topicWritesEnabled,TopicPreparationError} from '../../lib/stage-topics-server';
 import {previousStage} from '../../lib/stage-topics';
 import type {DialogueStage} from '../../lib/problem-dialogue-context';
 export const maxDuration=180;
@@ -21,11 +21,14 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse){
   const stage=req.body.currentStage as DialogueStage;
   const context=await loadProjectContext(req,stage,false,false);
   if(req.body.action==='extract'){
-    const status=await prepareStageTopics(context.projectId,context.user.uid,stage);
+    let status=await prepareStageTopics(context.projectId,context.user.uid,stage);
+    if(stage==='problem'&&status==='unavailable')status=await prepareLegacyStage1Topics(context.projectId,context.user.uid);
     if(status==='unavailable'||status==='no_source')console.info(JSON.stringify({service:'stage_topics',event:'preparation_skipped',status}));
     res.status(status==='unavailable'?503:status==='no_source'?409:status==='ready'?200:202).json({ok:status==='ready',status,reason:status==='unavailable'?(topicWritesEnabled()?'derived_access_denied':'safety_not_verified'):status==='no_source'?'source_unavailable':undefined});return;
   }
   const prior=previousStage(stage);
-  res.status(200).json(prior?await readStoredStageTopicState(context.projectId,context.user.uid,prior):{topics:[],status:'empty',needsPreparation:false,canPrepare:false});
+  let state=prior?await readStoredStageTopicState(context.projectId,context.user.uid,prior):{topics:[],status:'empty' as const,needsPreparation:false,canPrepare:false};
+  if(stage==='data')state=await readWithLegacyStage1Repair(context.projectId,context.user.uid,state);
+  res.status(200).json(state);
  }catch(error){res.status(error instanceof AccessError?error.status:503).json({error:error instanceof AccessError?error.message:'이전 이야기를 불러오지 못했어요. 잠시 후 다시 시도해주세요.',...(error instanceof TopicPreparationError?{status:'failed',reason:error.reason}:{})});}
 }
