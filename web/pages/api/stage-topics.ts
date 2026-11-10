@@ -1,7 +1,7 @@
 import type {NextApiRequest,NextApiResponse} from 'next';
 import {loadProjectContext} from '../../lib/project-context-server';
 import {AccessError} from '../../lib/membership/server';
-import {readStoredStageTopics,prepareStageTopics,topicWritesEnabled} from '../../lib/stage-topics-server';
+import {readStoredStageTopicState,prepareStageTopics,topicWritesEnabled,TopicPreparationError} from '../../lib/stage-topics-server';
 import {previousStage} from '../../lib/stage-topics';
 import type {DialogueStage} from '../../lib/problem-dialogue-context';
 export const maxDuration=180;
@@ -20,9 +20,12 @@ export default async function handler(req:NextApiRequest,res:NextApiResponse){
   if(req.body.action&& !['read','extract'].includes(req.body.action))throw new AccessError(409,'화면을 새로고침한 뒤 주제를 다시 선택해주세요.');
   const stage=req.body.currentStage as DialogueStage;
   const context=await loadProjectContext(req,stage,false,false);
-  if(req.body.action==='extract'){const status=await prepareStageTopics(context.projectId,context.user.uid,stage);res.status(200).json({ok:status==='ready',status});return;}
+  if(req.body.action==='extract'){
+    const status=await prepareStageTopics(context.projectId,context.user.uid,stage);
+    if(status==='unavailable'||status==='no_source')console.info(JSON.stringify({service:'stage_topics',event:'preparation_skipped',status}));
+    res.status(status==='unavailable'?503:status==='no_source'?409:status==='ready'?200:202).json({ok:status==='ready',status,reason:status==='unavailable'?(topicWritesEnabled()?'derived_access_denied':'safety_not_verified'):status==='no_source'?'source_unavailable':undefined});return;
+  }
   const prior=previousStage(stage);
-  const topics=prior?await readStoredStageTopics(context.projectId,context.user.uid,prior):[];
-  res.status(200).json({topics,needsPreparation:topics.some(topic=>topic.qualityVersion!==2),canPrepare:topicWritesEnabled()});
- }catch(error){res.status(error instanceof AccessError?error.status:503).json({error:error instanceof AccessError?error.message:'이전 이야기를 불러오지 못했어요. 잠시 후 다시 시도해주세요.'});}
+  res.status(200).json(prior?await readStoredStageTopicState(context.projectId,context.user.uid,prior):{topics:[],status:'empty',needsPreparation:false,canPrepare:false});
+ }catch(error){res.status(error instanceof AccessError?error.status:503).json({error:error instanceof AccessError?error.message:'이전 이야기를 불러오지 못했어요. 잠시 후 다시 시도해주세요.',...(error instanceof TopicPreparationError?{status:'failed',reason:error.reason}:{})});}
 }

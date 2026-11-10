@@ -57,7 +57,7 @@ test('all four transitions read only the authenticated participant topics withou
  const context=load('lib/project-context-server.js'),api=load('pages/api/stage-topics.js').default;
  mock(t,context,'loadProjectContext',async(req,stage)=>({projectId:'own-project',user:{uid:'own-user'},currentMaterial:'현재 단계 자료',previousSummaries:{},stageHistory:[]}));
  mock(t,admin,'adminDb',()=>assert.fail('no unmocked database access'));
- mock(t,load('lib/stage-topics-server.js'),'readStoredStageTopics',async(pid,uid,stage)=>{assert.equal(pid,'own-project');assert.equal(uid,'own-user');return [{...rawTopic(),id:'topic',sourceKind:'dialogue',sourceStage:stage,sourceHash:'hash'}]});
+ mock(t,load('lib/stage-topics-server.js'),'readStoredStageTopicState',async(pid,uid,stage)=>{assert.equal(pid,'own-project');assert.equal(uid,'own-user');return {topics:[{...rawTopic(),id:'topic',sourceKind:'dialogue',sourceStage:stage,sourceHash:'hash'}],status:'ready',needsPreparation:false,canPrepare:false}});
  mock(t,llm,'callLLM',async req=>{assert.match(req.systemText,/UI topic selection, not a resident utterance/);assert.match(req.systemText,/not agreement/);assert.match(req.systemText,/This text endpoint has not executed tools/);return '앞서 말씀하신 골목길 이야기를 이어가 볼 수 있어요.'});
  for(const [from,to]of [['problem','data'],['data','alternatives'],['alternatives','evaluation'],['evaluation','report']]){
   assert.equal(previousStage(to),from);const res={setHeader(){},status(n){this.code=n;return this},json(v){this.body=v}};
