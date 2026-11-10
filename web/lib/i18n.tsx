@@ -46,6 +46,10 @@ const STORAGE_KEY = "ppss-locale";
 
 export const messagesByLocale: Record<Locale, Messages> = {
   en: {
+    "spatial.facility.fac_gajwa": "Facility name",
+    "spatial.facility.og_name": "Original facility name",
+    "spatial.facility.fac_type": "Facility type",
+    "spatial.facility.notes": "Description",
     "setting.spatialSettings": "Spatial information settings",
     "setting.participantIds": "Participant IDs",
     "setting.noParticipants": "No participants yet.",
@@ -833,6 +837,10 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.compareSearchesMissing": "Two recent place search results could not be verified. Please search for the places again before comparing.",
   },
   ko: {
+    "spatial.facility.fac_gajwa": "시설명",
+    "spatial.facility.og_name": "기존 시설명",
+    "spatial.facility.fac_type": "시설 유형",
+    "spatial.facility.notes": "설명",
     "setting.spatialSettings": "공간정보 설정",
     "setting.participantIds": "참여자 ID 목록",
     "setting.noParticipants": "아직 참여자가 없습니다.",
@@ -1620,6 +1628,10 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.compareSearchesMissing": "비교할 최근 두 장소 검색 결과를 확인할 수 없습니다. 비교할 장소를 다시 검색해주세요.",
   },
   zh: {
+    "spatial.facility.fac_gajwa": "设施名称",
+    "spatial.facility.og_name": "原设施名称",
+    "spatial.facility.fac_type": "设施类型",
+    "spatial.facility.notes": "说明",
     "setting.spatialSettings": "空间信息设置",
     "setting.participantIds": "参与者 ID",
     "setting.noParticipants": "暂无参与者。",
