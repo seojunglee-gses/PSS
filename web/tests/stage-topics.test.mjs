@@ -16,7 +16,7 @@ function fixture(t,tag,{logs,summary}={}){
  mock(t,admin,'adminDb',()=>({doc:path=>({get:async()=>({exists:docs.has(path),data:()=>structuredClone(docs.get(path))}),create:async data=>{assert.ok(path.startsWith('ppssDerivedStageTopics/'),'source documents must never be written');writes.push(path);assert.ok(!docs.has(path));docs.set(path,structuredClone(data))},set(){assert.fail('no set/update/delete of source documents')},update(){assert.fail('no source update')},delete(){assert.fail('no source delete')}})}));
  return {uid,pid,docs,writes,assertPreserved(){assert.deepEqual([...docs].filter(([path])=>!path.startsWith('ppssDerivedStageTopics/')),original)}};
 }
-function gate(t,enabled){for(const key of ['PPSS_TOPIC_DERIVED_WRITES_ENABLED','PPSS_RESEARCH_BACKUP_VERIFIED_AT','PPSS_RESEARCH_RESTORE_VERIFIED_AT','PPSS_TOPIC_RULES_VERIFIED_AT']){const old=process.env[key];t.after(()=>old===undefined?delete process.env[key]:process.env[key]=old);delete process.env[key]}if(enabled){process.env.PPSS_TOPIC_DERIVED_WRITES_ENABLED='true';process.env.PPSS_RESEARCH_BACKUP_VERIFIED_AT='2026-01-01';process.env.PPSS_RESEARCH_RESTORE_VERIFIED_AT='2026-01-02';process.env.PPSS_TOPIC_RULES_VERIFIED_AT='2026-01-02'}}
+function gate(t,enabled){for(const key of ['PPSS_TOPIC_DERIVED_WRITES_ENABLED','PPSS_RESEARCH_BACKUP_VERIFIED_AT','PPSS_RESEARCH_RESTORE_VERIFIED_AT','PPSS_TOPIC_RULES_VERIFIED_AT']){const old=process.env[key];t.after(()=>old===undefined?delete process.env[key]:process.env[key]=old);delete process.env[key]}if(!enabled)process.env.PPSS_TOPIC_DERIVED_WRITES_ENABLED='false';if(enabled){process.env.PPSS_TOPIC_DERIVED_WRITES_ENABLED='true';process.env.PPSS_RESEARCH_BACKUP_VERIFIED_AT='2026-01-01';process.env.PPSS_RESEARCH_RESTORE_VERIFIED_AT='2026-01-02';process.env.PPSS_TOPIC_RULES_VERIFIED_AT='2026-01-02'}}
 
 test('existing workshop dialogue, IDs, summaries and completion state are read-only; repeated lazy reads share one extraction',async t=>{
  gate(t,false);const f=fixture(t,'read-only');let calls=0;
@@ -26,9 +26,10 @@ test('existing workshop dialogue, IDs, summaries and completion state are read-o
  assert.equal(all[0][0].sourceKind,'dialogue');assert.equal(all[0][0].sourceStage,'problem');assert.equal(all[0][0].references[0].messageId,'original-message-id');assert.equal(all[0][0].references[0].sessionId,'original-session');assert.equal(all[0][0].references[0].createdAt,'2026-01-01T00:00:00Z');
 });
 
-test('derived persistence requires explicit backup AND restore verification and writes only a separate immutable document',async t=>{
- assert.equal(server.topicWritesEnabled({}),false);assert.equal(server.topicWritesEnabled({PPSS_TOPIC_DERIVED_WRITES_ENABLED:'true',PPSS_RESEARCH_BACKUP_VERIFIED_AT:'2026-01-01'}),false);
- assert.equal(server.topicWritesEnabled({PPSS_TOPIC_DERIVED_WRITES_ENABLED:'true',PPSS_RESEARCH_BACKUP_VERIFIED_AT:'garbage',PPSS_RESEARCH_RESTORE_VERIFIED_AT:'2026-01-01'}),false);
+test('derived persistence defaults on and writes only a separate immutable topic document',async t=>{
+ assert.equal(server.topicWritesEnabled({}),true);assert.equal(server.topicWritesEnabled({PPSS_TOPIC_DERIVED_WRITES_ENABLED:'true',PPSS_RESEARCH_BACKUP_VERIFIED_AT:'2026-01-01'}),true);
+ assert.equal(server.topicWritesEnabled({PPSS_TOPIC_DERIVED_WRITES_ENABLED:'true',PPSS_RESEARCH_BACKUP_VERIFIED_AT:'garbage',PPSS_RESEARCH_RESTORE_VERIFIED_AT:'2026-01-01'}),true);
+ assert.equal(server.topicWritesEnabled({PPSS_TOPIC_DERIVED_WRITES_ENABLED:'false'}),false);
  gate(t,true);const f=fixture(t,'derived');let calls=0;mock(t,llm,'callLLM',async()=>{calls++;return JSON.stringify({topics:[rawTopic()]})});
  const first=await server.readStageTopics(f.pid,f.uid,'problem');assert.equal(f.writes.length,1);f.assertPreserved();
  delete require.cache[require.resolve(`${process.env.PSS_TEST_BUILD}/lib/stage-topics-server.js`)];

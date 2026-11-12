@@ -276,7 +276,7 @@ function AuthorizedWorkspace() {
   const activeStepStorageKey = `ppss-active-step-${projectId}`;
   const [activeStep, setActiveStep] = useState(steps[0]);
   const topicScope = `${projectId}/${userKey}/${activeStep.id}`;
-  const [topicState,setTopicState]=useState<{scope:string;topics:DiscussionTopic[];error:boolean;canPrepare?:boolean;needsPreparation?:boolean;preparing?:boolean;preparationMessage?:string;status?:TopicSummaryState['status'];reason?:TopicSummaryState['reason'];oneTimeBackfill?:boolean}>({scope:'',topics:[],error:false});
+  const [topicState,setTopicState]=useState<{scope:string;topics:DiscussionTopic[];error:boolean;canPrepare?:boolean;needsPreparation?:boolean;preparing?:boolean;preparationMessage?:string;status?:TopicSummaryState['status'];reason?:TopicSummaryState['reason']}>({scope:'',topics:[],error:false});
   const [topicRetry,setTopicRetry]=useState(0);
   const topicContinuation=useRef<AbortController|null>(null);
   const repairPoll=useRef({scope:topicScope,count:0});
@@ -293,14 +293,14 @@ function AuthorizedWorkspace() {
         const response=await fetch('/api/stage-topics',{method:'POST',signal:controller.signal,headers:{'Content-Type':'application/json',Authorization:`Bearer ${await user.getIdToken()}`},body:JSON.stringify({projectId,currentStage:activeStep.id})});
         if(!response.ok)throw Error('topics');
         const data=await response.json();
-        if(!controller.signal.aborted)setTopicState({scope:topicScope,topics:(data.topics??[]).filter(semanticTopicForDisplay),error:false,canPrepare:data.canPrepare===true,needsPreparation:data.needsPreparation===true,status:data.status,reason:data.reason,oneTimeBackfill:data.oneTimeBackfill===true});
+        if(!controller.signal.aborted)setTopicState({scope:topicScope,topics:(data.topics??[]).filter(semanticTopicForDisplay),error:false,canPrepare:data.canPrepare===true,needsPreparation:data.needsPreparation===true,status:data.status,reason:data.reason});
       }catch{if(!controller.signal.aborted)setTopicState({scope:topicScope,topics:[],error:true});}
     })();
     return()=>controller.abort();
   },[topicScope,topicRetry,user,projectId,activeStep.id]);
   useEffect(()=>{
     if(repairPoll.current.scope!==topicScope)repairPoll.current={scope:topicScope,count:0};
-    if(topicState.scope!==topicScope||!topicState.oneTimeBackfill||topicState.status!=='processing'||repairPoll.current.count>=30)return;
+    if(topicState.scope!==topicScope||topicState.status!=='processing'||repairPoll.current.count>=30)return;
     const timer=window.setTimeout(()=>{repairPoll.current.count++;setTopicRetry(value=>value+1);},3000);
     return()=>window.clearTimeout(timer);
   },[topicScope,topicState,topicRetry]);
@@ -315,7 +315,7 @@ function AuthorizedWorkspace() {
       if(!response.ok&&!result.status)throw Error('prepare');
       if(!controller.signal.aborted){
         if(result.status==='ready')setTopicRetry(value=>value+1);
-        else setTopicState(state=>state.scope===topicScope?{...state,preparationMessage:result.status==='unavailable'?topicSummaryNotice({status:topicState.oneTimeBackfill?'failed':'blocked',reason:'save_failed'}):result.status==='failed'?topicSummaryNotice({status:'failed',reason:result.reason}):result.status==='no_source'?'원문을 찾지 못해 요약을 만들지 못했어요. 이전 단계 기록을 확인해 주세요.':result.status==='cooldown'?'잠시 후 다시 정리해 주세요. 기존 기록은 그대로 볼 수 있어요.':'다른 요청에서 정리 중입니다. 잠시 후 다시 불러와 주세요.'}:state);
+        else setTopicState(state=>state.scope===topicScope?{...state,preparationMessage:result.status==='unavailable'?topicSummaryNotice({status:result.reason==='preparation_disabled'?'blocked':'failed',reason:'save_failed'}):result.status==='failed'?topicSummaryNotice({status:'failed',reason:result.reason}):result.status==='not_completed'?'이전 단계를 먼저 완료해 주세요.':result.status==='no_source'?'원문을 찾지 못해 요약을 만들지 못했어요. 이전 단계 기록을 확인해 주세요.':result.status==='cooldown'?'잠시 후 다시 정리해 주세요. 기존 기록은 그대로 볼 수 있어요.':'다른 요청에서 정리 중입니다. 잠시 후 다시 불러와 주세요.'}:state);
       }
     }catch{if(!controller.signal.aborted)setTopicState(state=>state.scope===topicScope?{...state,preparationMessage:'요약을 정리하지 못했어요. 기존 기록은 그대로 볼 수 있어요.'}:state);}
     finally{if(topicPreparation.current===controller)topicPreparation.current=null;if(!controller.signal.aborted)setTopicState(state=>state.scope===topicScope?{...state,preparing:false}:state);}
