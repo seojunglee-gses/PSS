@@ -16,11 +16,11 @@ export function semanticTopicForDisplay(topic:DiscussionTopic):boolean{
 export type TopicSummaryState = {
   topics: DiscussionTopic[];
   status: 'ready'|'missing'|'processing'|'failed'|'blocked'|'empty';
-  reason?: 'not_prepared'|'safety_not_verified'|'derived_access_denied'|'generation_failed'|'save_failed'|'source_unavailable'|'input_too_large';
-  needsPreparation: boolean; canPrepare: boolean; oneTimeBackfill?: boolean;
+  reason?: 'not_prepared'|'safety_not_verified'|'preparation_disabled'|'stage_not_completed'|'derived_access_denied'|'generation_failed'|'save_failed'|'source_unavailable'|'input_too_large';
+  needsPreparation: boolean; canPrepare: boolean;
 };
 export const topicSummaryNotice=(state:Pick<TopicSummaryState,'status'|'reason'>):string=>
-  state.status==='blocked'?'주제 요약을 준비할 수 없는 상태입니다. 관리자에게 요약 준비를 요청해 주세요. 원문은 그대로 보존되어 있어요.'
+  state.status==='blocked'?'현재 주제 요약을 준비할 수 없어요. 기존 대화는 그대로 보존되어 있어요.'
   :state.status==='processing'?'이전 단계 전체 대화에서 주제를 정리하고 있어요. 잠시 후 다시 불러와 주세요.'
   :state.status==='failed'?(state.reason==='save_failed'?'주제 요약을 저장하지 못했어요. 원문과 기존 요약은 그대로 보존되어 있어요.':'주제 요약을 만들지 못했어요. 원문과 기존 요약은 그대로 보존되어 있어요.')
   :'이전 단계의 주제 요약이 아직 준비되지 않았어요. 전체 대화를 한 번 정리하면 이후에는 저장된 주제를 볼 수 있어요.';
