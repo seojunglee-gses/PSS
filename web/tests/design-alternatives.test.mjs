@@ -7,7 +7,7 @@ const load=p=>require(path.join(process.env.PSS_TEST_BUILD,p));
 const sharp=require('sharp');
 const admin=load('lib/firebaseAdmin.js'), llm=load('lib/llm/index.js'), contexts=load('lib/project-context-server.js');
 const server=load('lib/design-alternatives-server.js'), images=load('lib/design-image-server.js');
-const {designImageSize,imagePoint}=load('lib/design-alternatives.js');
+const {designImageSize,imagePoint,estimatedImageProgress,DESIGN_TRANSLATION,DESIGN_PROPOSAL_INSTRUCTIONS}=load('lib/design-alternatives.js');
 const handler=load('pages/api/generate-alternative.js').default;
 function fakeDatabase(initial={}) {
  const records=new Map(Object.entries(structuredClone(initial))),writes=[];let chain=Promise.resolve();
@@ -124,4 +124,28 @@ test('an existing generated image remains editable without the initial photo or 
  t.mock.method(global,'fetch',async(_url,options)=>{assert.match(options.body.get('prompt'),/Existing resident design/);return Response.json({data:[{b64_json:image.toString('base64')}]})});
  const edited=await f.call({requestId:'legacy-edit',parentImageId:'legacy',feedback:'간판을 정리해주세요.'});assert.equal(edited.code,200);assert.equal(edited.body.designMetadata.parentImageId,'legacy');assert.equal(edited.body.designMetadata.siteImageId,null);
  assert.equal(f.records.get('ppssGeneratedImages_alpha/legacy').note,'Existing resident design');
+});
+
+test('Stage 3 combines improvements into one direction instead of named competing schemes',()=>{
+ assert.match(DESIGN_PROPOSAL_INSTRUCTIONS,/ONE integrated design direction/);assert.match(DESIGN_PROPOSAL_INSTRUCTIONS,/not independent alternatives/);
+ assert.match(DESIGN_TRANSLATION,/SAME image/);assert.match(DESIGN_TRANSLATION,/exactly ONE image/);
+ const {facilitationInstructions}=load('lib/facilitation.js');const instruction=facilitationInstructions('alternatives','계획안을 제안해줘');assert.match(instruction,/ONE integrated design direction/);assert.match(instruction,/Do not spontaneously name or compare independent review schemes/);
+});
+test('progress estimates are bounded, never report actual API completion, and keep waiting below 100%',()=>{
+ assert.equal(estimatedImageProgress(0),1);assert.ok(estimatedImageProgress(60_000)>estimatedImageProgress(10_000));assert.equal(estimatedImageProgress(1_000_000),90);
+});
+test('repeat initial requests reuse one image; chat follow-ups and branched edits become ordered revisions',async t=>{
+ const image=await sharp({create:{width:1024,height:1024,channels:4,background:'blue'}}).png().toBuffer();
+ const f=fixture(t,{'ppssSiteImages_alpha/current':{imageId:'site',storagePath:'projects/alpha/site-images/site'}});let calls=0;
+ const files=new Map([['projects/alpha/site-images/site',image]]);
+ t.mock.method(llm,'callLLM',async()=> 'One integrated design on the supplied photo.');
+ t.mock.method(admin,'adminBucket',()=>({file:p=>({getMetadata:async()=>[{size:image.length}],download:async()=>[files.get(p)],save:async bytes=>files.set(p,bytes)})}));t.mock.method(admin,'buildDownloadUrl',p=>'https://storage.example/'+p);
+ t.mock.method(global,'fetch',async(_url,options)=>{calls++;assert.equal(options.body.get('n'),'1');if(calls>1)assert.match(options.body.get('prompt'),/EDIT THE SUPPLIED SELECTED GENERATED IMAGE/);return Response.json({data:[{b64_json:image.toString('base64')}]})});
+ const first=await f.call({requestId:'initial-image'});assert.equal(first.code,200);assert.equal(first.body.label,'초기 이미지');assert.equal(first.body.designMetadata.versionNumber,0);
+ const repeat=await f.call({requestId:'repeat-initial'});assert.equal(repeat.code,200);assert.equal(repeat.body.imageId,first.body.imageId);assert.equal(calls,1);
+ const original=structuredClone(f.records.get('ppssGeneratedImages_alpha/'+first.body.imageId));
+ const second=await f.call({requestId:'chat-edit',feedback:'화분을 더 놓아주세요.'});assert.equal(second.code,200);assert.equal(second.body.designMetadata.parentImageId,first.body.imageId);assert.equal(second.body.designMetadata.rootImageId,first.body.imageId);assert.equal(second.body.label,'1차 수정 이미지');
+ const third=await f.call({requestId:'branch-edit',parentImageId:first.body.imageId,feedback:'간판 높이를 맞춰주세요.'});assert.equal(third.code,200);assert.equal(third.body.label,'2차 수정 이미지');assert.equal(third.body.designMetadata.parentImageId,first.body.imageId);assert.equal(third.body.designMetadata.rootImageId,first.body.imageId);assert.equal(calls,3);
+ assert.deepEqual(f.records.get('ppssGeneratedImages_alpha/'+first.body.imageId),original);
+ for(const [key,value] of Object.entries(f.original))assert.deepEqual(f.records.get(key),value);
 });

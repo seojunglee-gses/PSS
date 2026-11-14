@@ -1,3 +1,4 @@
+import ImageGenerationPlaceholder from "../../components/design/ImageGenerationPlaceholder";
 import DesignImageEditor from "../../components/design/DesignImageEditor";
 import DesignProposal from "../../components/design/DesignProposal";
 import type { DesignDirection } from "../../lib/design-alternatives";
@@ -120,6 +121,7 @@ function normalizeSender(
 }
 
 type DesignImage = {
+  parentImageId?: string; rootImageId?: string; versionNumber?: number;
   id: string;
   label: string;
   note: string;
@@ -843,7 +845,7 @@ function AuthorizedWorkspace() {
       try {
         const [payload, savedImages] = await Promise.all([designApi({ action: "get-proposal" }), loadGeneratedImages(userKey, projectId)]);
         if (cancelled) return;
-        setGeneratedImages(savedImages.map(image => ({ id: image.imageId, label: image.label, note: image.note, imageUrl: image.downloadUrl, createdAt: image.createdAt })));
+        setGeneratedImages(savedImages.map(image => ({ id: image.imageId, label: image.label, note: image.note, imageUrl: image.downloadUrl, createdAt: image.createdAt, parentImageId: image.designMetadata?.parentImageId ?? undefined, rootImageId: image.designMetadata?.rootImageId, versionNumber: image.designMetadata?.versionNumber })));
         setSubmittedDesignId(payload.submittedImageId ?? null);
         let direction = payload.direction as DesignDirection | null;
         if (!direction && !(chatLogsByStep.alternatives ?? []).length && !savedImages.length && !completedStages.includes("alternatives")) {
@@ -1078,6 +1080,7 @@ function AuthorizedWorkspace() {
     }
 
     const isInitial = alternativeImages.length === 0;
+    const parentImageId = edit?.parentImageId ?? (feedback?.trim() ? selectedAlternative ?? alternativeImages.at(-1)?.id : undefined);
     const response = await fetch("/api/generate-alternative", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user!.getIdToken()}` },
@@ -1086,7 +1089,7 @@ function AuthorizedWorkspace() {
         mode: isInitial ? "initial" : "iteration",
         requestId: crypto.randomUUID(),
         revision: edit?.revision ?? designDirection?.revision,
-        ...(edit?.parentImageId ? { parentImageId: edit.parentImageId, mask: edit.mask } : {}),
+        ...(parentImageId ? { parentImageId, mask: edit?.mask } : {}),
         history: conversationHistory(chatLogsByStep.alternatives ?? [], "alternatives"),
     
         // ✅ initial일 때만 보낸다
@@ -1120,10 +1123,13 @@ function AuthorizedWorkspace() {
       base64?: string;
       downloadUrl?: string;
       prompt?: string;
+      label?: string;
+      designMetadata?: { parentImageId?: string | null; rootImageId?: string; versionNumber?: number };
     };
     if (generation !== chatGenerationRef.current) throw new Error(t("workspace.imageCancelled"));
 
-    const label = `Alternative ${alternativeImages.length + 1}`;
+    const label = payload.label ?? `Alternative ${alternativeImages.length + 1}`;
+    const lineage = { parentImageId: payload.designMetadata?.parentImageId ?? undefined, rootImageId: payload.designMetadata?.rootImageId, versionNumber: payload.designMetadata?.versionNumber };
     const note =
       typeof payload.prompt === "string"
         ? payload.prompt
@@ -1131,13 +1137,14 @@ function AuthorizedWorkspace() {
 
     if (!payload.downloadUrl) throw new Error(t("image.missingUrl"));
     setLastGeneratedImageId(payload.imageId);
-    setGeneratedImages(previous => previous.some(image => image.id === payload.imageId) ? previous : [...previous, { id: payload.imageId, label, note, imageUrl: payload.downloadUrl!, createdAt: new Date().toISOString() }]);
-    return { id: payload.imageId, label, note, imageUrl: payload.downloadUrl, createdAt: new Date().toISOString() };
+    setGeneratedImages(previous => previous.some(image => image.id === payload.imageId) ? previous : [...previous, { id: payload.imageId, label, note, ...lineage, imageUrl: payload.downloadUrl!, createdAt: new Date().toISOString() }]);
+    return { id: payload.imageId, label, note, ...lineage, imageUrl: payload.downloadUrl, createdAt: new Date().toISOString() };
   },
   [
     activeProvider,
     t,
-    alternativeImages.length,
+    alternativeImages,
+    selectedAlternative,
     designDirection,
     buildImageGenerationInput,
     chatLogsByStep,
@@ -2364,11 +2371,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               {t("workspace.imageGalleryDesc")}
             </p>
             <div className="mt-5 max-h-[70vh] overflow-y-auto pr-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                {t("workspace.imageGalleryHelp")}
-              </div>
-
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-2">
                 {groupedAlternativeImages.map((group) =>
                   group.images.map((item) => (
                     <div
@@ -2395,9 +2398,12 @@ const handleSend = async (suggestedQuestion?: string) => {
                           />
                         )}
                       </button>
+                      <p className="mt-2 text-sm font-semibold text-blue-950">{item.versionNumber === 0 ? t("design.initialImage") : item.versionNumber !== undefined ? t("design.revisionImage", { version: item.versionNumber }) : localize(item.label)}</p>
+                      {item.parentImageId && <p className="mt-1 text-xs text-slate-500">{t("design.editedFrom", { image: (() => { const parent = alternativeImages.find(image => image.id === item.parentImageId); return parent?.versionNumber === 0 ? t("design.initialImage") : parent?.versionNumber !== undefined ? t("design.revisionImage", { version: parent.versionNumber }) : localize(parent?.label ?? item.parentImageId); })() })}</p>}
                     </div>
                   ))
                 )}
+                {isLoadingAlternatives && <ImageGenerationPlaceholder editing={imageOperation === "edit" || alternativeImages.length > 0} />}
               </div>
 
               {groupedAlternativeImages.length === 0 &&
@@ -2409,7 +2415,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                   </div>
                 )}
             </div>
-            {isLoadingAlternatives && <div role="status" className="pointer-events-none absolute bottom-24 right-4 z-20 flex items-center gap-2 rounded-full border border-blue-200 bg-white/95 px-4 py-3 text-sm font-semibold text-blue-900 shadow-sm"><span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />{t(imageOperation === "edit" ? "design.editing" : "design.generating")}</div>}
+
             <div className="mt-6 flex flex-wrap gap-3">
               <button
                 className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"

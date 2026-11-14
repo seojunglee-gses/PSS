@@ -11,7 +11,7 @@ const uploads=load('lib/storage-upload-server.js');
 const {uploadProjectFile}=load('lib/storage-upload.js');
 function mock(t,obj,key,value){const old=obj[key];obj[key]=value;t.after(()=>obj[key]=old)}
 const project={projectName:'실제 사업',projectAdmin:'owner@example.org',workspaceContent:{problem:{title:'사업 배경',text:'실제 도로폭은 8m입니다.'},data:{title:'현황 자료',text:'대상지 면적 1234㎡',cases:[{id:'park',label:'기록된 사례',title:'주민 참여',text:'주민이 공원을 관리했습니다.'}]},alternatives:{text:'사업 계획'}}};
-function database(records,writes=[]){return {doc:p=>({get:async()=>({exists:p in records,data:()=>records[p]}),set:async v=>writes.push({p,v}),create:async v=>writes.push({p,v})}),collection:p=>({add:async v=>{writes.push({p,v});return {id:'archive-'+writes.length}}})}}
+function database(records,writes=[]){return {doc:p=>({get:async()=>({exists:p in records,data:()=>records[p]}),set:async v=>writes.push({p,v}),create:async v=>writes.push({p,v})}),collection:p=>({where:(field,_operator,value)=>({get:async()=>({docs:Object.entries(records).filter(([key,data])=>key.startsWith(p+'/')&&data[field]===value).map(([,data])=>({data:()=>data}))})}),add:async v=>{writes.push({p,v});return {id:'archive-'+writes.length}}})}}
 const request=(body={})=>({method:'POST',headers:{authorization:'Bearer fixture-token',origin:'https://example.org'},body:{projectId:'alpha',...body}});
 function fixture(t){
  mock(t,load('lib/research/case-sources-server.js'),'readCasePassages',async()=>[]);

@@ -131,6 +131,7 @@ export type SiteImage = {
 };
 
 type GeneratedImage = {
+  designMetadata?: { parentImageId?: string | null; rootImageId?: string; versionNumber?: number };
   imageId: string;
   label: string;
   note: string;

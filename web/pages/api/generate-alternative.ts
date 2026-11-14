@@ -39,23 +39,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const imageId = createHash("sha256").update(JSON.stringify([context.projectId, context.user.uid, requestId])).digest("hex");
       const existing = (await adminDb().doc(`ppssGeneratedImages_${context.projectId}/${imageId}`).get()).data();
       if (existing?.userId === context.user.uid && existing.downloadUrl) return existing;
+      // Under the existing per-user lease: a second initial request reuses the saved image.
+      // A chat edit without an explicit parent still edits the latest owned version.
+      const savedImages = (await adminDb().collection(`ppssGeneratedImages_${context.projectId}`).where("userId", "==", context.user.uid).get()).docs.map(doc => doc.data()).sort((a,b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+      const latest = savedImages.at(-1);
+      if (!parentImageId && latest && !feedback?.trim()) return latest;
+      const editParentId = parentImageId ?? latest?.imageId;
       const currentSiteImage = (await adminDb().doc(`ppssSiteImages_${context.projectId}/current`).get()).data();
-      if (!parentImageId && !currentSiteImage?.imageId) throw new AccessError(400, "대상지 이미지가 없습니다. 설정에서 현재 사업의 대상지 이미지를 등록해주세요.");
+      if (!editParentId && !currentSiteImage?.imageId) throw new AccessError(400, "대상지 이미지가 없습니다. 설정에서 현재 사업의 대상지 이미지를 등록해주세요.");
       let baseRecord = currentSiteImage;
-      if (parentImageId) {
-        const parent = (await adminDb().doc(`ppssGeneratedImages_${context.projectId}/${parentImageId}`).get()).data();
+      if (editParentId) {
+        const parent = (await adminDb().doc(`ppssGeneratedImages_${context.projectId}/${editParentId}`).get()).data();
         if (!parent || parent.userId !== context.user.uid) throw new AccessError(403, "내가 생성한 이미지만 수정할 수 있어요.");
         if (!feedback?.trim()) throw new AccessError(400, "어떻게 바꿀지 말씀해주세요.");
         baseRecord = parent;
       } else if (mask) throw new AccessError(400, "수정할 이미지를 먼저 선택해주세요.");
-      const base = await readDesignImage(context.projectId, baseRecord!, Boolean(parentImageId));
+      const rootImageId = editParentId ? baseRecord?.designMetadata?.rootImageId ?? editParentId : imageId;
+      const versionNumber = editParentId ? Math.max(0, ...savedImages.filter(item => item.imageId === rootImageId || item.designMetadata?.rootImageId === rootImageId).map(item => Number(item.designMetadata?.versionNumber) || 0)) + 1 : 0;
+      const label = editParentId ? `${versionNumber}차 수정 이미지` : "초기 이미지";
+      const base = await readDesignImage(context.projectId, baseRecord!, Boolean(editParentId));
       const maskBuffer = mask ? await validateDesignMask(mask, base.width, base.height) : undefined;
       const history = conversationHistory(context.stageHistory.length ? context.stageHistory : req.body.history, "alternatives");
       // A confirmed direction is translated directly. No second LLM can silently change it.
-      const prompt = parentImageId ? `Edit the supplied selected generated image. Preserve its camera position, perspective, road alignment, buildings, storefronts and entrances. Existing design context (context only, not a request to redraw it): ${JSON.stringify(direction?.interventions ?? (typeof baseRecord?.note === "string" ? baseRecord.note.slice(0, 6000) : ""))}\nLatest resident edit request: ${feedback}` : direction ? `${DESIGN_TRANSLATION}\nConfirmed resident-reviewed direction: ${JSON.stringify(direction.interventions)}\nLatest request: ${feedback ?? "Visualize exactly this confirmed direction."}` : await callLLM({ provider: req.body.provider === "gemini" ? "gemini" : "openai", systemText: `Generate a SINGLE image-generation prompt based on this project's dialogue and workspace summaries. Never assume a particular site or scope. Preserve participant-stated preferences; AI options are not participant decisions. ${DESIGN_TRANSLATION}`, userText: JSON.stringify({ material: context.currentMaterial, summaries: context.previousSummaries, history, feedback: feedback ?? null }) });
-      const editPrompt = parentImageId ? `${prompt}\nEDIT THE SUPPLIED SELECTED GENERATED IMAGE, not the initial site photo. ${maskBuffer ? "Change only the transparent mask area. Preserve all opaque/unselected areas, composition and prior design elements as closely as possible." : "Apply the latest whole-image feedback while preserving unrelated elements."} User's edit request: ${feedback}` : prompt;
+      const prompt = editParentId ? `Edit the supplied selected generated image. Preserve its camera position, perspective, road alignment, buildings, storefronts and entrances. Existing design context (context only, not a request to redraw it): ${JSON.stringify(direction?.interventions ?? (typeof baseRecord?.note === "string" ? baseRecord.note.slice(0, 6000) : ""))}\nLatest resident edit request: ${feedback}` : direction ? `${DESIGN_TRANSLATION}\nConfirmed resident-reviewed direction: ${JSON.stringify(direction.interventions)}\nLatest request: ${feedback ?? "Visualize exactly this confirmed direction."}` : await callLLM({ provider: req.body.provider === "gemini" ? "gemini" : "openai", systemText: `Generate a SINGLE image-generation prompt based on this project's dialogue and workspace summaries. Never assume a particular site or scope. Preserve participant-stated preferences; AI options are not participant decisions. ${DESIGN_TRANSLATION}`, userText: JSON.stringify({ material: context.currentMaterial, summaries: context.previousSummaries, history, feedback: feedback ?? null }) });
+      const editPrompt = editParentId ? `${prompt}\nEDIT THE SUPPLIED SELECTED GENERATED IMAGE, not the initial site photo. ${maskBuffer ? "Change only the transparent mask area. Preserve all opaque/unselected areas, composition and prior design elements as closely as possible." : "Apply the latest whole-image feedback while preserving unrelated elements."} User's edit request: ${feedback}` : prompt;
       let generated;
-      if (req.body.provider === "gemini" && !parentImageId && !direction) {
+      if (req.body.provider === "gemini" && !editParentId && !direction) {
         const { GoogleGenerativeAI } = await import("@google/generative-ai");
         if (!process.env.GEMINI_API_KEY) throw new AccessError(503, "이미지 생성 설정을 확인해주세요.");
         const model = new GoogleGenerativeAI(process.env.GEMINI_API_KEY).getGenerativeModel({ model: "gemini-2.5-flash-image" });
@@ -64,7 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!base64) throw new AccessError(502, "이미지를 만들지 못했어요. 다시 시도해주세요.");
         generated = { base64, settings: { model: "gemini-2.5-flash-image" } };
       } else generated = await editDesignImage(base, editPrompt, maskBuffer);
-      return storeGeneratedImage({ projectId: context.projectId, imageId, base64: generated.base64, label: typeof req.body.label === "string" ? req.body.label.slice(0, 100) : "새 계획안", note: editPrompt, userId: context.user.uid, metadata: { modelSettings: generated.settings, directionRevision: direction?.revision ?? null, parentImageId: parentImageId ?? null, editRequest: feedback ?? null, maskedEdit: Boolean(maskBuffer), siteImageId: parentImageId ? baseRecord?.designMetadata?.siteImageId ?? null : currentSiteImage!.imageId, requestId } });
+      return storeGeneratedImage({ projectId: context.projectId, imageId, base64: generated.base64, label, note: editPrompt, userId: context.user.uid, metadata: { rootImageId, versionNumber, modelSettings: generated.settings, directionRevision: direction?.revision ?? null, parentImageId: editParentId ?? null, editRequest: feedback ?? null, maskedEdit: Boolean(maskBuffer), siteImageId: editParentId ? baseRecord?.designMetadata?.siteImageId ?? null : currentSiteImage!.imageId, requestId } });
     });
     res.status(200).json({ ...result, prompt: result.note });
   } catch (error) {
