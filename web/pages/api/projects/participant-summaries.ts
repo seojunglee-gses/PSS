@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { adminDb, verifyUserRequest } from "../../../lib/firebaseAdmin";
 import { AccessError, validProjectId } from "../../../lib/membership/server";
-import { participantAccess, participantRecords, participantSummaries, softResetParticipantChat } from "../../../lib/participants-server";
+import { participantAccess, participantRecords, participantSummaries, softResetParticipantChat, softResetTestAdminChat } from "../../../lib/participants-server";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader("Cache-Control", "private, no-store");
@@ -13,8 +13,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const db = adminDb(), projectId = validProjectId(req.method === "POST" ? req.body?.projectId : req.query.projectId);
     const { manager } = await participantAccess(db, user, projectId, req.method === "POST");
     if (req.method === "POST") {
-      if (req.body?.action !== "softResetChat") throw new AccessError(400, "요청을 확인해주세요.");
-      await softResetParticipantChat(db, user, projectId, req.body.userId, req.body.stageId);
+      if (req.body?.action === "softResetTestAdminChat") await softResetTestAdminChat(db, user, projectId, req.body.stageId);
+      else if (req.body?.action === "softResetChat") await softResetParticipantChat(db, user, projectId, req.body.userId, req.body.stageId);
+      else throw new AccessError(400, "요청을 확인해주세요.");
       res.status(200).json({ ok: true });
     } else if (["evaluations", "submissions", "images"].includes(String(req.query.kind))) {
       const kind = req.query.kind as "evaluations" | "submissions" | "images";

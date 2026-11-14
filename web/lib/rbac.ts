@@ -24,7 +24,8 @@ export const canManageProject = (email?: string | null, project?: ProjectMeta | 
 };
 
 // This research/test account is excluded even on projects where it is not the owner.
-const NON_PARTICIPANT_EMAILS = new Set(["test@snu.ac.kr"]);
+export const TEST_ADMIN_EMAIL = "test@snu.ac.kr";
+const NON_PARTICIPANT_EMAILS = new Set([TEST_ADMIN_EMAIL]);
 export const isResearchParticipant = (email?: string | null, project?: ProjectMeta | null) =>
   !NON_PARTICIPANT_EMAILS.has((email ?? "").trim().toLowerCase()) && !canManageProject(email, project);
 

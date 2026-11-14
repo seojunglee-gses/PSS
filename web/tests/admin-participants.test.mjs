@@ -65,3 +65,42 @@ test('executive-summary LLM input contains only eligible participant counts and 
  const result={};await executive({method:'POST',headers:{authorization:'Bearer manager'},body:{projectId:'p',stageId:'data'}},{status(code){result.status=code;return this},json(body){result.body=body}});
  assert.equal(result.status,200);const prompt=received.input[1].content;assert.match(prompt,/"participants":2/);assert.match(prompt,/summary-p1/);assert.match(prompt,/summary-p2/);assert.doesNotMatch(prompt,/summary-admin|summary-system|summary-owner|legacy admin/);assert.equal(store.get('ppssExecutiveSummaries_p/generated').participantFilterVersion,rbac.PARTICIPANT_FILTER_VERSION);
 });
+
+test('test administrator reset uses a separate fixed-email target and leaves participant lists/statistics excluded',async t=>{
+ const {db,store,put}=fixture(t),auth=admin.adminAuth();let lookups=0;
+ mock(t,admin,'adminAuth',()=>({...auth,getUserByEmail:async email=>{lookups++;assert.equal(email,rbac.TEST_ADMIN_EMAIL);return {uid:'admin-uid',email:'test@snu.ac.kr'}}}));
+ put('users_p/admin-uid/steps/data',{logs:[{id:'admin-message',sender:'user',text:'Synthetic admin test dialogue',createdAt:'2026-11-01T00:00:00Z'}],sessionId:'admin-session',analysisReview:{note:'preserve'}});
+ put('users_p/admin-uid/steps/problem',{logs:[{id:'other-stage',sender:'user',text:'Other stage'}]});
+ const before=new Map([...store].map(([key,value])=>[key,structuredClone(value)]));
+ const result=await route({method:'POST',body:{projectId:'p',action:'softResetTestAdminChat',stageId:'data',userId:'p1',email:'participant01@example.com'}});
+ assert.equal(result.status,200);assert.equal(lookups,1);assert.deepEqual(store.get('users_p/admin-uid/steps/data').logs,[]);assert.equal(store.get('users_p/admin-uid/steps/data').sessionId,'admin-session');assert.deepEqual(store.get('users_p/admin-uid/steps/data').analysisReview,{note:'preserve'});
+ const archives=[...store].filter(([key])=>key.startsWith('users_p/admin-uid/steps/data/chatResetArchives/'));assert.equal(archives.length,1);assert.deepEqual(archives[0][1].previous,before.get('users_p/admin-uid/steps/data'));assert.equal(archives[0][1].resetBy,'owner-uid');
+ for(const [key,value] of before)if(key!=='users_p/admin-uid/steps/data')assert.deepEqual(store.get(key),value,key);
+ const list=await route();assert.deepEqual(list.body.summaries.map(row=>row.userId),['p1','p2']);
+ for(const kind of ['evaluations','submissions','images'])assert.deepEqual((await service.participantRecords(db,'p',kind)).map(row=>row.userId),['p1','p2']);
+ assert.equal(store.get('ppssWorkspaceSummaries_p/admin-uid').completedStages.includes('data'),true);
+});
+
+test('separate test-admin reset rejects unauthorized/invalid requests before resolving the target account',async t=>{
+ const {store}=fixture(t),before=JSON.stringify([...store]);let lookups=0;
+ mock(t,admin,'adminAuth',()=>({getUserByEmail:async()=>{lookups++;return {uid:'admin-uid',email:'test@snu.ac.kr'}}}));
+ for(const options of [{token:'reader',body:{projectId:'p',stageId:'data'}},{token:null,body:{projectId:'p',stageId:'data'}},{body:{projectId:'other',stageId:'data'}},{body:{projectId:'p',stageId:'../data'}},{body:{projectId:'p',stageId:undefined}}]){
+  const result=await route({method:'POST',...options,body:{action:'softResetTestAdminChat',...options.body}});assert.ok(result.status>=400);
+ }
+ assert.equal(lookups,0);assert.equal(JSON.stringify([...store]),before);
+});
+
+test('missing or mismatched administrator identities cannot reset any participant data',async t=>{
+ const {store}=fixture(t),before=JSON.stringify([...store]);
+ mock(t,admin,'adminAuth',()=>({getUserByEmail:async()=>{throw Object.assign(Error('not found'),{code:'auth/user-not-found'})}}));
+ const missing=await route({method:'POST',body:{projectId:'p',action:'softResetTestAdminChat',stageId:'data'}});assert.equal(missing.status,404);
+ mock(t,admin,'adminAuth',()=>({getUserByEmail:async()=>({uid:'p1',email:'participant01@example.com'})}));
+ const wrong=await route({method:'POST',body:{projectId:'p',action:'softResetTestAdminChat',stageId:'data'}});assert.equal(wrong.status,403);assert.equal(JSON.stringify([...store]),before);
+});
+
+test('failed admin reset transaction preserves the original chat instead of partially clearing it',async t=>{
+ const {db,store,put}=fixture(t);put('users_p/admin-uid/steps/data',{logs:[{id:'original',text:'preserved'}]});const before=JSON.stringify([...store]);
+ mock(t,admin,'adminAuth',()=>({getUserByEmail:async()=>({uid:'admin-uid',email:'test@snu.ac.kr'})}));
+ db.runTransaction=async callback=>{await callback({get:ref=>ref.get(),set(){}});throw Error('fixture commit failed')};
+ const result=await route({method:'POST',body:{projectId:'p',action:'softResetTestAdminChat',stageId:'data'}});assert.equal(result.status,503);assert.equal(JSON.stringify([...store]),before);
+});

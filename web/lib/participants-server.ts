@@ -2,7 +2,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { FieldValue } from "firebase-admin/firestore";
 import { randomUUID } from "node:crypto";
 import { adminAuth } from "./firebaseAdmin";
-import { canManageProject, isResearchParticipant } from "./rbac";
+import { canManageProject, isResearchParticipant, TEST_ADMIN_EMAIL } from "./rbac";
 import { AccessError, memberActive, memberPath, validProjectId, type Identity } from "./membership/server";
 import type { ProjectMeta } from "./projects";
 import type { WorkspaceSummary } from "./firebase";
@@ -46,6 +46,25 @@ export async function softResetParticipantChat(db: Firestore, user: Identity, pr
   await participantAccess(db, user, projectId, true);
   if (typeof userId !== "string" || !userId || userId.length > 128 || userId.includes("/") || !["problem", "data", "alternatives", "evaluation", "report"].includes(String(stageId))) throw new AccessError(400, "참여자와 단계를 다시 선택해주세요.");
   if (!(await participantSummaries(db, projectId)).some(entry => entry.userId === userId)) throw new AccessError(404, "참여자를 찾을 수 없습니다.");
+  await archiveStepChat(db, user, projectId, userId, String(stageId));
+}
+
+// The test administrator is a separate maintenance target, never a participant record.
+// Resolve its UID from the fixed server-side email, not a browser-supplied userId.
+export async function softResetTestAdminChat(db: Firestore, user: Identity, projectId: string, stageId: unknown) {
+  await participantAccess(db, user, projectId, true);
+  if (typeof stageId !== "string" || !["problem", "data", "alternatives", "evaluation", "report"].includes(stageId)) throw new AccessError(400, "초기화할 단계를 확인해주세요.");
+  let target;
+  try { target = await adminAuth().getUserByEmail(TEST_ADMIN_EMAIL); }
+  catch (error) {
+    if ((error as { code?: string }).code === "auth/user-not-found") throw new AccessError(404, "관리자 테스트 계정을 찾을 수 없습니다.");
+    throw error;
+  }
+  if (target.email?.trim().toLowerCase() !== TEST_ADMIN_EMAIL || !target.uid || target.uid.length > 128 || target.uid.includes("/")) throw new AccessError(403, "관리자 테스트 계정을 확인해주세요.");
+  await archiveStepChat(db, user, projectId, target.uid, stageId);
+}
+
+async function archiveStepChat(db: Firestore, user: Identity, projectId: string, userId: string, stageId: string) {
   const step = db.doc(`users_${projectId}/${userId}/steps/${stageId}`);
   const archive = db.doc(`users_${projectId}/${userId}/steps/${stageId}/chatResetArchives/${randomUUID()}`);
   await db.runTransaction(async tx => {
