@@ -23,6 +23,8 @@ export type AnalysisRequest = {
   hasBackground?: boolean;
   backgroundSourceIds?: string[];
   clarification?: string;
+  retrievalWarnings?: EvidenceBundle["warnings"];
+  spatialQueryResult?: Pick<import("../spatial/geo-query").GeoResult, "reply" | "places" | "warnings">;
   history?: ConversationMessage[];
   searchQuestion?: string;
   spatialContext?: SpatialResult;
@@ -78,24 +80,28 @@ export function selectCases(question: string, cases: CaseMaterial[]): CaseEviden
 }
 
 export async function retrieveEvidence(request: AnalysisRequest): Promise<EvidenceBundle> {
-  const evidence: EvidenceBundle = { question: request.question, selectedSources: request.selectedSources, cases: [], papers: [], warnings: [] };
-  request.clarification=requestClarification(request.searchQuestion??request.question,request.history,request.projectContext,/[가-힣]/.test(request.question)?"ko":"en");
+  const evidence: EvidenceBundle = { question: request.question, selectedSources: request.selectedSources, cases: [], papers: [], warnings: [...(request.retrievalWarnings ?? [])] };
+  request.clarification??=requestClarification(request.searchQuestion??request.question,request.history,request.projectContext,/[가-힣]/.test(request.question)?"ko":"en");
   if(request.clarification)return evidence;
   // Topic selections already carry server-verified local material; do not fan out into searches.
   if(request.topicSelection&&request.reuseEvidence)return {...request.reuseEvidence,question:request.question};
   if (request.selectedSources.includes("project")) {
     let projectMaterial=request.projectContext;
     if(request.authorizedProjectId&&request.hasBackground&&needsBackgroundOriginal(request.searchQuestion??request.question)){
-      const original=await backgroundOriginalContext(request.authorizedProjectId,request.searchQuestion??request.question,request.backgroundSourceIds);
-      if(original.text)projectMaterial+='\n\n'+original.text;
-      evidence.warnings.push(...original.warnings.map(message=>({source:"project" as const,message})));
+      try {
+        const original=await backgroundOriginalContext(request.authorizedProjectId,request.searchQuestion??request.question,request.backgroundSourceIds);
+        if(original.text)projectMaterial+='\n\n'+original.text;
+        evidence.warnings.push(...original.warnings.map(message=>({source:"project" as const,message})));
+      } catch {
+        evidence.warnings.push({source:'project',message:'프로젝트 원문 자료를 불러오지 못했어요. 현재 등록된 사업 설명을 바탕으로 대화를 이어갈게요.'});
+      }
     }
     if (projectMaterial.trim()) evidence.projectContext = projectMaterial;
     else evidence.warnings.push({ source: "project", message: "이 사업에 등록된 자료가 없습니다." });
   }
   if (request.selectedSources.includes("spatial") && !request.spatialContext && !request.registeredSpatialContext?.registeredLayers.length) evidence.warnings.push({ source: "spatial", message: "현재 질문에 사용할 공간 계산 결과가 아직 없습니다. 실행되지 않은 값을 사실로 제시하지 마세요." });
   if (request.reuseEvidence) {
-    return { ...request.reuseEvidence, question: request.question, selectedSources: request.selectedSources, projectContext: request.projectContext, warnings: [] };
+    return { ...request.reuseEvidence, question: request.question, selectedSources: request.selectedSources, projectContext: evidence.projectContext ?? request.projectContext, warnings: evidence.warnings };
   }
   let researchQuery=request.searchQuestion ?? request.question;
   let needsResearch=request.selectedSources.includes('research');

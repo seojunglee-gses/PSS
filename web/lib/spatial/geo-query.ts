@@ -147,6 +147,16 @@ export function mapPointLabel(question: string): string | undefined {
     const label = match?.[1]?.trim();
     return label && !/[?？]|어디|무엇|뭐|어떤|아니|않/.test(label) ? label : undefined;
 }
+/** An explicit request to inspect a map, distinct from discussing a spatial idea. */
+export function requestsSpatialAnalysis(question: string): boolean {
+    if (/하지\s*마|실행하지|분석하지|검색하지|취소|그만|do not|don.?t|cancel/i.test(question)) return false;
+    const map = /지도(?:에서|로|를|상)?|\bGIS\b|공간\s*(?:분석|자료)|\bmap\b/i.test(question);
+    if (isSpatialToolExplanation(question)) return false;
+    if (!map && /논문|학술|연구|사례|research|literature|stud(?:y|ies)|cases?/i.test(question)) return false;
+    const action = /(?:분석|확인|계산)\s*(?:해|하|요청)|살펴|보여|찾|알아|관계|연결|배치|비교|analy[sz]e|inspect|check|show|find|relationship/i.test(question) || /(?:지도|GIS|공간).*분석[.!?\s]*$/i.test(question);
+    const namedStreet = /(?:[가-힣A-Za-z0-9]+(?:로|길)\s*\d*(?:번길)?|골목).{0,40}(?:분석해|분석하|지도에서)/i.test(question);
+    return map && action || namedStreet;
+}
 export function isSpatialInvestigation(question: string) {
     if (/논문|학술|연구|사례|\b(?:research|literature|stud(?:y|ies)|cases?)\b/i.test(question)) return false;
     if (mapPointLabel(question)) return true;
@@ -307,6 +317,7 @@ export function placeResultFollowUp(question: string): "distribution" | "boundar
     if (/어느\s*(?:쪽|방향).*모|(?:이|그)\s*(?:결과|장소|시설).*분포|어디.*모여|which (?:side|direction)|(?:these|those|results).*distribut/i.test(question)) return "distribution";
 }
 export function isGeoQuestion(question: string) {
+    if (requestsSpatialAnalysis(question)) return true;
     // Planning concerns about a selected place need current spatial context, not a POI keyword search of the sentence.
     if (isSelectedPlaceDiscussion(question) && !/찾아|검색|보여|몇\s*(?:개|곳|미터)|반경|\d+\s*(?:m|km|미터)|\b(?:find|search|show)\b/i.test(question) && !toolOperations(question).length) return false;
     return isSpatialInvestigation(question) || !!placeCategory(question) || (/어린이집|유치원|학원|주유소|충전소|지하철|은행|중개업소|관광지|관광명소|숙박|호텔|세탁소|경로당|공방|체육관|daycare|bank|gym|laundry/i.test(question) && /보여|찾아|검색|어디|주변|근처|show|find|search|where|near/i.test(question)) || /key\s*(?:project\s*)?facilit|spatial\s*structure|주요\s*(?:사업)?시설|공간\s*구조|면적|건물\s*수|위치|어디(?:야|인가요|에\s*있)|\b(?:find|search|where (?:is|are))\b|(?:검색|찾아)(?:해)?(?:줘|주세요)|주변|근처|카페|약국|마트|음식점|식당|편의점|병원|학교|버스\s*정류장|공원|도보|걸어|몇\s*미터|가장\s*가까|지도\s*중심|까지.*거리|에서.*까지|nearby|nearest|walking|\bfrom\b.*\bto\b|\b(cafe|pharmacy|restaurant|supermarket)\b/i.test(question);
