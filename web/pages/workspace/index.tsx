@@ -1,3 +1,6 @@
+import DesignImageEditor from "../../components/design/DesignImageEditor";
+import DesignProposal from "../../components/design/DesignProposal";
+import type { DesignDirection } from "../../lib/design-alternatives";
 import { previousStage, priorTopicsHeading, topicCardSummary, topicSummaryNotice, semanticTopicForDisplay, type TopicSummaryState, type DiscussionTopic } from "../../lib/stage-topics";
 import { MODELS } from "../../lib/llm/openai";
 import { createPortal } from "react-dom";
@@ -405,6 +408,7 @@ function AuthorizedWorkspace() {
     setSavedSummaries({});
     setCompletedStages([]);
     setGeneratedImages([]);
+    setDesignDirection(null); setDesignFlow(false); setProposalBusy(false); setEditingDirection(false); setSubmittedDesignId(null); imageRequestRef.current = false; setSubmittingDesign(false); submittingDesignRef.current = false;
     setEvaluationImages([]);
     setEvaluationResults([]);
     setExecutiveSummary(null);
@@ -459,6 +463,17 @@ function AuthorizedWorkspace() {
   const [finishNotice, setFinishNotice] = useState<FinishNotice | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [isLoadingAlternatives, setIsLoadingAlternatives] = useState(false);
+  const [designDirection, setDesignDirection] = useState<DesignDirection | null>(null);
+  const [designFlow, setDesignFlow] = useState(false);
+  const [proposalBusy, setProposalBusy] = useState(false);
+  const [editingDirection, setEditingDirection] = useState(false);
+  const [imageOperation, setImageOperation] = useState<"create" | "edit">("create");
+  const [submittedDesignId, setSubmittedDesignId] = useState<string | null>(null);
+  const [submittingDesign, setSubmittingDesign] = useState(false);
+  const submittingDesignRef = useRef(false);
+  const imageRequestRef = useRef(false);
+  const [designRetry, setDesignRetry] = useState(0);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -555,11 +570,13 @@ function AuthorizedWorkspace() {
   
   const [completedStages, setCompletedStages] = useState<string[]>([]);
   const [completionOpen, setCompletionOpen] = useState(false);
+  const [completionPurpose, setCompletionPurpose] = useState<"stage" | "submission">("stage");
   const completionResolver = useRef<((confirmed: boolean) => void) | null>(null);
   const completionDialog = useRef<HTMLDialogElement>(null);
-  const confirmCompletion = () => new Promise<boolean>((resolve) => {
+  const confirmCompletion = (purpose: "stage" | "submission" = "stage") => new Promise<boolean>((resolve) => {
     if (completionResolver.current) { resolve(false); return; }
     completionResolver.current = resolve;
+    setCompletionPurpose(purpose);
     setCompletionOpen(true);
   });
   const closeCompletion = (confirmed: boolean) => {
@@ -801,19 +818,47 @@ function AuthorizedWorkspace() {
     loadLocks();
   }, [user, projectId]);
 
-  const alternativeImages = useMemo(
-    () =>
-      chatLogs
-        .filter((log) => log.stepId === "alternatives" && log.imageUrl)
-        .map((log, index) => ({
-          id: log.imageId ?? `image-${log.createdAt}`,
-          label: `Alternative ${index + 1}`,
-          note: log.imageNote ?? "",
-          imageUrl: log.imageUrl,
-          createdAt: log.createdAt,
-        })),
-    [chatLogs]
-  );
+  const alternativeImages = useMemo(() => {
+    const images = new Map(generatedImages.map(image => [image.id, image]));
+    chatLogs.filter(log => log.stepId === "alternatives" && log.imageUrl).forEach((log, index) => {
+      const id = log.imageId ?? `image-${log.createdAt}`;
+      if (!images.has(id)) images.set(id, { id, label: log.imageLabel ?? `Alternative ${index + 1}`, note: log.imageNote ?? "", imageUrl: log.imageUrl, createdAt: log.createdAt });
+    });
+    return [...images.values()].sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+  }, [chatLogs, generatedImages]);
+
+  const designApi = useCallback(async (body: Record<string, unknown>) => {
+    const response = await fetch("/api/generate-alternative", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${await user!.getIdToken()}` }, body: JSON.stringify({ projectId, ...body }) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error ?? "설계 방향을 준비하지 못했어요.");
+    return payload;
+  }, [projectId, user]);
+
+  useEffect(() => {
+    if (activeStep.id !== "alternatives") { setProposalBusy(false); return; }
+    if (!hasLoadedChatLogs || !userKey) return;
+    let cancelled = false;
+    setProposalBusy(true);
+    void (async () => {
+      try {
+        const [payload, savedImages] = await Promise.all([designApi({ action: "get-proposal" }), loadGeneratedImages(userKey, projectId)]);
+        if (cancelled) return;
+        setGeneratedImages(savedImages.map(image => ({ id: image.imageId, label: image.label, note: image.note, imageUrl: image.downloadUrl, createdAt: image.createdAt })));
+        setSubmittedDesignId(payload.submittedImageId ?? null);
+        let direction = payload.direction as DesignDirection | null;
+        if (!direction && !(chatLogsByStep.alternatives ?? []).length && !savedImages.length && !completedStages.includes("alternatives")) {
+          setDesignFlow(true);
+          const prepared = await designApi({ action: "prepare-proposal", requestId: "initial-direction" });
+          direction = prepared.direction;
+        }
+        if (!cancelled) { setDesignDirection(direction); setDesignFlow(Boolean(direction) && !savedImages.length); }
+      } catch (error) { if (!cancelled) setErrorMessage(error instanceof Error ? error.message : "설계 방향을 준비하지 못했어요."); }
+      finally { if (!cancelled) setProposalBusy(false); }
+    })();
+    return () => { cancelled = true; };
+    // Only enter/load once per authenticated Stage 3 scope. Chat updates never regenerate proposals.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStep.id, hasLoadedChatLogs, userKey, projectId, designApi, designRetry]);
 
    const refreshEvaluationImages = useCallback(async () => {
     setIsLoadingEvaluationImages(true);
@@ -1026,7 +1071,7 @@ function AuthorizedWorkspace() {
   
 
   const requestGeneratedImage = useCallback(
-  async (feedback?: string) => {
+  async (feedback?: string, edit?: { parentImageId?: string; mask?: string; revision?: string }) => {
     const generation = chatGenerationRef.current;
     if (!userKey) {
       throw new Error(t("common.authRequired"));
@@ -1039,6 +1084,9 @@ function AuthorizedWorkspace() {
       body: JSON.stringify({
           projectId,
         mode: isInitial ? "initial" : "iteration",
+        requestId: crypto.randomUUID(),
+        revision: edit?.revision ?? designDirection?.revision,
+        ...(edit?.parentImageId ? { parentImageId: edit.parentImageId, mask: edit.mask } : {}),
         history: conversationHistory(chatLogsByStep.alternatives ?? [], "alternatives"),
     
         // ✅ initial일 때만 보낸다
@@ -1049,7 +1097,7 @@ function AuthorizedWorkspace() {
         } : undefined,
     
         // ✅ iteration일 때는 이것만
-        feedback: isInitial ? undefined : feedback,
+        feedback,
     
         siteImageId,
         label: `Alternative ${alternativeImages.length + 1}`,
@@ -1083,12 +1131,14 @@ function AuthorizedWorkspace() {
 
     if (!payload.downloadUrl) throw new Error(t("image.missingUrl"));
     setLastGeneratedImageId(payload.imageId);
+    setGeneratedImages(previous => previous.some(image => image.id === payload.imageId) ? previous : [...previous, { id: payload.imageId, label, note, imageUrl: payload.downloadUrl!, createdAt: new Date().toISOString() }]);
     return { id: payload.imageId, label, note, imageUrl: payload.downloadUrl, createdAt: new Date().toISOString() };
   },
   [
     activeProvider,
     t,
     alternativeImages.length,
+    designDirection,
     buildImageGenerationInput,
     chatLogsByStep,
     savedSummaries,
@@ -1144,12 +1194,42 @@ useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [geo.result]);
 
+const generateConfirmedDesign = async (edit?: { parentImageId: string; mask: string; feedback: string }) => {
+  if (imageRequestRef.current || sendingRef.current || proposalBusy || lockedStages.alternatives || completedStages.includes("alternatives")) return;
+  const generation = chatGenerationRef.current;
+  imageRequestRef.current = true;
+  setImageOperation(edit ? "edit" : "create"); setIsLoadingAlternatives(true); setErrorMessage(null);
+  try {
+    let revision = designDirection?.revision;
+    if (!edit && designDirection && !designDirection.confirmedAt) {
+      const payload = await designApi({ action: "confirm-proposal", revision });
+      if (generation !== chatGenerationRef.current) return;
+      setDesignDirection(payload.direction); revision = payload.direction.revision;
+    }
+    const image = await requestGeneratedImage(edit?.feedback, { ...edit, revision });
+    if (generation === chatGenerationRef.current) {
+      setEditingDirection(false); setDesignFlow(false);
+      const logs: ChatLog[] = [...(chatLogsByStep.alternatives ?? []), {
+        stepId: "alternatives", sender: "assistant", provider: activeProvider, label: activeProvider,
+        text: edit ? `부분 수정 요청: ${edit.feedback}\n수정본을 갤러리에 추가했어요. 이전 이미지와 비교해주세요.` : `화면에서 확인한 설계 방향으로 이미지를 만들었어요.\n${designDirection?.interventions.map((item,index) => `${index+1}. ${item.text}`).join("\n") ?? ""}\n갤러리에서 확인하고 마음에 드는 계획안을 선택해주세요.`,
+        createdAt: new Date().toISOString(), imageId: image.id, imageUrl: image.imageUrl, imageLabel: image.label, imageNote: image.note,
+      }];
+      setChatLogsByStep(previous => ({ ...previous, alternatives: logs }));
+      await persistChatLogs("alternatives", sanitizeLogs(logs));
+    }
+  } catch (error) {
+    if (generation === chatGenerationRef.current) setErrorMessage(error instanceof Error ? error.message : "이미지를 만들지 못했어요.");
+    if (edit) throw error;
+  } finally { if (generation === chatGenerationRef.current) { imageRequestRef.current = false; setIsLoadingAlternatives(false); } }
+};
+
 const handleSend = async (suggestedQuestion?: string) => {
   const userMessage = (suggestedQuestion ?? inputValue).trim();
   if (!userMessage) return;
   if (!userKey || !hasLoadedChatLogs) return;
   if (lockedStages[activeStep.id] || completedStages.includes(activeStep.id)) return;
 
+  if (activeStep.id === "alternatives" && (proposalBusy || imageRequestRef.current)) return;
   if (sendingRef.current || topicContinuation.current && !topicContinuation.current.signal.aborted) return;
   if (activeStep.id === "alternatives" && isLoadingAlternatives) {
     setErrorMessage(t("workspace.imageBusy"));
@@ -1249,9 +1329,16 @@ const handleSend = async (suggestedQuestion?: string) => {
       await persistChatLogs(stepId, sanitizeLogs(commitDataLogs(nextLogs)));
       return;
     }
+    if (stepId === "alternatives" && designDirection && (editingDirection || !designDirection.confirmedAt)) {
+      const payload = await designApi({ action: "revise-proposal", feedback: userMessage, revision: designDirection.revision, requestId: crypto.randomUUID() });
+      if (!isCurrentConversation()) return;
+      setDesignDirection(payload.direction); setDesignFlow(true); setEditingDirection(false);
+      return;
+    }
     let finalMessage = userMessage;
       if (stepId === "alternatives" && isDesignGenerationRequest(userMessage)) {
 
+      imageRequestRef.current = true; setImageOperation("create");
       setIsLoadingAlternatives(true);
       try {
         const latestPrompt =
@@ -1285,7 +1372,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           await saveWorkspaceSummary(userKey, { alternativesInitialized: true }, projectId);
 
       } finally {
-        if (isCurrentConversation()) setIsLoadingAlternatives(false);
+        if (isCurrentConversation()) { imageRequestRef.current = false; setIsLoadingAlternatives(false); }
       }
       return;
     }
@@ -1381,6 +1468,9 @@ const handleSend = async (suggestedQuestion?: string) => {
         });
       return;
     }
+    if (activeStep.id === "alternatives" && !submittedDesignId) {
+      setFinishNotice({ status: "error", message: t("design.submitFirst") }); return;
+    }
     if (!confirmed && !await confirmCompletion()) return;
     const summaryGeneration=chatGenerationRef.current;
     setIsSummarizing(true);
@@ -1473,6 +1563,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     : undefined;
 
   const handleSubmitAlternative = async () => {
+    if (submittingDesignRef.current || submittingDesign || isLoadingAlternatives || lockedStages.alternatives || completedStages.includes("alternatives")) return;
     if (!selectedAlternative) {
       return;
     }
@@ -1487,22 +1578,17 @@ const handleSend = async (suggestedQuestion?: string) => {
       return;
     }
 
-    if (!await confirmCompletion()) return;
-    setEvaluationImages((prev) => {
-      const exists = prev.some((image) => image.id === selected.id);
-      if (exists) {
-        return prev;
-      }
-      return [...prev, selected];
-    });
-    setRankings((prev) => ({
-      ...prev,
-      [selected.id]: Object.keys(prev).length + 1,
-    }));
-    await saveUserDesignSubmission(userKey, selected.id, projectId);
-    await refreshEvaluationImages();
-    setSelectedAlternative(null);
-    await handleCompleteStep(true);
+    const generation = chatGenerationRef.current;
+    if (!await confirmCompletion("submission") || generation !== chatGenerationRef.current) return;
+    submittingDesignRef.current = true; setSubmittingDesign(true);
+    try {
+      await saveUserDesignSubmission(userKey, selected.id, projectId);
+      if (generation !== chatGenerationRef.current) return;
+      setSubmittedDesignId(selected.id);
+      await refreshEvaluationImages();
+      setFinishNotice({ status: "success", message: t("design.submitSuccess") });
+    } catch { setErrorMessage("계획안을 제출하지 못했어요. 기존 이미지는 그대로 있어요. 다시 시도해주세요."); }
+    finally { if (generation === chatGenerationRef.current) { submittingDesignRef.current = false; setSubmittingDesign(false); } }
   };
 
   const handleSubmitRankings = async () => {
@@ -1904,9 +1990,13 @@ const handleSend = async (suggestedQuestion?: string) => {
           followLatestRef.current = list.scrollHeight - list.clientHeight - list.scrollTop < 80;
         }}
         onWheel={(event) => { if (event.deltaY < 0) followLatestRef.current = false; }}>
-        {hasLoadedChatLogs&&previousStage(activeStep.id)&&topicState.scope!==topicScope&&<p role="status" className="mb-2 text-sm">지난 단계의 이야기를 불러오고 있어요…</p>}
-        {hasLoadedChatLogs&&topicState.scope===topicScope&&topicState.error&&<p role="alert" className="mb-2 text-sm text-amber-800">이전 이야기 조회 또는 주제 추출에 실패했어요. 대화가 없다는 뜻은 아니에요. <button type="button" className="underline" onClick={()=>setTopicRetry(n=>n+1)}>다시 불러오기</button></p>}
-        {hasLoadedChatLogs&&previousStage(activeStep.id)&&topicState.scope===topicScope&&topicState.needsPreparation&&!continuityTopics.length&&<section aria-label={priorTopicsHeading} className="mb-3 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+        {activeStep.id === "alternatives" && proposalBusy && <p role="status" className="mb-3 text-sm text-blue-900">{t("design.preparing")}</p>}
+        {activeStep.id === "alternatives" && designFlow && !designDirection && !proposalBusy && <button type="button" className="mb-3 min-h-11 rounded-full border px-4 text-blue-900" onClick={() => setDesignRetry(value => value + 1)}>{t("design.prepareRetry")}</button>}
+        {activeStep.id === "alternatives" && designFlow && designDirection && !isStageLocked && <DesignProposal direction={designDirection} busy={proposalBusy || isLoadingAlternatives || isSending} onConfirm={() => void generateConfirmedDesign()} onRevise={() => { setEditingDirection(true); setErrorMessage(null); composerInputRef.current?.focus(); }} />}
+        {activeStep.id === "alternatives" && editingDirection && <p role="status" className="mb-3 text-sm text-blue-900">{t("design.reviseGuide")}</p>}
+        {hasLoadedChatLogs&&!(activeStep.id === "alternatives" && designFlow)&&previousStage(activeStep.id)&&topicState.scope!==topicScope&&<p role="status" className="mb-2 text-sm">지난 단계의 이야기를 불러오고 있어요…</p>}
+        {hasLoadedChatLogs&&!(activeStep.id === "alternatives" && designFlow)&&topicState.scope===topicScope&&topicState.error&&<p role="alert" className="mb-2 text-sm text-amber-800">이전 이야기 조회 또는 주제 추출에 실패했어요. 대화가 없다는 뜻은 아니에요. <button type="button" className="underline" onClick={()=>setTopicRetry(n=>n+1)}>다시 불러오기</button></p>}
+        {hasLoadedChatLogs&&!(activeStep.id === "alternatives" && designFlow)&&previousStage(activeStep.id)&&topicState.scope===topicScope&&topicState.needsPreparation&&!continuityTopics.length&&<section aria-label={priorTopicsHeading} className="mb-3 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
           <h4 className="font-semibold text-blue-950">{priorTopicsHeading}</h4>
           <p role="status" className="text-sm text-slate-600">{topicState.preparationMessage??topicSummaryNotice({status:topicState.status??'missing',reason:topicState.reason})}</p>
           <div className="flex flex-wrap gap-2">
@@ -1915,7 +2005,7 @@ const handleSend = async (suggestedQuestion?: string) => {
             <button type="button" className="min-h-11 rounded-full border px-3 text-sm" onClick={()=>setTopicRetry(value=>value+1)} disabled={Boolean(topicState.preparing)}>다시 불러오기</button>
           </div>
         </section>}
-        {hasLoadedChatLogs && (!hasDialogue || continuityTopics.length>0) && !hasParticipantDialogue && !continuityTopicId && guide && (
+        {hasLoadedChatLogs && !(activeStep.id === "alternatives" && (designFlow || proposalBusy)) && (!hasDialogue || continuityTopics.length>0) && !hasParticipantDialogue && !continuityTopicId && guide && (
           <>
             {continuityTopics.length>0 && <section className="space-y-3" aria-label={priorTopicsHeading}>
               <h4 className="font-semibold text-blue-950">{priorTopicsHeading}</h4>
@@ -1948,7 +2038,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               {message.analysis && <AnalysisAnswerView answer={message.analysis.answer} record={message.analysis} onViewEvidence={() => setInspectedAnalysis(message.analysis!)} />}
               {message.text && !message.analysis && (
                 <div className="mt-2">
-                  <ChatMessageContent text={geoChat?.time === message.createdAt && geo.result?.question === geoChat.question ? geo.result.reply : isAssistant && message.imageUrl ? localize(message.text) : message.text} />
+                  <ChatMessageContent text={geoChat?.time === message.createdAt && geo.result?.question === geoChat.question ? geo.result.reply : isAssistant && message.imageUrl && activeStep.id !== "alternatives" ? localize(message.text) : message.text} />
                 </div>
               )}
               {message.imageUrl && (
@@ -2005,7 +2095,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
           type="button"
           onClick={() => { void handleSend(); }}
-          disabled={isSending || isStageLocked || isLoadingAlternatives || !hasLoadedChatLogs}
+          disabled={isSending || isStageLocked || isLoadingAlternatives || (activeStep.id === "alternatives" && proposalBusy) || !hasLoadedChatLogs}
         >
           {isLoadingAlternatives ? `${t("workspace.sending")}…`
           :isSending ? t("workspace.sending") : t("workspace.send")}
@@ -2015,7 +2105,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       {!hasLoadedChatLogs && !errorMessage && <p role="status" className="mt-3 text-xs text-slate-500">{t("workspace.chatLoading")}</p>}
       {errorMessage && (
         <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-600">
-          {localize(errorMessage, "common.requestFailed")}
+          {activeStep.id === "alternatives" ? errorMessage : localize(errorMessage, "common.requestFailed")}
         </div>
       )}
       {finishNotice && (
@@ -2032,7 +2122,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       {finishNotice.status === "uploading" && (
         <div className="h-3 w-3 animate-spin rounded-full border-2 border-rose-300 border-t-transparent" />
       )}
-        {localize(finishNotice.message, "common.requestFailed")}
+        {activeStep.id === "alternatives" ? finishNotice.message : localize(finishNotice.message, "common.requestFailed")}
       </div>
       )}
       {renderStageCompletion("chat")}
@@ -2268,7 +2358,7 @@ const handleSend = async (suggestedQuestion?: string) => {
 
       {activeStep.id === "alternatives" && (
         <WorkspacePanels navigation={stageNavigation} stageTitle={t(activeStep.titleKey)} completionControl={renderStageCompletion("header")} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
-          <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+          <div className="relative rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="workspace-stage-heading text-lg font-semibold">{t("workspace.imageGallery")}</h3>
             <p className="workspace-stage-heading mt-2 text-sm text-slate-500">
               {t("workspace.imageGalleryDesc")}
@@ -2310,20 +2400,6 @@ const handleSend = async (suggestedQuestion?: string) => {
                 )}
               </div>
 
-              {isLoadingAlternatives && (
-                <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/30 p-4">
-                  <div className="flex h-44 w-full animate-pulse flex-col items-center justify-center rounded-xl border-2 border-dashed border-blue-300 bg-white/50 text-blue-600">
-                    <div className="mb-3 h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-                    <span className="text-sm font-bold">
-                      {groupedAlternativeImages.length === 0
-                        ? `${t("workspace.send")}...`
-                        : `${t("workspace.updating")}...`}
-                    </span>
-                    <span className="mt-1 text-xs opacity-70">{t("workspace.sending")}</span>
-                  </div>
-                </div>
-              )}
-
               {groupedAlternativeImages.length === 0 &&
                 !isLoadingAlternatives && (
                   <div className="flex flex-col items-center justify-center gap-3 py-6">
@@ -2333,12 +2409,13 @@ const handleSend = async (suggestedQuestion?: string) => {
                   </div>
                 )}
             </div>
+            {isLoadingAlternatives && <div role="status" className="pointer-events-none absolute bottom-24 right-4 z-20 flex items-center gap-2 rounded-full border border-blue-200 bg-white/95 px-4 py-3 text-sm font-semibold text-blue-900 shadow-sm"><span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />{t(imageOperation === "edit" ? "design.editing" : "design.generating")}</div>}
             <div className="mt-6 flex flex-wrap gap-3">
               <button
                 className="rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
                 type="button"
                 onClick={handleSubmitAlternative}
-                disabled={!selectedAlternative}
+                disabled={!selectedAlternative || submittingDesign || isLoadingAlternatives || Boolean(lockedStages.alternatives) || completedStages.includes("alternatives")}
               >
                 {t("workspace.submitDesign")}
               </button>
@@ -2719,11 +2796,11 @@ const handleSend = async (suggestedQuestion?: string) => {
 <dialog ref={completionDialog} aria-labelledby="completion-title" aria-describedby="completion-description"
         className="workspace-completion-dialog w-[calc(100%_-_32px)] max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-xl backdrop:bg-slate-900/40"
         onCancel={(event) => { event.preventDefault(); closeCompletion(false); }}>
-        <h3 id="completion-title" className="text-lg font-semibold">{t("workspace.completeTitle")}</h3>
-        <p id="completion-description" className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600">{t("workspace.completeBody")}</p>
+        <h3 id="completion-title" className="text-lg font-semibold">{completionPurpose === "submission" ? t("design.submissionTitle") : t("workspace.completeTitle")}</h3>
+        <p id="completion-description" className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600">{completionPurpose === "submission" ? t("design.submissionBody") : t("workspace.completeBody")}</p>
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" className="min-h-11 rounded-full border px-5 py-2 text-sm" onClick={() => closeCompletion(false)}>{t("workspace.cancel")}</button>
-          <button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-5 py-2 text-sm font-semibold text-white" onClick={() => closeCompletion(true)}>{t("workspace.finishStage")}</button>
+          <button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-5 py-2 text-sm font-semibold text-white" onClick={() => closeCompletion(true)}>{completionPurpose === "submission" ? t("workspace.submitDesign") : t("workspace.finishStage")}</button>
         </div>
       </dialog>, document.body)}
       {portalReady && createPortal(<dialog ref={summaryDialog} aria-labelledby="summary-review-title" className="workspace-completion-dialog w-[calc(100%_-_32px)] max-w-xl rounded-3xl border border-slate-200 bg-white p-5 shadow-xl backdrop:bg-slate-900/40" onCancel={event=>{event.preventDefault();closeSummaryReview(false);}}>
@@ -2732,7 +2809,8 @@ const handleSend = async (suggestedQuestion?: string) => {
         <textarea aria-label={t("facilitation.summary")} value={summaryDraft} onChange={event=>setSummaryDraft(event.target.value)} maxLength={12000} className="mt-3 h-[min(45dvh,360px)] min-h-36 w-full rounded-xl border p-3 text-sm"/>
         <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" className="min-h-11 rounded-full border px-4" onClick={()=>closeSummaryReview(false)}>{t("workspace.cancel")}</button><button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-4 text-white disabled:opacity-50" disabled={!summaryDraft.trim()} onClick={()=>closeSummaryReview(true)}>{t("facilitation.confirmSummary")}</button></div>
       </dialog>, document.body)}
-      {selectedImage && (
+      {selectedImage && activeStep.id === "alternatives" && selectedImageItem && <DesignImageEditor key={selectedImage} image={selectedImageItem} busy={isLoadingAlternatives} readOnly={Boolean(lockedStages.alternatives) || completedStages.includes("alternatives")} onClose={() => setSelectedImage(null)} onEdit={async (parentImageId, mask, feedback) => { await generateConfirmedDesign({ parentImageId, mask, feedback }); }} />}
+      {selectedImage && activeStep.id !== "alternatives" && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4"
           onClick={() => setSelectedImage(null)}

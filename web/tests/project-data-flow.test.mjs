@@ -11,7 +11,7 @@ const uploads=load('lib/storage-upload-server.js');
 const {uploadProjectFile}=load('lib/storage-upload.js');
 function mock(t,obj,key,value){const old=obj[key];obj[key]=value;t.after(()=>obj[key]=old)}
 const project={projectName:'실제 사업',projectAdmin:'owner@example.org',workspaceContent:{problem:{title:'사업 배경',text:'실제 도로폭은 8m입니다.'},data:{title:'현황 자료',text:'대상지 면적 1234㎡',cases:[{id:'park',label:'기록된 사례',title:'주민 참여',text:'주민이 공원을 관리했습니다.'}]},alternatives:{text:'사업 계획'}}};
-function database(records,writes=[]){return {doc:p=>({get:async()=>({exists:p in records,data:()=>records[p]}),set:async v=>writes.push({p,v})}),collection:p=>({add:async v=>{writes.push({p,v});return {id:'archive-'+writes.length}}})}}
+function database(records,writes=[]){return {doc:p=>({get:async()=>({exists:p in records,data:()=>records[p]}),set:async v=>writes.push({p,v}),create:async v=>writes.push({p,v})}),collection:p=>({add:async v=>{writes.push({p,v});return {id:'archive-'+writes.length}}})}}
 const request=(body={})=>({method:'POST',headers:{authorization:'Bearer fixture-token',origin:'https://example.org'},body:{projectId:'alpha',...body}});
 function fixture(t){
  mock(t,load('lib/research/case-sources-server.js'),'readCasePassages',async()=>[]);
@@ -55,13 +55,17 @@ test('storage finalization validates project, ownership and actual bytes; archiv
  const current=writes.find(w=>w.p==='ppssBackgroundKnowledge_alpha/current').v;assert.deepEqual(current.sourceIds,['archive-1']);
 });
 test('Stage 3 reads the same project-specific current image written by Settings',async t=>{
- fixture(t);const writes=[],stored=[];mock(t,admin,'adminDb',()=>database({'ppssProjects/alpha':project,'users/member/projectMemberships/alpha':{role:'participant'},'ppssSiteImages_alpha/current':{imageId:'settings-image',downloadUrl:'https://storage.example/site.png'}},writes));
- mock(t,admin,'adminBucket',()=>({file:path=>({save:async(bytes,options)=>stored.push({path,bytes,options})})}));
+ fixture(t);const writes=[],stored=[],storagePath='projects/alpha/site-images/settings-image';
+ mock(t,admin,'adminDb',()=>database({'ppssProjects/alpha':project,'users/member/projectMemberships/alpha':{role:'participant'},'ppssSiteImages_alpha/current':{imageId:'settings-image',storagePath}},writes));
+ const image=await require('sharp')({create:{width:1903,height:895,channels:4,background:'white'}}).png().toBuffer();
+ mock(t,admin,'adminBucket',()=>({file:path=>({getMetadata:async()=>[{size:image.length}],download:async()=>{assert.equal(path,storagePath);return [image]},save:async(bytes,options)=>stored.push({path,bytes,options})})}));
  mock(t,admin,'buildDownloadUrl',()=> 'https://storage.example/generated.png');
+ // Concurrency is exercised in design-alternatives.test; this test isolates project image resolution.
+ mock(t,load('lib/design-alternatives-server.js'),'withDesignOperation',async(_context,_kind,_id,_payload,work)=>work());
  const old=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='fixture';t.after(()=>{if(old===undefined)delete process.env.OPENAI_API_KEY;else process.env.OPENAI_API_KEY=old});
  mock(t,llm,'callLLM',async input=>{assert.doesNotMatch(input.systemText,/overpass|NO cars/i);assert.match(input.systemText,/camera position, viewpoint, perspective, and spatial layout/);assert.match(input.systemText,/this project's dialogue and workspace summaries/);assert.match(input.userText,/실제 사업/);return 'Preserve the site image and improve walking space.'});let imageInputs=0;
- mock(t,global,'fetch',async(url,options)=>{if(url==='https://storage.example/site.png')return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'image/png'}});assert.equal(url,'https://api.openai.com/v1/images/edits');assert.equal(options.body.get('model'),'gpt-image-2.6-flare');imageInputs++;return Response.json({data:[{b64_json:'fixture-image'}]})});
- const res=response();await load('pages/api/generate-alternative.js').default(request({userID:'member',provider:'openai',workspaceSummary:{},workspaceInput:{}}),res);assert.equal(res.code,200);assert.equal(imageInputs,1);assert.equal(res.body.base64,undefined);assert.equal(res.body.downloadUrl,'https://storage.example/generated.png');assert.equal(stored.length,1);assert.match(stored[0].path,/^projects\/alpha\/generated-images\//);assert.equal(writes[0].v.userId,'member');assert.equal(writes[0].v.storagePath,stored[0].path);
+ mock(t,global,'fetch',async(url,options)=>{assert.equal(url,'https://api.openai.com/v1/images/edits');assert.equal(options.body.get('model'),'gpt-image-2.6-flare');assert.equal(options.body.get('size'),'1536x720');imageInputs++;return Response.json({data:[{b64_json:image.toString('base64')}]})});
+ const res=response();await load('pages/api/generate-alternative.js').default(request({requestId:'fixture-request',provider:'openai'}),res);assert.equal(res.code,200);assert.equal(imageInputs,1);assert.equal(res.body.base64,undefined);assert.equal(res.body.downloadUrl,'https://storage.example/generated.png');assert.equal(stored.length,1);assert.match(stored[0].path,/^projects\/alpha\/generated-images\//);assert.equal(writes[0].v.userId,'member');assert.equal(writes[0].v.storagePath,stored[0].path);
 });
 
 test('image prompt revisions use current-project history and summaries without a hardcoded design subject',async t=>{
