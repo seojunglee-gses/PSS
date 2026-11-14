@@ -12,7 +12,7 @@ import {
 } from "../../lib/firebase";
 import { useI18n } from "../../lib/i18n";
 import { useProject } from "../../lib/projects";
-import { canManageProject } from "../../lib/rbac";
+import { canManageProject, TEST_ADMIN_EMAIL } from "../../lib/rbac";
 import { projectRequest } from "../../lib/membership/client";
 import SpatialDatasetManager from "../../components/spatial/SpatialDatasetManager";
 
@@ -68,10 +68,12 @@ export default function Setting() {
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
   }, [participantsOpen]);
   useEffect(() => { setParticipants([]); setParticipantCount(0); setParticipantsOpen(false); setResetParticipant(""); setChatResetMessage(""); }, [projectId, user?.uid]);
-  const resetParticipantChat = async () => {
-    if (!user || !resetParticipant || resettingChat || !window.confirm(t("setting.chatResetConfirm"))) return;
+  const resetParticipantChat = async (target: "participant" | "test-admin" = "participant") => {
+    if (!user || target === "participant" && !resetParticipant || resettingChat) return;
+    const confirmed = window.confirm(target === "test-admin" ? t("setting.testAdminResetConfirm", { email: TEST_ADMIN_EMAIL, stage: t(`step.${resetStage}`) }) : t("setting.chatResetConfirm"));
+    if (!confirmed) return;
     setResettingChat(true); setChatResetMessage("");
-    try { await projectRequest(user, "/api/projects/participant-summaries", { action: "softResetChat", projectId, userId: resetParticipant, stageId: resetStage }); setChatResetMessage("setting.chatResetSaved"); }
+    try { await projectRequest(user, "/api/projects/participant-summaries", { action: target === "test-admin" ? "softResetTestAdminChat" : "softResetChat", projectId, ...(target === "participant" ? { userId: resetParticipant } : {}), stageId: resetStage }); setChatResetMessage(target === "test-admin" ? "setting.testAdminResetSaved" : "setting.chatResetSaved"); }
     catch { setChatResetMessage("setting.chatResetFailed"); }
     finally { setResettingChat(false); }
   };
@@ -512,6 +514,10 @@ export default function Setting() {
                 <label className="grid min-w-0 max-w-full gap-1 text-xs">{t("setting.chatResetParticipant")}<select aria-label={t("setting.chatResetParticipant")} value={resetParticipant} onChange={event => setResetParticipant(event.target.value)} className="min-h-11 max-w-full rounded-lg border bg-white p-2"><option value="">{t("setting.chooseParticipant")}</option>{participants.map(entry => <option key={entry.userId} value={entry.userId}>{entry.participantId ?? entry.userId}</option>)}</select></label>
                 <label className="grid min-w-0 max-w-full gap-1 text-xs">{t("setting.chatResetStage")}<select aria-label={t("setting.chatResetStage")} value={resetStage} onChange={event => setResetStage(event.target.value)} className="min-h-11 rounded-lg border bg-white p-2">{["problem", "data", "alternatives", "evaluation", "report"].map(stage => <option key={stage} value={stage}>{t(`step.${stage}`)}</option>)}</select></label>
                 <button type="button" disabled={!resetParticipant || resettingChat} onClick={() => void resetParticipantChat()} className="min-h-11 rounded-full border border-slate-300 bg-white px-3 text-xs disabled:opacity-50">{t("setting.chatSoftReset")}</button>
+                <div className="flex w-full flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
+                  <span className="break-all text-xs text-slate-600">{t("setting.testAdminAccount", { email: TEST_ADMIN_EMAIL })}</span>
+                  <button type="button" disabled={resettingChat} onClick={() => void resetParticipantChat("test-admin")} className="min-h-11 rounded-full border border-blue-200 bg-white px-3 text-xs text-blue-800 disabled:opacity-50">{t("setting.testAdminReset")}</button>
+                </div>
                 {chatResetMessage && <p role="status" className="w-full text-xs">{t(chatResetMessage)}</p>}
               </div>
               <div className="mt-4 grid gap-3 text-xs">

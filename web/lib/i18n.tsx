@@ -46,6 +46,10 @@ const STORAGE_KEY = "ppss-locale";
 
 export const messagesByLocale: Record<Locale, Messages> = {
   en: {
+    "setting.testAdminAccount": "Test administrator account: {email}",
+    "setting.testAdminReset": "Reset test administrator chat",
+    "setting.testAdminResetConfirm": "Archive and clear only the {stage} chat for {email}? Completion, summaries and uploaded materials will be preserved.",
+    "setting.testAdminResetSaved": "The test administrator chat was archived and reset. Reload that account’s workspace.",
     "evaluation.heatmap": "Plan rank selection heatmap",
     "evaluation.heatmapUnit": "Unit: selections",
     "evaluation.rankNumber": "Rank {rank}",
@@ -894,6 +898,10 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.compareSearchesMissing": "Two recent place search results could not be verified. Please search for the places again before comparing.",
   },
   ko: {
+    "setting.testAdminAccount": "관리자 테스트 계정: {email}",
+    "setting.testAdminReset": "관리자 테스트 계정 대화 초기화",
+    "setting.testAdminResetConfirm": "{email} 계정의 {stage} 대화만 보관 후 초기화할까요? 완료 상태, 요약, 업로드 자료는 유지됩니다.",
+    "setting.testAdminResetSaved": "관리자 테스트 계정 대화를 보관하고 초기화했습니다. 해당 계정의 작업공간을 새로고침해 주세요.",
     "evaluation.heatmap": "계획안별 순위 선택 히트맵",
     "evaluation.heatmapUnit": "단위: 선택 수",
     "evaluation.rankNumber": "{rank}순위",
@@ -1742,6 +1750,10 @@ export const messagesByLocale: Record<Locale, Messages> = {
     "gis.compareSearchesMissing": "비교할 최근 두 장소 검색 결과를 확인할 수 없습니다. 비교할 장소를 다시 검색해주세요.",
   },
   zh: {
+    "setting.testAdminAccount": "管理员测试账户：{email}",
+    "setting.testAdminReset": "重置管理员测试对话",
+    "setting.testAdminResetConfirm": "是否归档并清空 {email} 的{stage}对话？完成状态、摘要和上传资料会保留。",
+    "setting.testAdminResetSaved": "管理员测试对话已归档并重置。请刷新该账户的工作区。",
     "evaluation.heatmap": "方案排名选择热图",
     "evaluation.heatmapUnit": "单位：选择数",
     "evaluation.rankNumber": "第 {rank} 名",
