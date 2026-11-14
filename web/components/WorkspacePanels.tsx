@@ -5,11 +5,12 @@ import { useI18n } from "../lib/i18n";
 import { constrainPanelRatio, DEFAULT_PANEL_RATIO, PANEL_DIVIDER_WIDTH, panelRatioBounds, workspaceLayoutMode, workspaceViewportMetrics } from "../lib/workspace-layout";
 import type { WorkspacePanelView } from "../lib/workspace-layout";
 
-export default function WorkspacePanels({ children, navigation, stageTitle, completionControl, ratio, onRatioChange, view, onViewChange }: {
-  children: ReactNode; navigation?: ReactNode; stageTitle?: string; completionControl?: ReactNode; ratio: number; onRatioChange: (ratio: number) => void;
+export default function WorkspacePanels({ children, navigation, stageTitle, completionControl, informationLabel, detailLabel, ratio, onRatioChange, view, onViewChange }: {
+  informationLabel?: string; detailLabel?: string; children: ReactNode; navigation?: ReactNode; stageTitle?: string; completionControl?: ReactNode; ratio: number; onRatioChange: (ratio: number) => void;
   view: WorkspacePanelView; onViewChange: (view: WorkspacePanelView) => void;
 }) {
   const { t, locale } = useI18n();
+  const leftLabel = informationLabel ?? t("workspace.informationView"), rightLabel = detailLabel ?? t("workspace.chatView");
   const id = useId();
   const menu = useContext(WorkspaceNavigationContext);
   const [fontOpen, setFontOpen] = useState(false);
@@ -38,9 +39,9 @@ export default function WorkspacePanels({ children, navigation, stageTitle, comp
       divider.current?.setAttribute("aria-valuemax", String(Math.round(limits.max)));
     }
     divider.current?.setAttribute("aria-valuenow", String(Math.round(next)));
-    divider.current?.setAttribute("aria-valuetext", `${t("workspace.informationView")} ${Math.round(next)}% · ${t("workspace.chatView")} ${Math.round(100 - next)}%`);
+    divider.current?.setAttribute("aria-valuetext", `${leftLabel} ${Math.round(next)}% · ${rightLabel} ${Math.round(100 - next)}%`);
     return next;
-  }, [t]);
+  }, [leftLabel, rightLabel]);
   useEffect(() => {
     desktopRatio.current = ratio;
     if (!tablet.current) {
@@ -189,8 +190,8 @@ export default function WorkspacePanels({ children, navigation, stageTitle, comp
   };
   return <section ref={root} className="workspace-panels" data-layout="toggle" data-view={view}>
     <div className="workspace-view-switch" role="group" aria-label={t("workspace.panelView")}>
-      <button type="button" aria-pressed={view === "information"} aria-controls={`${id}-information`} onClick={() => onViewChange("information")}>{t("workspace.informationView")}</button>
-      <button type="button" aria-pressed={view === "chat"} aria-controls={`${id}-chat`} onClick={() => onViewChange("chat")}>{t("workspace.chatView")}</button>
+      <button type="button" aria-pressed={view === "information"} aria-controls={`${id}-information`} onClick={() => onViewChange("information")}>{leftLabel}</button>
+      <button type="button" aria-pressed={view === "chat"} aria-controls={`${id}-chat`} onClick={() => onViewChange("chat")}>{rightLabel}</button>
     </div>
     <div className="workspace-panel-body">
       <div className="workspace-information-column">
@@ -211,7 +212,7 @@ export default function WorkspacePanels({ children, navigation, stageTitle, comp
         </div>
         <div className="workspace-tablet-navigation">{navigation}</div>
         <div className="workspace-information-frame">
-          <div ref={information} id={`${id}-information`} className="workspace-information" role="region" tabIndex={0} aria-label={t("workspace.informationView")}>{panels.slice(0, -1)}</div>
+          <div ref={information} id={`${id}-information`} className="workspace-information" role="region" tabIndex={0} aria-label={leftLabel}>{panels.slice(0, -1)}</div>
           <div className="workspace-scroll-indicator" aria-hidden="true"><span ref={indicator} /></div>
         </div>
       </div>
@@ -244,7 +245,7 @@ export default function WorkspacePanels({ children, navigation, stageTitle, comp
         onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
         <svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m7 8-4 4 4 4m10-8 4 4-4 4M3 12h18M10 6v12m4-12v12" /></svg>
       </div></div>
-      <div id={`${id}-chat`} className="workspace-chat-slot" role="region" aria-label={t("workspace.chatView")}>{panels[panels.length - 1]}</div>
+      <div id={`${id}-chat`} className="workspace-chat-slot" role="region" aria-label={rightLabel}>{panels[panels.length - 1]}</div>
     </div>
   </section>;
 }

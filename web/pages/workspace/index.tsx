@@ -1,3 +1,5 @@
+import RankingHeatmap from "../../components/evaluation/RankingHeatmap";
+import { TOP_RANKS, selectTopRank, topRankSelection, completeTopRanks } from "../../lib/evaluation-ranks";
 import ImageGenerationPlaceholder from "../../components/design/ImageGenerationPlaceholder";
 import DesignImageEditor from "../../components/design/DesignImageEditor";
 import DesignProposal from "../../components/design/DesignProposal";
@@ -291,7 +293,7 @@ function AuthorizedWorkspace() {
   const continuityTopicId=selectedContinuity?.scope===topicScope?selectedContinuity.id:undefined;
   const continuityTopics=topicState.scope===topicScope?topicState.topics:[];
   useEffect(()=>{
-    if(!user||!previousStage(activeStep.id))return;
+    if(!user||activeStep.id === "report"||!previousStage(activeStep.id))return;
     const controller=new AbortController();
     void (async()=>{
       try{
@@ -326,6 +328,8 @@ function AuthorizedWorkspace() {
     finally{if(topicPreparation.current===controller)topicPreparation.current=null;if(!controller.signal.aborted)setTopicState(state=>state.scope===topicScope?{...state,preparing:false}:state);}
   };
   const [panelRatio, setPanelRatio] = useState(DEFAULT_PANEL_RATIO);
+  const [reportRatio, setReportRatio] = useState(38);
+  const [reportView, setReportView] = useState<WorkspacePanelView>("chat");
   const [panelView, setPanelView] = useState<WorkspacePanelView>("information");
   const [compactHeader, setCompactHeader] = useState(true);
   const [activeTab, setActiveTab] = useState("patterns");
@@ -921,28 +925,12 @@ function AuthorizedWorkspace() {
   }, [projectId]);
 
   useEffect(() => {
-    setRankings((prev) => {
-      const next = { ...prev };
-      evaluationImages.forEach((image, index) => {
-        if (!next[image.id]) {
-          next[image.id] = index + 1;
-        }
-      });
-      Object.keys(next).forEach((key) => {
-        if (!evaluationImages.find((image) => image.id === key)) {
-          delete next[key];
-        }
-      });
-      return next;
-    });
+    setRankings(previous => topRankSelection(previous, evaluationImages.map(image => image.id)));
   }, [evaluationImages]);
 
-  const rankingOptions = useMemo(() => {
-    if (!evaluationImages.length) {
-      return ["1"];
-    }
-    return evaluationImages.map((_, index) => String(index + 1));
-  }, [evaluationImages]);
+  const rankingOptions = TOP_RANKS.slice(0, Math.min(3, evaluationImages.length)).map(String);
+  // Keep the existing pie's historical rank distribution, including past ranks above 3.
+  const statisticsRankOptions = useMemo(() => evaluationImages.length ? evaluationImages.map((_,index) => String(index+1)) : ["1"], [evaluationImages]);
 
   const progressValue = useMemo(() => {
     const index = steps.findIndex((step) => step.id === activeStep.id);
@@ -1559,10 +1547,7 @@ const handleSend = async (suggestedQuestion?: string) => {
   };
     
   const handleRankingChange = (imageId: string, value: string) => {
-    setRankings((prev) => ({
-      ...prev,
-      [imageId]: Number(value),
-    }));
+    setRankings(previous => selectTopRank(previous, imageId, value));
   };
   const selectedImageItem = selectedImage
     ? evaluationImages.find((image) => image.id === selectedImage) ||
@@ -1599,16 +1584,19 @@ const handleSend = async (suggestedQuestion?: string) => {
   };
 
   const handleSubmitRankings = async () => {
+    if (isSummarizing || lockedStages.evaluation || completedStages.includes("evaluation")) return;
     if (!userKey) {
       return;
     }
     if (!evaluationImages.length) {
       return;
     }
+    const selectedRankings = topRankSelection(rankings, evaluationImages.map(image => image.id));
+    if (!completeTopRanks(selectedRankings, evaluationImages.map(image => image.id))) return;
     if (!await confirmCompletion()) return;
     const payload = {
       submittedAt: new Date().toISOString(),
-      rankings,
+      rankings: selectedRankings,
       userId: userKey,
       role,
     };
@@ -1624,7 +1612,8 @@ const handleSend = async (suggestedQuestion?: string) => {
   useEffect(() => {
     followLatestRef.current = true;
     messageScrollRef.current = 0;
-  }, [chatScope]);
+    if (activeStep.id === "report") setFinishNotice(null);
+  }, [chatScope, activeStep.id]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
@@ -1696,14 +1685,14 @@ const handleSend = async (suggestedQuestion?: string) => {
     if (!topPreference) {
       return [];
     }
-    return rankingOptions.map((rankLabel) => {
+    return statisticsRankOptions.map((rankLabel) => {
       const rank = Number(rankLabel);
       const value = evaluationResults.filter(
         (result) => result.rankings?.[topPreference.id] === rank
       ).length;
       return { rank, value };
     });
-  }, [evaluationResults, rankingOptions, topPreference]);
+  }, [evaluationResults, statisticsRankOptions, topPreference]);
 
   const pieGradient = useMemo(() => {
     const total = topPreferenceRankTotals.reduce(
@@ -2441,6 +2430,7 @@ const handleSend = async (suggestedQuestion?: string) => {
             <p className="workspace-stage-heading mt-2 text-sm text-slate-500">
               {activeProject?.workspaceContent.evaluation.text || t("workspace.evaluationIntro")}
             </p>
+            <p className="mt-4 text-sm text-slate-600">{t("evaluation.rankHelp")}</p>
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {isLoadingEvaluationImages && (
                 <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
@@ -2478,12 +2468,15 @@ const handleSend = async (suggestedQuestion?: string) => {
                       <div className="flex items-center gap-2">
                         <span>{t("workspace.rank")}</span>
                         <select
-                          className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs"
-                          value={String(rankings[image.id] ?? 1)}
+                          className="min-h-11 rounded-full border border-slate-200 bg-white px-2 py-1 text-xs"
+                          aria-label={t("evaluation.chooseRank", { image: localize(image.label) })}
+                          value={rankings[image.id] ? String(rankings[image.id]) : ""}
+                          disabled={isSummarizing || Boolean(lockedStages.evaluation) || completedStages.includes("evaluation")}
                           onChange={(event) =>
                             handleRankingChange(image.id, event.target.value)
                           }
                         >
+                          <option value="">{t("evaluation.unranked")}</option>
                           {rankingOptions.map((option) => (
                             <option key={option} value={option}>
                               {option}
@@ -2510,7 +2503,7 @@ const handleSend = async (suggestedQuestion?: string) => {
               className="mt-6 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--primary-dark)]"
               type="button"
               onClick={handleSubmitRankings}
-              disabled={!evaluationImages.length || isSummarizing}
+              disabled={!completeTopRanks(rankings, evaluationImages.map(image => image.id)) || isSummarizing || Boolean(lockedStages.evaluation) || completedStages.includes("evaluation")}
             >
               {t("workspace.submitRanking")}
             </button>
@@ -2520,7 +2513,7 @@ const handleSend = async (suggestedQuestion?: string) => {
       )}
 
       {activeStep.id === "report" && (
-        <WorkspacePanels navigation={stageNavigation} stageTitle={t(activeStep.titleKey)} completionControl={renderStageCompletion("header")} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
+        <WorkspacePanels navigation={stageNavigation} stageTitle={t(activeStep.titleKey)} completionControl={renderStageCompletion("header")} informationLabel={t("evaluation.summaryPanel")} detailLabel={t("evaluation.resultsPanel")} ratio={reportRatio} onRatioChange={setReportRatio} view={reportView} onViewChange={setReportView}>
           <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
             <h3 className="workspace-stage-heading text-lg font-semibold">{t("workspace.reportTitle")}</h3>
             <p className="workspace-stage-heading mt-2 text-sm text-slate-500">
@@ -2649,13 +2642,12 @@ const handleSend = async (suggestedQuestion?: string) => {
                 )}
               </div>
             )}
+            {finishNotice && <p role="status" className="mt-4 text-sm text-slate-600">{finishNotice.message}</p>}
             {renderStageCompletion("report")}
           </div>
-          <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">{t("workspace.evidenceTitle")}</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              {t("workspace.evidenceIntro")}
-            </p>
+          <div className="workspace-report-results h-full overflow-y-auto rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm sm:p-6">
+            <h3 className="text-lg font-semibold">{t("evaluation.resultsPanel")}</h3>
+
             <div className="mt-6 space-y-4">
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="text-xs font-semibold uppercase text-slate-400">
@@ -2677,9 +2669,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                   {localize(topPreference?.label ?? t("workspace.design"))} ·{" "}
                   {getParticipantRoleLabel(topPreference)}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {t("workspace.highestRated")}
-                </p>
+
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="text-xs font-semibold uppercase text-slate-400">
@@ -2711,77 +2701,9 @@ const handleSend = async (suggestedQuestion?: string) => {
                   </div>
                 </div>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  {t("workspace.rankingOverview")}
-                </p>
-                <div className="mt-3 space-y-3">
-                  <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-3 text-[11px] font-semibold uppercase text-slate-400">
-                    <span>{t("workspace.alternative")}</span>
-                    <span>{t("workspace.participantRole")}</span>
-                    <span>{t("workspace.averageRank")}</span>
-                    <span>{t("workspace.votes")}</span>
-                  </div>
-                  {aggregatedResults.map((result) => (
-                    <div key={result.id} className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-slate-500">
-                        <div className="relative group font-semibold text-slate-700">
-                          <span className="cursor-default">
-                            {localize(result.label)}{" "}
-                            <span className="text-[11px] font-normal text-slate-400">
-                              {getParticipantRoleLabel(
-                                evaluationImages.find(
-                                  (image) => image.id === result.id
-                                )
-                              )}
-                            </span>
-                          </span>
-                          {evaluationImages.find(
-                            (image) => image.id === result.id
-                          )?.imageUrl && (
-                            <div className="workspace-hover-preview pointer-events-none absolute left-0 top-full z-10 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-lg opacity-0 transition-opacity duration-200">
-                              <img
-                                src={
-                                  evaluationImages.find(
-                                    (image) => image.id === result.id
-                                  )?.imageUrl
-                                }
-                                alt={t("home.preview", { project: localize(result.label) })}
-                                className="h-40 w-full rounded-lg object-cover"
-                              />
-                            </div>
-                          )}
-                        </div>
-                        <span>
-                          {t("workspace.avgRank")}{" "}
-                          {result.average > 0
-                            ? result.average.toFixed(1)
-                            : "N/A"}{" "}
-                          {t("workspace.topChoice")}{result.topChoice}
-                        </span>
-                        <span>{result.voteCount}</span>
-                      </div>
-                      <div className="h-2 rounded-full bg-slate-200">
-                        <div
-                          className="h-full rounded-full bg-[var(--primary)]"
-                          style={{
-                            width: `${Math.max(
-                              10,
-                              100 -
-                                (result.average /
-                                  Math.max(1, evaluationImages.length)) *
-                                  100
-                            )}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <RankingHeatmap images={evaluationImages} results={evaluationResults} onPreview={setSelectedImage} />
             </div>
           </div>
-          <div className="h-full min-w-0">{renderChatPanel()}</div>
         </WorkspacePanels>
       )}
       </div>
