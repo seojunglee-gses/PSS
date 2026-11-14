@@ -6,30 +6,13 @@ import {conversationHistory} from "../../../lib/chat-history";
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { loadProjectContext } from '../../../lib/project-context-server';
 import { AccessError } from '../../../lib/membership/server';
-import { projectLayers, executeGeoQuery, signGeoResult } from '../../../lib/spatial/geo-server';
+import { projectLayers, executeGeoQuery, signGeoResult, allowGeoRequest } from '../../../lib/spatial/geo-server';
 import { KakaoError } from '../../../lib/spatial/kakao-server';
 import { parseGeoContext, parseGeoPlan, spatialToolRequest } from '../../../lib/spatial/geo-query';
 import { translate, localizeMessage } from '../../../lib/i18n';
 export const config = { api: { bodyParser: { sizeLimit: '128kb' } } };
 export const maxDuration = 60;
-const requests = new Map<string, {
-    time: number;
-    count: number;
-}>();
-export function allowGeoRequest(key: string, now = Date.now()) {
-    for (const [id, v] of requests)
-        if (now - v.time > 60000)
-            requests.delete(id);
-    if (requests.size >= 2000 && !requests.has(key))
-        return false;
-    const previous = requests.get(key);
-    if (previous) {
-        previous.count++;
-        return previous.count <= 12;
-    }
-    requests.set(key, { time: now, count: 1 });
-    return true;
-}
+export { allowGeoRequest } from "../../../lib/spatial/geo-server";
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     res.setHeader('Cache-Control', 'private, no-store');
     const locale = req.body?.locale === 'en' ? 'en' : 'ko';

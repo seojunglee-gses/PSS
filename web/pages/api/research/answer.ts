@@ -1,8 +1,8 @@
 import {answerFailureType,logAnswerFailure} from "../../../lib/research/diagnostics";
-import { isSelectedPlaceDiscussion } from "../../../lib/spatial/geo-query";
+import { isSelectedPlaceDiscussion, requestsSpatialAnalysis } from "../../../lib/spatial/geo-query";
 import { isPlanningFollowUp, recentAnswerEvidence } from "../../../lib/research/follow-up";
 import { spatialPromptContext } from "../../../lib/spatial/context";
-import { projectLayers } from "../../../lib/spatial/geo-server";
+import { projectLayers, executeGeoQuery, allowGeoRequest } from "../../../lib/spatial/geo-server";
 import { canonicalBuildingContext } from "../../../lib/spatial/building-use-server";
 import { analysisActivities, analysisSessionContext, analysisSessionQuestion, isPaperReference } from "../../../lib/analysis-session";
 import { conversationHistory, clarificationExchange } from "../../../lib/chat-history";
@@ -50,9 +50,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (paper) request.selectedPaperId = paper.referenceId;
     }
     const automatic = !Array.isArray(req.body.selectedSources) || !req.body.selectedSources.length;
+    if (!automatic) {
+      const wanted = resolveSources(request.question,[],context.cases);
+      const blocked = wanted.filter(source => !request.selectedSources.includes(source) && (source === 'research' && /논문|연구|학술|research|papers?/i.test(request.question) || source === 'cases' && wantsNewCases(request.question) || source === 'spatial' && requestsSpatialAnalysis(request.question)));
+      for (const source of blocked) request.retrievalWarnings=[...(request.retrievalWarnings??[]),{source,message:`현재 자료 선택에 ${source==='research'?'학술 연구':source==='cases'?'사례 자료':'공간 분석'}가 없어 해당 검색·분석을 실행하지 않았어요. + 버튼에서 자동 선택이나 필요한 자료를 선택하면 사용할 수 있어요.`}];
+    }
     if (automatic && wantsResearch(request.question) && !wantsNewCases(request.question)) {
       // A referential effects question should not repeat the anchor's case search.
-      request.selectedSources = ["research"];
+      request.selectedSources = [...new Set([...resolveSources(request.question,[],context.cases), "research" as const])];
       if (/이런|이러한|그런|이\s*방법|그\s*방법|이\s*방식|this|that/i.test(request.question)) {
         const recent = request.history?.filter(message => message.role === "assistant").slice(-1)[0]?.content;
         if (recent) request.searchQuestion = `${request.question}\n앞서 논의한 방법: ${recent.slice(0, 1800)}`;
@@ -70,12 +75,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     request.analysisSession=analysisSessionContext(context.stageHistory,context.projectId,context.cases,request.selectedSources);
     if(request.selectedSources.includes("spatial") && !request.spatialContext && !isSelectedPlaceDiscussion(request.question))request.spatialContext=canonicalBuildingContext([...activities].reverse().find(a=>a.type==="spatial")?.result);
     if(req.body.topicSelection!==true&&request.selectedSources.includes("spatial")) {
-      const data=context.spatialData??await projectLayers(context.user,context.projectId);
-      request.registeredSpatialContext=spatialPromptContext(data.layers,req.body.spatialSelection,activities,!!data.boundary,{nearbyPlaces:!!data.boundary&&!!process.env.KAKAO_REST_API_KEY,priority:!!data.priority,boundary:data.boundary});
+      const executeSpatial = requestsSpatialAnalysis(request.question) && !request.reuseEvidence;
+      if (executeSpatial) request.spatialContext=undefined; // Never present an older computation as this failed/new request.
+      try {
+        const data=context.spatialData??await projectLayers(context.user,context.projectId);
+        request.registeredSpatialContext=spatialPromptContext(data.layers,req.body.spatialSelection,activities,!!data.boundary,{nearbyPlaces:!!data.boundary&&!!process.env.KAKAO_REST_API_KEY,priority:!!data.priority,boundary:data.boundary});
+        // Single-source GIS normally uses /api/spatial/query from the workspace.
+        // Mixed/direct evidence requests reuse the same engine, with one final answer call.
+        if (executeSpatial) {
+          if (!allowGeoRequest(`${context.user.uid}:${context.projectId}`)) throw Error("spatial-rate-limit");
+          const result = await executeGeoQuery({question:request.question,context:req.body.spatialSelection,history:request.history,locale:'ko'},context.user,context.projectId,data.layers,data.warnings,AbortSignal.timeout(20000),{boundary:data.boundary,settings:data.settings,priority:data.priority,boundaryLayerId:data.boundaryLayerId,placeSearch:data.placeSearch});
+          request.spatialQueryResult={reply:result.reply,places:result.places.slice(0,12).map(({id,name,coordinate,source,layerId,featureId})=>({id,name,coordinate,source,...(layerId&&featureId?{layerId,featureId}:{})})),warnings:result.warnings};
+          if (result.computedResult) request.spatialContext=result.computedResult;
+          if (result.clarify) request.clarification=result.reply;
+        }
+      } catch {
+        request.retrievalWarnings=[...(request.retrievalWarnings??[]),{source:'spatial',message:'지도 자료를 불러오지 못해 요청한 공간 분석을 완료하지 못했어요. 기존 대화와 사업 자료로 가능한 개선 방향을 이어갈게요.'}];
+      }
     }
-    if(req.body.topicSelection!==true&&request.selectedSources.includes('cases') && !request.reuseEvidence){
-      const focused=namedCases(request.searchQuestion,context.cases,contextual?[]:request.history);
-      request.casePassages=await readCasePassages(context.projectId,!wantsNewCases(request.question)&&focused.length?focused:context.cases);
+    if(req.body.topicSelection!==true&&request.selectedSources.includes('cases') && !request.reuseEvidence && (!wantsNewCases(request.question) || namedCases(request.question,context.cases).length>0)){
+      try {
+        const focused=namedCases(request.searchQuestion,context.cases,contextual?[]:request.history);
+        request.casePassages=await readCasePassages(context.projectId,focused.length?focused:context.cases);
+      } catch {
+        request.retrievalWarnings=[...(request.retrievalWarnings??[]),{source:'cases',message:'등록된 사례 문서 검색을 완료하지 못했어요. 현재 제공된 사례 본문을 바탕으로 설명할게요.'}];
+      }
     }
     request.facilitationHistory=policyHistory(context.stageHistory,[],"data");
     if(req.body.topicSelection===true&&context.continuityTopic){

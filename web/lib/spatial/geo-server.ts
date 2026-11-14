@@ -654,3 +654,21 @@ export async function executeGeoQuery(input: {
         warnings.push(t('gis.approximate'));
     return result;
 }
+
+// Same per-participant admission rule for map UI and mixed evidence chat.
+const geoQuotaState = globalThis as typeof globalThis & { __ppssGeoRequests?: Map<string, { time: number; count: number }> };
+const requests = geoQuotaState.__ppssGeoRequests ??= new Map<string, { time: number; count: number }>();
+export function allowGeoRequest(key: string, now = Date.now()) {
+    for (const [id, v] of requests)
+        if (now - v.time > 60000)
+            requests.delete(id);
+    if (requests.size >= 2000 && !requests.has(key))
+        return false;
+    const previous = requests.get(key);
+    if (previous) {
+        previous.count++;
+        return previous.count <= 12;
+    }
+    requests.set(key, { time: now, count: 1 });
+    return true;
+}
