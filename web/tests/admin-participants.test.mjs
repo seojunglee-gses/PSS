@@ -104,3 +104,37 @@ test('failed admin reset transaction preserves the original chat instead of part
  db.runTransaction=async callback=>{await callback({get:ref=>ref.get(),set(){}});throw Error('fixture commit failed')};
  const result=await route({method:'POST',body:{projectId:'p',action:'softResetTestAdminChat',stageId:'data'}});assert.equal(result.status,503);assert.equal(JSON.stringify([...store]),before);
 });
+
+test('evaluation descriptions use exact submitted revision and chronological edits, never returning internal prompt fields or altering records',async t=>{
+ const {store,put}=fixture(t),design=require(`${build}/lib/design-alternatives-server.js`);
+ const elements=[{text:'골목 보행 연결과 길 안내 개선',origin:'ai',basis:'내부 근거'},{text:'갈림길에 작은 방향 안내판',origin:'participant',basis:'원본 발언'}];
+ put(design.designRef('p','p1','revision:submitted-r').path,{direction:{interventions:elements}});
+ put(design.designRef('p','p1','direction').path,{direction:{interventions:[{text:'제출 이후 다른 설계 방향',origin:'ai'}]}});
+ put('ppssGeneratedImages_p/root',{userId:'p1',imageId:'root',note:'DESIGN TRANSLATION private source',designMetadata:{directionRevision:'submitted-r'}});
+ put('ppssGeneratedImages_p/edit-1',{userId:'p1',imageId:'edit-1',note:'PHOTO-BASED URBAN DESIGN',designMetadata:{parentImageId:'root',editRequest:'간판의 개성은 유지해주세요'}});
+ put('ppssGeneratedImages_p/final',{userId:'p1',imageId:'final',downloadUrl:'https://image.test/final',note:'RESIDENT DESIGN INPUT: private original',designMetadata:{parentImageId:'edit-1',directionRevision:'submitted-r',editRequest:'안내판을 더 작게 해주세요',modelSettings:{size:'1536x1024'}}});
+ put('ppssEvaluationImages_p/p1',{userId:'p1',imageId:'final',note:'DESIGN TRANSLATION original unchanged',downloadUrl:'https://image.test/final'});
+ const before=JSON.stringify([...store]);const result=await route({query:{projectId:'p',kind:'images'},token:'reader'});assert.equal(result.status,200);
+ const image=result.body.images.find(row=>row.imageId==='final');assert.equal(image.note,undefined);
+ assert.deepEqual(image.description.elements,elements.map(({text,origin})=>({text,origin})));
+ assert.deepEqual(image.description.editRequests,['간판의 개성은 유지해주세요','안내판을 더 작게 해주세요']);assert.equal(image.description.aspectRatio,1.5);
+ assert.doesNotMatch(JSON.stringify(result.body),/DESIGN TRANSLATION|PHOTO-BASED|private original|내부 근거|제출 이후 다른 설계/);assert.equal(JSON.stringify([...store]),before);
+});
+test('legacy evaluation prompt sections are parsed conservatively; missing or failed descriptions never expose prompt prose',async t=>{
+ const {db,store,put}=fixture(t);const original='DESIGN TRANSLATION\nConfirmed resident-reviewed direction: '+JSON.stringify([{text:'보행통로 색의 연속성 확보',origin:'ai',basis:'internal'}])+'\nLatest request: visualize';
+ put('ppssEvaluationImages_p/p1',{userId:'p1',imageId:'missing-canonical',note:original});
+ put('ppssEvaluationImages_p/p2',{userId:'p2',imageId:'plain',note:'Full internal instructions without reliable structured design data'});
+ const result=await route({query:{projectId:'p',kind:'images'}});assert.equal(result.status,200);
+ assert.equal(result.body.images[0].description.elements[0].text,'보행통로 색의 연속성 확보');assert.equal(result.body.images[1].description.status,'missing');assert.ok(result.body.images.every(image=>image.note===undefined));
+ const doc=db.doc;db.doc=path=>path.startsWith('ppssGeneratedImages_p/')?{get:async()=>{throw Error('fixture read error')}}:doc(path);
+ const failed=await route({query:{projectId:'p',kind:'images'}});assert.equal(failed.status,200);assert.ok(failed.body.images.every(image=>image.description.status==='error'));
+ assert.equal(store.get('ppssEvaluationImages_p/p1').note,original);
+});
+test('description traversal cannot read another participant direction through a forged parent link',async t=>{
+ const {put}=fixture(t);
+ put('ppssEvaluationImages_p/p1',{userId:'p1',imageId:'a'});
+ put('ppssGeneratedImages_p/a',{userId:'p1',imageId:'a',designMetadata:{parentImageId:'foreign',editRequest:'작은 안내판 요청'}});
+ put('ppssGeneratedImages_p/foreign',{userId:'p2',imageId:'foreign',note:'Confirmed resident-reviewed direction: [{"text":"다른 주민의 비공개 방향","origin":"participant"}]'});
+ const result=await route({query:{projectId:'p',kind:'images'},token:'reader'});
+ assert.doesNotMatch(JSON.stringify(result.body),/비공개 방향/);assert.equal(result.body.images[0].description.historyIncomplete,true);
+});

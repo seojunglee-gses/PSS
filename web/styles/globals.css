@@ -367,3 +367,12 @@ html.workspace-page, body.workspace-page { overflow: hidden; overscroll-behavior
 
 /* Stage 5 reuses the split panels for summaries and read-only results. */
 .workspace-report-results { min-width: 0; min-height: 0; overscroll-behavior: contain; overflow-wrap: anywhere; font-size: var(--workspace-font-size, 16px); line-height: 1.6; }
+
+/* Evaluation cards respond to the draggable panel width, with at most two columns. */
+.evaluation-gallery { grid-template-columns: repeat(auto-fit, minmax(min(100%, max(260px, calc((100% - 16px) / 2))), 1fr)); }
+.evaluation-plan-image { max-height: 32rem; }
+.image-viewer-details { flex-shrink: 0; max-height: 30%; overflow-y: auto; overflow-wrap: anywhere; border-top: 1px solid #475569; padding-top: 8px; font-size: var(--workspace-font-size, 16px); }
+.image-viewer-details summary { min-height: 44px; cursor: pointer; padding: 8px; font-weight: 600; }
+.image-viewer-details > div { padding: 8px; }
+
+@supports not (aspect-ratio: 3 / 2) { .evaluation-plan-image img { position: static; height: auto; max-height: 32rem; } }

@@ -155,7 +155,8 @@ type EvaluationImage = {
   imageId: string;
   createdAt: string;
   label: string;
-  note: string;
+  note?: string;
+  description?: import("./evaluation-design").EvaluationDesignDescription;
   downloadUrl: string;
 };
 

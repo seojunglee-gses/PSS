@@ -3,6 +3,8 @@ import { TOP_RANKS, selectTopRank, topRankSelection, completeTopRanks } from "..
 import ImageGenerationPlaceholder from "../../components/design/ImageGenerationPlaceholder";
 import DesignImageEditor from "../../components/design/DesignImageEditor";
 import DesignProposal from "../../components/design/DesignProposal";
+import ImageViewer from "../../components/ImageViewer";
+import type { EvaluationDesignDescription } from "../../lib/evaluation-design";
 import type { DesignDirection } from "../../lib/design-alternatives";
 import { previousStage, priorTopicsHeading, topicCardSummary, topicSummaryNotice, semanticTopicForDisplay, type TopicSummaryState, type DiscussionTopic } from "../../lib/stage-topics";
 import { MODELS } from "../../lib/llm/openai";
@@ -123,6 +125,7 @@ function normalizeSender(
 }
 
 type DesignImage = {
+  description?: EvaluationDesignDescription;
   parentImageId?: string; rootImageId?: string; versionNumber?: number;
   id: string;
   label: string;
@@ -893,7 +896,8 @@ function AuthorizedWorkspace() {
         filtered.map((submission, index) => ({
           id: submission.imageId,
           label: `Alternative ${index + 1}`,
-          note: submission.note,
+          note: "",
+          description: submission.description,
           imageUrl: submission.downloadUrl,
           createdAt: submission.createdAt,
           submittedBy: formatParticipantLabel(index, submission.userId),
@@ -1040,8 +1044,8 @@ function AuthorizedWorkspace() {
         return `
   Submitted Design ${index + 1}:
   Label: ${img.label}
-  Intent and elements (from prompt/notes):
-  ${img.note}
+  Proposed design elements and edit requests (intent only; not verified image changes):
+  ${JSON.stringify(img.description ?? { status: "missing" })}
   `;
       })
       .join("\n\n");
@@ -2448,13 +2452,13 @@ const handleSend = async (suggestedQuestion?: string) => {
 
       {activeStep.id === "evaluation" && (
         <WorkspacePanels navigation={stageNavigation} stageTitle={t(activeStep.titleKey)} completionControl={renderStageCompletion("header")} ratio={panelRatio} onRatioChange={setPanelRatio} view={panelView} onViewChange={setPanelView}>
-          <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
+          <div className="evaluation-panel rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm">
             <h3 className="workspace-stage-heading text-lg font-semibold">{t("step.evaluation")}</h3>
             <p className="workspace-stage-heading mt-2 text-sm text-slate-500">
               {activeProject?.workspaceContent.evaluation.text || t("workspace.evaluationIntro")}
             </p>
             <p className="mt-4 text-sm text-slate-600">{t("evaluation.rankHelp")}</p>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="evaluation-gallery mt-6 grid gap-4">
               {isLoadingEvaluationImages && (
                 <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
                   {t("workspace.loadingSubmitted")}
@@ -2468,10 +2472,12 @@ const handleSend = async (suggestedQuestion?: string) => {
               {evaluationImages.map((image) => (
                 <div
                   key={image.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                  className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-2"
                 >
                   <button
-                    className="h-28 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                    className="evaluation-plan-image relative block w-full overflow-hidden rounded-xl bg-slate-100"
+                    style={{ aspectRatio: String(image.description?.aspectRatio ?? 1.5) }}
+                    aria-label={t("evaluation.enlargeDesign", { image: localize(image.label) })}
                     type="button"
                     onClick={() => setSelectedImage(image.id)}
                   >
@@ -2479,10 +2485,14 @@ const handleSend = async (suggestedQuestion?: string) => {
                       <img
                         src={image.imageUrl}
                         alt={localize(image.label)}
-                        className="h-full w-full object-cover"
+                        className="absolute inset-0 h-full w-full object-contain"
+                        loading="lazy" decoding="async"
+                        onLoad={event => { const img = event.currentTarget; if (img.parentElement && img.naturalHeight) img.parentElement.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`; }}
                       />
                     )}
+                    <span className="absolute bottom-2 right-2 rounded-lg bg-slate-900/80 px-2 py-1 text-xs text-white">{t("evaluation.enlarge")}</span>
                   </button>
+                  <h4 className="mt-2 line-clamp-2 break-words text-base font-semibold text-blue-950">{image.description?.elements[0]?.text ?? localize(image.label)}</h4>
                   <div className="mt-3 space-y-2 text-xs text-slate-500">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-slate-700">
@@ -2508,16 +2518,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                         </select>
                       </div>
                     </div>
-                    {image.submittedBy && (
-                      <p className="text-[11px] text-slate-400">
-                        {localize(image.submittedBy)}
-                      </p>
-                    )}
-                    {image.note && (
-                      <p className="line-clamp-3 text-[11px] text-slate-500">
-                        {image.note}
-                      </p>
-                    )}
+
                   </div>
                 </div>
               ))}
@@ -2761,7 +2762,14 @@ const handleSend = async (suggestedQuestion?: string) => {
         <div className="mt-4 flex flex-wrap justify-end gap-2"><button type="button" className="min-h-11 rounded-full border px-4" onClick={()=>closeSummaryReview(false)}>{t("workspace.cancel")}</button><button type="button" className="min-h-11 rounded-full bg-[var(--primary)] px-4 text-white disabled:opacity-50" disabled={!summaryDraft.trim()} onClick={()=>closeSummaryReview(true)}>{t("facilitation.confirmSummary")}</button></div>
       </dialog>, document.body)}
       {selectedImage && activeStep.id === "alternatives" && selectedImageItem && <DesignImageEditor key={selectedImage} image={selectedImageItem} busy={isLoadingAlternatives} readOnly={Boolean(lockedStages.alternatives) || completedStages.includes("alternatives")} onClose={() => setSelectedImage(null)} onEdit={async (parentImageId, mask, feedback) => { await generateConfirmedDesign({ parentImageId, mask, feedback }); }} />}
-      {selectedImage && activeStep.id !== "alternatives" && (
+      {selectedImage && activeStep.id === "evaluation" && selectedImageItem?.imageUrl && <ImageViewer key={selectedImage} src={selectedImageItem.imageUrl} alt={selectedImageItem.description?.elements[0]?.text ?? localize(selectedImageItem.label)} onClose={() => setSelectedImage(null)} details={<div className="space-y-3 break-words">
+        <h3 className="font-semibold">{selectedImageItem.description?.elements[0]?.text ?? localize(selectedImageItem.label)}</h3>
+        {Boolean(selectedImageItem.description?.elements.length) && <ul className="list-disc space-y-2 pl-5">{selectedImageItem.description!.elements.map((element, index) => <li key={index}>{element.text}{element.origin === "ai" && <span className="ml-2 text-sm text-slate-300">{t("design.aiProposal")}</span>}</li>)}</ul>}
+        {Boolean(selectedImageItem.description?.editRequests.length) && <><p className="font-semibold">{t("evaluation.editRequests")}</p><ul className="list-disc space-y-2 pl-5">{selectedImageItem.description!.editRequests.map((request, index) => <li key={index}>{request}</li>)}</ul><p className="text-sm text-slate-300">{t("evaluation.intentOnly")}</p></>}
+        {selectedImageItem.description?.historyIncomplete && <p className="text-sm text-slate-300">{t("evaluation.partialHistory")}</p>}
+        {(!selectedImageItem.description || selectedImageItem.description.status !== "ready") && <p>{t(selectedImageItem.description?.status === "error" ? "evaluation.descriptionFailed" : "evaluation.descriptionMissing")}</p>}
+      </div>} />}
+      {selectedImage && activeStep.id !== "alternatives" && activeStep.id !== "evaluation" && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4"
           onClick={() => setSelectedImage(null)}
