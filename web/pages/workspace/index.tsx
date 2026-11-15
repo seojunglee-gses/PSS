@@ -2366,7 +2366,8 @@ const handleSend = async (suggestedQuestion?: string) => {
                   group.images.map((item) => (
                     <div
                       key={item.id}
-                      className={`rounded-2xl border p-4 ${
+                      onClick={() => setSelectedAlternative(item.id)}
+                      className={`cursor-pointer rounded-2xl border p-4 ${
                         selectedAlternative === item.id
                           ? "border-[var(--primary)] bg-blue-50"
                           : "border-slate-200 bg-slate-50"
@@ -2374,6 +2375,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                     >
                       <button
                         className="h-44 w-full overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100"
+                        aria-label={`${t("workspace.designPreview")}: ${localize(item.label)}`}
                         type="button"
                         onClick={() => {
                           setSelectedImage(item.id);
@@ -2388,7 +2390,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                           />
                         )}
                       </button>
-                      <p className="mt-2 text-sm font-semibold text-blue-950">{item.versionNumber === 0 ? t("design.initialImage") : item.versionNumber !== undefined ? t("design.revisionImage", { version: item.versionNumber }) : localize(item.label)}</p>
+                      <button type="button" aria-pressed={selectedAlternative === item.id} onClick={() => setSelectedAlternative(item.id)} className="mt-2 min-h-11 w-full rounded-lg text-left text-sm font-semibold text-blue-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]">{item.versionNumber === 0 ? t("design.initialImage") : item.versionNumber !== undefined ? t("design.revisionImage", { version: item.versionNumber }) : localize(item.label)}</button>
                       {item.parentImageId && <p className="mt-1 text-xs text-slate-500">{t("design.editedFrom", { image: (() => { const parent = alternativeImages.find(image => image.id === item.parentImageId); return parent?.versionNumber === 0 ? t("design.initialImage") : parent?.versionNumber !== undefined ? t("design.revisionImage", { version: parent.versionNumber }) : localize(parent?.label ?? item.parentImageId); })() })}</p>}
                     </div>
                   ))
