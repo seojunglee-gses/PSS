@@ -13,6 +13,17 @@ export default function DesignImageEditor({ image, busy, readOnly, onClose, onEd
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const panStart = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const submitting = useRef(false);
+  const requestInput = useRef<HTMLTextAreaElement>(null);
+  const [viewport, setViewport] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  useEffect(() => {
+    // This portal is outside WorkspacePanels, so it must follow the keyboard viewport itself.
+    const visual = window.visualViewport;
+    const measure = () => setViewport({ left: visual?.offsetLeft ?? 0, top: visual?.offsetTop ?? 0, width: visual?.width ?? window.innerWidth, height: visual?.height ?? window.innerHeight });
+    measure();
+    window.addEventListener("resize", measure);
+    visual?.addEventListener("resize", measure); visual?.addEventListener("scroll", measure);
+    return () => { window.removeEventListener("resize", measure); visual?.removeEventListener("resize", measure); visual?.removeEventListener("scroll", measure); };
+  }, []);
   useEffect(() => {
     const element = stage.current; if (!element) return;
     const observer = new ResizeObserver(() => { const rect = element.getBoundingClientRect(); setArea({ width: rect.width, height: rect.height }); });
@@ -36,8 +47,9 @@ export default function DesignImageEditor({ image, busy, readOnly, onClose, onEd
     previous.current = point; setSelected(true);
   };
   const submit = async () => {
-    const target = canvas.current; if (!target || busy || submitting.current || !request.trim()) return;
-    if (needsDesignEditClarification(request)) { setError(t("design.editClarify")); return; }
+    const text = (requestInput.current?.value ?? request).trim();
+    const target = canvas.current; if (!target || busy || submitting.current || !text) return;
+    if (needsDesignEditClarification(text)) { setError(t("design.editClarify")); return; }
     const ctx = target.getContext("2d")!;
     const pixels = ctx.getImageData(0, 0, target.width, target.height).data;
     if (!pixels.some((value, index) => index % 4 === 3 && value > 0)) { setError(t("design.maskEmpty")); return; }
@@ -48,15 +60,15 @@ export default function DesignImageEditor({ image, busy, readOnly, onClose, onEd
     maskCtx.putImageData(data, 0, 0);
     setError("");
     submitting.current = true;
-    try { await onEdit(image.id, mask.toDataURL("image/png"), request.trim()); } catch (error) { setError(error instanceof Error ? error.message : t("design.editFailed")); } finally { submitting.current = false; }
+    try { await onEdit(image.id, mask.toDataURL("image/png"), text); } catch (error) { setError(error instanceof Error ? error.message : t("design.editFailed")); } finally { submitting.current = false; }
   };
   const endPointer = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (activePointer.current !== event.pointerId) return;
     activePointer.current = null; previous.current = null; panStart.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  return createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/75 p-2" onClick={onClose}>
-    <section role="dialog" aria-modal="true" aria-label={t("design.editorTitle")} className="relative flex max-h-[94dvh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white p-2" style={{ height: `min(94dvh, calc(min(calc(100vw - 32px), 1136px) * ${natural.height / natural.width} + ${readOnly ? 16 : 72}px))` }} onClick={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
+  return createPortal(<div className="fixed z-[100] flex items-center justify-center bg-slate-950/75 p-2" style={viewport ?? { inset: 0 }} onClick={onClose}>
+    <section role="dialog" aria-modal="true" aria-label={t("design.editorTitle")} className="relative flex w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white p-2" style={{ maxHeight: viewport ? Math.max(0, viewport.height - 16) : "94dvh", height: `min(${viewport ? Math.max(0, viewport.height - 16) + "px" : "94dvh"}, calc(min(calc(100vw - 32px), 1136px) * ${natural.height / natural.width} + ${readOnly ? 16 : 112}px))` }} onClick={event => event.stopPropagation()} onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
       <button autoFocus type="button" aria-label={t("common.close")} className="absolute right-3 top-3 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-2xl text-slate-600 shadow-sm" onClick={onClose}>×</button>
       <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden rounded-xl bg-slate-100" aria-label={t("design.selectionArea")}>
         <div className="absolute left-1/2 top-1/2" style={{ width: natural.width * fit, height: natural.height * fit, transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom / 100})` }}>
@@ -83,7 +95,7 @@ export default function DesignImageEditor({ image, busy, readOnly, onClose, onEd
       {!readOnly && <div className="shrink-0 pt-2">
         <p className="mb-1 px-2 text-xs text-slate-500">{t("design.maskScope")}</p>
         {error && <p role="alert" className="mb-2 text-sm text-red-700">{error}</p>}
-        <div className="flex items-center gap-2"><input aria-label={t("design.editRequest")} maxLength={4000} className="min-h-12 min-w-0 flex-1 rounded-full border border-slate-200 px-4 py-3 text-base" value={request} disabled={busy} onChange={event => setRequest(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void submit(); }} placeholder={t("design.editPlaceholder")} />
+        <div className="flex items-center gap-2"><textarea ref={requestInput} aria-label={t("design.editRequest")} rows={2} inputMode="text" maxLength={4000} className="min-h-12 min-w-0 flex-1 resize-none rounded-2xl border border-slate-200 px-4 py-2 text-base" value={request} disabled={busy} onInput={event => setRequest(event.currentTarget.value)} onChange={event => setRequest(event.target.value)} onCompositionEnd={event => setRequest(event.currentTarget.value)} placeholder={t("design.editPlaceholder")} />
           <button type="button" title={t("design.maskWarning")} disabled={busy || !selected || !request.trim()} className="min-h-12 shrink-0 rounded-full bg-[var(--primary)] px-4 py-3 font-semibold text-white disabled:opacity-50" onClick={() => void submit()}>{t(busy ? "design.editing" : "design.editAction")}</button></div>
       </div>}
     </section>

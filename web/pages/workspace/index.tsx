@@ -356,6 +356,7 @@ function AuthorizedWorkspace() {
     return () => { observer.disconnect(); window.removeEventListener("resize", position); window.removeEventListener("scroll", position, true); window.visualViewport?.removeEventListener("resize", position); window.visualViewport?.removeEventListener("scroll", position); };
   }, [expandedStarterScope]);
   const composerInputRef = useRef<HTMLInputElement>(null);
+  const composerComposing = useRef(false);
   const [selectedSources, setSelectedSources] = useState<EvidenceSource[]>([]);
   const [inspectedAnalysis, setInspectedAnalysis] = useState<AnalysisRecord | null>(null);
   const [spatialCategory, setSpatialCategory] = useState<number | null>(null);
@@ -1228,7 +1229,7 @@ const generateConfirmedDesign = async (edit?: { parentImageId: string; mask: str
 };
 
 const handleSend = async (suggestedQuestion?: string) => {
-  const userMessage = (suggestedQuestion ?? inputValue).trim();
+  const userMessage = (suggestedQuestion ?? composerInputRef.current?.value ?? inputValue).trim();
   if (!userMessage) return;
   if (!userKey || !hasLoadedChatLogs) return;
   if (lockedStages[activeStep.id] || completedStages.includes(activeStep.id)) return;
@@ -2092,9 +2093,13 @@ const handleSend = async (suggestedQuestion?: string) => {
           className="min-w-0 flex-1 rounded-full border border-slate-200 px-4 py-2 text-base focus:border-[var(--primary)] focus:outline-none disabled:bg-slate-100"
           placeholder={t("workspace.promptPlaceholder")}
           value={inputValue}
+          onInput={(event) => setInputValue(event.currentTarget.value)}
           onChange={(event) => setInputValue(event.target.value)}
+          onCompositionStart={() => { composerComposing.current = true; }}
+          onCompositionEnd={(event) => { composerComposing.current = false; setInputValue(event.currentTarget.value); }}
+          onBlur={() => { composerComposing.current = false; }}
           onKeyDown={(event) => {
-            if (event.key === "Enter") {
+            if (event.key === "Enter" && !composerComposing.current && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) {
               event.preventDefault();
               handleSend();
             }
