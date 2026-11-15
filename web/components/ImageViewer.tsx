@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import type {PointerEvent} from 'react';
+import type {PointerEvent, ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {useI18n} from '../lib/i18n';
 
@@ -9,7 +9,7 @@ const fit:View = {zoom:1,x:0,y:0};
 const distance = (a:Point,b:Point) => Math.hypot(a.x-b.x,a.y-b.y);
 const midpoint = (a:Point,b:Point) => ({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
 
-export default function ImageViewer({src,alt,onClose}:{src:string;alt:string;onClose:()=>void}) {
+export default function ImageViewer({src,alt,onClose,details}:{src:string;alt:string;onClose:()=>void;details?:ReactNode}) {
  const {t}=useI18n();
  const dialog=useRef<HTMLDialogElement>(null),stage=useRef<HTMLDivElement>(null),image=useRef<HTMLImageElement>(null);
  const [view,setView]=useState<View>(fit),viewRef=useRef<View>(fit);
@@ -36,6 +36,7 @@ export default function ImageViewer({src,alt,onClose}:{src:string;alt:string;onC
  useEffect(()=>{
   const node=dialog.current,canvas=stage.current;if(!node||!canvas)return;
   const focused=document.activeElement as HTMLElement|null;
+  const shell=focused?.closest('.workspace-shell')??document.querySelector('.workspace-shell');if(shell)node.style.setProperty('--workspace-font-size',getComputedStyle(shell).getPropertyValue('--workspace-font-size')||'16px');
   const htmlOverflow=document.documentElement.style.overflow,bodyOverflow=document.body.style.overflow;
   document.documentElement.style.overflow='hidden';document.body.style.overflow='hidden';
   node.showModal();
@@ -79,6 +80,7 @@ export default function ImageViewer({src,alt,onClose}:{src:string;alt:string;onC
    }} onPointerUp={end} onPointerCancel={end} onLostPointerCapture={end}>
     <img ref={image} src={src} alt={alt} draggable={false} onLoad={()=>apply(viewRef.current)} style={{transform:`translate(${view.x}px, ${view.y}px) scale(${view.zoom})`}} />
    </div>
+   {details && <details className="image-viewer-details" open><summary>{t('evaluation.designDetails')}</summary><div>{details}</div></details>}
   </div>
  </dialog>,document.body);
 }

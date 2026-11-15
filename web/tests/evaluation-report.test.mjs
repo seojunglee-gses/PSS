@@ -30,3 +30,13 @@ test('top-rank submission requires a complete 1–3 selection, or all available 
  assert.equal(ranks.completeTopRanks({a:1,b:2,c:3},['a','b','c','d']),true);assert.equal(ranks.completeTopRanks({a:1,b:2},['a','b','c','d']),false);
  assert.equal(ranks.completeTopRanks({a:1,b:2},['a','b']),true);assert.equal(ranks.completeTopRanks({a:1},['a']),true);assert.equal(ranks.completeTopRanks({},[]),false);
 });
+
+test('legacy design extraction returns only source text and preserves speaker attribution without displaying JSON/system instructions',()=>{
+ const {legacyDesignElements,legacyEditRequest,readableDesignText}=load('lib/evaluation-design.js');
+ const data={direction:{interventions:[{text:'그늘이 이어지는 보행 가장자리',origin:'ai',basis:'private'},{text:'간판 "]" 모양 유지',origin:'participant'}]},previousStageSummaries:{problem:'비공개 원문'}};
+ assert.deepEqual(legacyDesignElements('DESIGN TRANSLATION\nRESIDENT DESIGN INPUT:\n'+JSON.stringify(data)),data.direction.interventions.map(({text,origin})=>({text,origin})));
+ assert.deepEqual(legacyDesignElements('broken: Confirmed resident-reviewed direction: [{not json}]'),[]);
+ assert.equal(legacyEditRequest('EDIT THE SUPPLIED SELECTED GENERATED IMAGE\nLatest resident edit request: 조명은 그대로 유지해주세요'),'조명은 그대로 유지해주세요');
+ assert.equal(readableDesignText('PHOTO-BASED URBAN DESIGN VISUALIZATION'),undefined);
+ assert.deepEqual(legacyDesignElements('whole internal paragraph'),[]);
+});

@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { adminDb, verifyUserRequest } from "../../../lib/firebaseAdmin";
 import { AccessError, validProjectId } from "../../../lib/membership/server";
-import { participantAccess, participantRecords, participantSummaries, softResetParticipantChat, softResetTestAdminChat } from "../../../lib/participants-server";
+import { participantAccess, participantRecords, participantSummaries, publicEvaluationImages, softResetParticipantChat, softResetTestAdminChat } from "../../../lib/participants-server";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   res.setHeader("Cache-Control", "private, no-store");
@@ -17,8 +17,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       else if (req.body?.action === "softResetChat") await softResetParticipantChat(db, user, projectId, req.body.userId, req.body.stageId);
       else throw new AccessError(400, "요청을 확인해주세요.");
       res.status(200).json({ ok: true });
-    } else if (["evaluations", "submissions", "images"].includes(String(req.query.kind))) {
-      const kind = req.query.kind as "evaluations" | "submissions" | "images";
+    } else if (req.query.kind === "images") {
+      res.status(200).json({ images: await publicEvaluationImages(db, projectId) });
+    } else if (["evaluations", "submissions"].includes(String(req.query.kind))) {
+      const kind = req.query.kind as "evaluations" | "submissions";
       res.status(200).json({ [kind]: (await participantRecords(db, projectId, kind)).map(record => record.data) });
     }
     else {

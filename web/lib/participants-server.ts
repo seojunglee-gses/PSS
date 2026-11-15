@@ -1,4 +1,4 @@
-import type { Firestore } from "firebase-admin/firestore";
+import type { Firestore, DocumentData } from "firebase-admin/firestore";
 import { FieldValue } from "firebase-admin/firestore";
 import { randomUUID } from "node:crypto";
 import { adminAuth } from "./firebaseAdmin";
@@ -6,6 +6,8 @@ import { canManageProject, isResearchParticipant, TEST_ADMIN_EMAIL } from "./rba
 import { AccessError, memberActive, memberPath, validProjectId, type Identity } from "./membership/server";
 import type { ProjectMeta } from "./projects";
 import type { WorkspaceSummary } from "./firebase";
+import { designRef } from "./design-alternatives-server";
+import { designElements, legacyDesignElements, legacyEditRequest, readableDesignText, type EvaluationDesignDescription } from "./evaluation-design";
 
 export async function participantAccess(db: Firestore, user: Identity, projectId: string, write = false) {
   validProjectId(projectId);
@@ -38,6 +40,50 @@ export async function participantRecords(db: Firestore, projectId: string, kind:
 }
 export async function participantSummaries(db: Firestore, projectId: string) {
   return (await participantRecords(db, projectId)).map(record => ({ userId: record.userId, participantId: record.participantId, summary: record.data as WorkspaceSummary }));
+}
+
+// Enrich only published evaluation images; source documents and prompt fields are read-only.
+export async function publicEvaluationImages(db: Firestore, projectId: string) {
+  const records = await participantRecords(db, projectId, "images");
+  const reads = new Map<string, Promise<DocumentData | undefined>>();
+  const read = (path: string) => {
+    let pending = reads.get(path);
+    if (!pending) { pending = db.doc(path).get().then(snapshot => snapshot.data()); reads.set(path, pending); }
+    return pending;
+  };
+  return Promise.all(records.map(async ({ userId, data }) => {
+    const { note, ...published } = data;
+    const description: EvaluationDesignDescription = { elements: [], editRequests: [], status: "missing" };
+    try {
+      let id = data.imageId;
+      const visited = new Set<string>();
+      for (let depth = 0; typeof id === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(id) && depth < 16; depth++) {
+        if (visited.has(id)) { description.historyIncomplete = true; break; } visited.add(id);
+        const image = await read(`ppssGeneratedImages_${projectId}/${id}`);
+        if (!image || image.userId !== userId) { description.historyIncomplete = Boolean(depth); break; }
+        const metadata = image.designMetadata ?? {};
+        if (depth === 0) {
+          const size = /^(\d+)x(\d+)$/.exec(String(metadata.modelSettings?.size ?? ""));
+          if (size && Number(size[2]) > 0) { const ratio = Number(size[1]) / Number(size[2]); if (ratio >= 0.25 && ratio <= 4) description.aspectRatio = ratio; }
+        }
+        if (!description.elements.length) {
+          const revision = metadata.directionRevision;
+          if (typeof revision === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(revision)) {
+            const saved = await read(designRef(projectId, userId, `revision:${revision}`).path);
+            description.elements = designElements(saved?.direction?.interventions);
+          }
+          if (!description.elements.length) description.elements = legacyDesignElements(image.note);
+        }
+        const request = readableDesignText(metadata.editRequest) ?? legacyEditRequest(image.note);
+        if (request) description.editRequests.unshift(request);
+        id = metadata.parentImageId;
+        if (depth === 15 && id) description.historyIncomplete = true;
+      }
+      if (!description.elements.length) description.elements = legacyDesignElements(note);
+      description.status = description.elements.length || description.editRequests.length ? "ready" : "missing";
+    } catch { description.status = "error"; }
+    return { ...published, description };
+  }));
 }
 
 // A chat-only reset archives originals and leaves completion, summaries, uploads,
