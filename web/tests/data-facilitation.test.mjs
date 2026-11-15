@@ -77,3 +77,41 @@ test('Korean evidence labels localize page explanation while retaining original 
  const guide=load('lib/stage-chat-guides.js').stageChatGuide('data','ko','public');
  assert.match(guide.description,/지난 단계/);assert.match(guide.description,/정확한 장소 이름을 몰라도/);assert.match(guide.description,/편하게 이야기/);
 });
+
+test('Stage 2 handoff develops a provisional spatial arrangement while respecting factual and no-question exceptions',()=>{
+ const history=[user('그늘 있는 길이 필요해요.'),assistant('걷는 길과 쉴 곳 중 어디에 그늘이 더 필요하세요?')];
+ const prompt=facilitationInstructions('data','거리보다 편하게 걷는 그늘이 중요해요.',history);
+ assert.equal(followUpPolicy('거리보다 편하게 걷는 그늘이 중요해요.',history,'data').mode,'optional');
+ assert.match(prompt,/Conversational design handoff/);assert.match(prompt,/provisional physical arrangement/);
+ assert.match(prompt,/If the preference is already known, develop the arrangement using it instead of asking again/);
+ assert.match(prompt,/narrow, relocate, reduce, combine or reject/);assert.match(prompt,/not an adopted layout/);
+ for(const question of ['지금까지 정리해줘','공원 면적은 얼마야?','질문 없이 답변만 해줘','오늘은 여기까지만']){
+  assert.equal(followUpPolicy(question,history,'data').mode,'none');
+  assert.match(facilitationInstructions('data',question,history),/Adaptive follow-up policy: NONE/);
+ }
+ for(const stage of ['problem','alternatives','evaluation','report'])assert.doesNotMatch(facilitationInstructions(stage,'나무를 심고 싶어요.'),/Conversational design handoff/);
+});
+test('successive design contributions reach the existing evidence answer with corrections, one response call and an inline handoff',async t=>{
+ const llm=load('lib/llm/index.js'),{answerFromEvidence}=load('lib/research/answer.js');
+ const turns=[
+  ['그늘 있는 골목길을 만들고 싶어요.','공간이 허용한다면 **보행통로 옆 그늘 식재**를 검토할 수 있어요. 차를 세우는 자리와 걷는 길이 겹치지 않도록 구성을 함께 볼까요?'],
+  ['주차 공간은 줄이지 않았으면 해요.','주차를 유지한다면 큰 화단보다 **통행을 막지 않는 작은 식재 구간**부터 살펴볼 수 있어요. 실제 남는 공간이 있는지는 지도와 현장에서 확인해야 해요.'],
+  ['화분이 많으면 관리하기 어려워요.','그렇다면 화분을 늘리기보다 **적은 식재를 한곳에 모으는 방향**으로 바꿔볼 수 있어요. 그늘은 계속 걷는 길에 필요한가요, 잠깐 쉬는 곳에 필요한가요?'],
+  ['앉는 곳보다 그늘에서 걷는 길이 중요해요.','그럼 쉼터를 넓히기보다 **그늘이 이어지는 보행 가장자리**를 중심으로 발전시켜볼 수 있어요. 주차와 출입을 막지 않는 구간을 찾아 식재를 연결하는 방향이에요.'],
+ ];
+ let calls=0;const history=[];
+ mock(t,llm,'callLLM',async request=>{
+  const input=JSON.parse(request.userText),[question,reply]=turns[calls++];
+  assert.equal(input.question,question);assert.deepEqual(input.history,history);
+  assert.match(request.systemText,/Conversational design handoff/);assert.match(request.systemText,/keep its concrete spatial refinement and useful next point together in summary/);
+  assert.match(request.systemText,/Do not finalize exact dimensions/);assert.match(request.systemText,/Never claim a fresh search\/analysis happened/);
+  if(calls>2)assert.ok(input.history.some(message=>message.content.includes('주차 공간은 줄이지')));
+  return JSON.stringify({...answer(),summary:reply});
+ });
+ for(const [question,expected] of turns){
+  const result=await answerFromEvidence({question,provider:'openai',selectedSources:['project'],projectContext:'사업 범위 자료. 도로 폭 및 남는 공간은 미확인.',cases:[],history:[...history]}, {question,selectedSources:['project'],cases:[],papers:[],warnings:[]});
+  assert.equal(result.summary,expected);assert.deepEqual(result.sources,[]);assert.equal(result.format,'direct');
+  history.push(user(question),assistant(result.summary));
+ }
+ assert.equal(calls,turns.length);
+});
