@@ -1195,7 +1195,15 @@ const generateConfirmedDesign = async (edit?: { parentImageId: string; mask: str
   imageRequestRef.current = true;
   if (edit) setSelectedImage(null);
   setImageOperation(edit ? "edit" : "create"); setIsLoadingAlternatives(true); setErrorMessage(null);
+  let requestLogs = chatLogsByStep.alternatives ?? [];
   try {
+    if (edit) {
+      followLatestRef.current = true;
+      requestLogs = [...requestLogs, { stepId: "alternatives", sender: "user", provider: activeProvider, label: role, text: edit.feedback, createdAt: new Date().toISOString(), imageId: edit.parentImageId }];
+      setChatLogsByStep(previous => ({ ...previous, alternatives: requestLogs }));
+      await persistChatLogs("alternatives", sanitizeLogs(requestLogs));
+      if (generation !== chatGenerationRef.current) return;
+    }
     let revision = designDirection?.revision;
     if (!edit && designDirection && !designDirection.confirmedAt) {
       const payload = await designApi({ action: "confirm-proposal", revision });
@@ -1205,9 +1213,9 @@ const generateConfirmedDesign = async (edit?: { parentImageId: string; mask: str
     const image = await requestGeneratedImage(edit?.feedback, { ...edit, revision });
     if (generation === chatGenerationRef.current) {
       setEditingDirection(false); setDesignFlow(false);
-      const logs: ChatLog[] = [...(chatLogsByStep.alternatives ?? []), {
+      const logs: ChatLog[] = [...requestLogs, {
         stepId: "alternatives", sender: "assistant", provider: activeProvider, label: activeProvider,
-        text: edit ? `부분 수정 요청: ${edit.feedback}\n이 요청을 반영하도록 만든 수정본을 갤러리에 추가했어요. 실제 변경 내용은 이전 이미지와 비교해 확인해주세요.` : `화면에서 확인한 설계 방향으로 이미지를 만들었어요.\n${designDirection?.interventions.map((item,index) => `${index+1}. ${item.text}`).join("\n") ?? ""}\n갤러리에서 확인하고 마음에 드는 계획안을 선택해주세요.`,
+        text: edit ? `이 요청을 반영하도록 만든 수정본을 갤러리에 추가했어요. 실제 변경 내용은 이전 이미지와 비교해 확인해주세요.` : `화면에서 확인한 설계 방향으로 이미지를 만들었어요.\n${designDirection?.interventions.map((item,index) => `${index+1}. ${item.text}`).join("\n") ?? ""}\n갤러리에서 확인하고 마음에 드는 계획안을 선택해주세요.`,
         createdAt: new Date().toISOString(), imageId: image.id, imageUrl: image.imageUrl, imageLabel: image.label, imageNote: image.note,
       }];
       setChatLogsByStep(previous => ({ ...previous, alternatives: logs }));
