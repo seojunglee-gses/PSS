@@ -7,7 +7,7 @@ const load=p=>require(path.join(process.env.PSS_TEST_BUILD,p));
 const sharp=require('sharp');
 const admin=load('lib/firebaseAdmin.js'), llm=load('lib/llm/index.js'), contexts=load('lib/project-context-server.js');
 const server=load('lib/design-alternatives-server.js'), images=load('lib/design-image-server.js');
-const {designImageSize,imagePoint,estimatedImageProgress,DESIGN_TRANSLATION,DESIGN_PROPOSAL_INSTRUCTIONS}=load('lib/design-alternatives.js');
+const {designImageSize,imagePoint,estimatedImageProgress,buildDesignEditPrompt,needsDesignEditClarification,REGISTERED_SITE_PHOTO_INSTRUCTIONS,DESIGN_TRANSLATION,DESIGN_PROPOSAL_INSTRUCTIONS}=load('lib/design-alternatives.js');
 const handler=load('pages/api/generate-alternative.js').default;
 function fakeDatabase(initial={}) {
  const records=new Map(Object.entries(structuredClone(initial))),writes=[];let chain=Promise.resolve();
@@ -147,5 +147,57 @@ test('repeat initial requests reuse one image; chat follow-ups and branched edit
  const second=await f.call({requestId:'chat-edit',feedback:'화분을 더 놓아주세요.'});assert.equal(second.code,200);assert.equal(second.body.designMetadata.parentImageId,first.body.imageId);assert.equal(second.body.designMetadata.rootImageId,first.body.imageId);assert.equal(second.body.label,'1차 수정 이미지');
  const third=await f.call({requestId:'branch-edit',parentImageId:first.body.imageId,feedback:'간판 높이를 맞춰주세요.'});assert.equal(third.code,200);assert.equal(third.body.label,'2차 수정 이미지');assert.equal(third.body.designMetadata.parentImageId,first.body.imageId);assert.equal(third.body.designMetadata.rootImageId,first.body.imageId);assert.equal(calls,3);
  assert.deepEqual(f.records.get('ppssGeneratedImages_alpha/'+first.body.imageId),original);
+ for(const [key,value] of Object.entries(f.original))assert.deepEqual(f.records.get(key),value);
+});
+
+
+test('all Stage 3 conversation/proposal prompts use the already registered site photo',()=>{
+ const instruction=load('lib/facilitation.js').facilitationInstructions('alternatives','계획안을 제안해줘');
+ assert.ok(instruction.includes(REGISTERED_SITE_PHOTO_INSTRUCTIONS));
+ assert.ok(DESIGN_PROPOSAL_INSTRUCTIONS.includes(REGISTERED_SITE_PHOTO_INSTRUCTIONS));
+});
+test('vague edits ask once; targeted design concerns and direct requests do not trigger unnecessary clarification',()=>{
+ for(const request of ['좀 더 현실적으로 바꿔주세요.','현실적으로 수정해주세요','Make it more realistic'])assert.equal(needsDesignEditClarification(request),true,request);
+ for(const request of ['화분을 없애주세요','벤치를 오른쪽으로 옮겨주세요','화분이 너무 많아서 관리하기 어려워요','벤치 때문에 길이 좁아지는 것 같아요','화단 때문에 주차가 어려워요','조명은 유지하고 화분만 줄여주세요'])assert.equal(needsDesignEditClarification(request),false,request);
+});
+test('edit prompt prioritizes new feedback, translates concerns to targeted changes and retains attributed context',()=>{
+ const feedback='이 나무는 누가 관리할 건데. 이 화분들도 지속 가능성이랑 현실성이 좀 부족한 거 같아.';
+ const prompt=buildDesignEditPrompt({feedback,prior:[{text:'나무와 화분 추가',origin:'ai'}],history:[{role:'user',content:'조명은 유지해줘'}],summaries:{data:'관리 부담'},masked:true});
+ assert.ok(prompt.endsWith(feedback));assert.match(prompt,/latest explicit resident edit request overrides conflicting prior design elements/);
+ assert.match(prompt,/reduce or consolidate/);assert.match(prompt,/do not assume a wish to remove all greenery/);
+ assert.match(prompt,/Change only the transparent mask area/);assert.match(prompt,/never expand the scope/);assert.match(prompt,/Preserve explicitly retained lighting/);
+ assert.match(prompt,/조명은 유지해줘/);assert.match(prompt,/管理|관리 부담/);
+});
+test('targeted masked edit requests reach one provider call each with intact masks and no added LLM; failures preserve images',async t=>{
+ const bytes=await sharp({create:{width:64,height:64,channels:4,background:'blue'}}).png().toBuffer();
+ const original={userId:'resident',imageId:'parent',storagePath:'projects/alpha/generated-images/parent.png',note:'기존 설계'};
+ const f=fixture(t,{'ppssGeneratedImages_alpha/parent':original});
+ f.context.stageHistory=[{sender:'user',text:'조명은 유지해주세요',stepId:'alternatives'}];
+ const raw=Buffer.alloc(64*64*4,255);raw[3]=0;
+ const mask=await sharp(raw,{raw:{width:64,height:64,channels:4}}).png().toBuffer();
+ const maskData='data:image/png;base64,'+mask.toString('base64');
+ t.mock.method(admin,'adminBucket',()=>({file:()=>({getMetadata:async()=>[{size:bytes.length}],download:async()=>[bytes],save:async()=>{}})}));
+ t.mock.method(admin,'buildDownloadUrl',()=> 'https://storage.example/edit.png');
+ t.mock.method(llm,'callLLM',async()=>{throw Error('no extra LLM permitted')});
+ const feedbacks=['화분을 없애주세요','벤치를 오른쪽으로 옮겨주세요','화분이 너무 많아서 관리하기 어려워요','벤치 때문에 길이 좁아지는 것 같아요','화단 때문에 주차가 어려워요','조명은 유지하고 화분만 줄여주세요','선택한 작은 부분에서 도로 전체를 바꿔주세요'];
+ let calls=0,fail=false;
+ t.mock.method(global,'fetch',async(_url,options)=>{
+  const form=options.body;assert.equal(form.get('n'),'1');assert.deepEqual(Buffer.from(await form.get('mask').arrayBuffer()),mask);
+  assert.match(form.get('prompt'),/조명은 유지해주세요/);assert.match(form.get('prompt'),/never expand the scope/);
+  assert.ok(form.get('prompt').endsWith(fail?'화분 제거 실패 테스트':feedbacks[calls]));calls++;
+  return fail?new Response('',{status:503}):Response.json({data:[{b64_json:bytes.toString('base64')}]});
+ });
+ for(const [index,feedback] of feedbacks.entries()){
+  const result=await f.call({requestId:'edit-scenario-'+index,parentImageId:'parent',mask:maskData,feedback});
+  assert.equal(result.code,200);assert.equal(result.body.designMetadata.editRequest,feedback);assert.equal(result.body.designMetadata.parentImageId,'parent');
+  assert.notEqual(result.body.imageId,'parent');
+ }
+ assert.equal(calls,feedbacks.length);
+ const vague=await f.call({requestId:'vague',parentImageId:'parent',mask:maskData,feedback:'좀 더 현실적으로 바꿔주세요.'});
+ assert.equal(vague.code,400);assert.match(vague.body.error,/어느 부분/);assert.equal(calls,feedbacks.length);
+ const before=[...f.records.keys()].filter(key=>key.startsWith('ppssGeneratedImages_alpha/'));
+ fail=true;assert.equal((await f.call({requestId:'failed-edit',parentImageId:'parent',mask:maskData,feedback:'화분 제거 실패 테스트'})).code,503);
+ assert.deepEqual([...f.records.keys()].filter(key=>key.startsWith('ppssGeneratedImages_alpha/')),before);
+ assert.deepEqual(f.records.get('ppssGeneratedImages_alpha/parent'),original);
  for(const [key,value] of Object.entries(f.original))assert.deepEqual(f.records.get(key),value);
 });

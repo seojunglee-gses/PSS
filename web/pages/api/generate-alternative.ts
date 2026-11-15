@@ -6,7 +6,7 @@ import { AccessError } from "../../lib/membership/server";
 import { callLLM } from "../../lib/llm";
 import { conversationHistory } from "../../lib/chat-history";
 import { storeGeneratedImage } from "../../lib/generated-image-server";
-import { DESIGN_TRANSLATION } from "../../lib/design-alternatives";
+import { buildDesignEditPrompt, needsDesignEditClarification, DESIGN_TRANSLATION } from "../../lib/design-alternatives";
 import { confirmDesignDirection, prepareDesignDirection, readDesignDirection, withDesignOperation } from "../../lib/design-alternatives-server";
 import { editDesignImage, readDesignImage, validateDesignMask } from "../../lib/design-image-server";
 export const config = { maxDuration: 300, api: { bodyParser: { sizeLimit: "8mb" } } };
@@ -52,6 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const parent = (await adminDb().doc(`ppssGeneratedImages_${context.projectId}/${editParentId}`).get()).data();
         if (!parent || parent.userId !== context.user.uid) throw new AccessError(403, "내가 생성한 이미지만 수정할 수 있어요.");
         if (!feedback?.trim()) throw new AccessError(400, "어떻게 바꿀지 말씀해주세요.");
+        if (needsDesignEditClarification(feedback)) throw new AccessError(400, "어느 부분이 현실적이지 않게 느껴지나요? 바꾸고 싶은 부분을 알려주세요.");
         baseRecord = parent;
       } else if (mask) throw new AccessError(400, "수정할 이미지를 먼저 선택해주세요.");
       const rootImageId = editParentId ? baseRecord?.designMetadata?.rootImageId ?? editParentId : imageId;
@@ -61,8 +62,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const maskBuffer = mask ? await validateDesignMask(mask, base.width, base.height) : undefined;
       const history = conversationHistory(context.stageHistory.length ? context.stageHistory : req.body.history, "alternatives");
       // A confirmed direction is translated directly. No second LLM can silently change it.
-      const prompt = editParentId ? `Edit the supplied selected generated image. Preserve its camera position, perspective, road alignment, buildings, storefronts and entrances. Existing design context (context only, not a request to redraw it): ${JSON.stringify(direction?.interventions ?? (typeof baseRecord?.note === "string" ? baseRecord.note.slice(0, 6000) : ""))}\nLatest resident edit request: ${feedback}` : direction ? `${DESIGN_TRANSLATION}\nConfirmed resident-reviewed direction: ${JSON.stringify(direction.interventions)}\nLatest request: ${feedback ?? "Visualize exactly this confirmed direction."}` : await callLLM({ provider: req.body.provider === "gemini" ? "gemini" : "openai", systemText: `Generate a SINGLE image-generation prompt based on this project's dialogue and workspace summaries. Never assume a particular site or scope. Preserve participant-stated preferences; AI options are not participant decisions. ${DESIGN_TRANSLATION}`, userText: JSON.stringify({ material: context.currentMaterial, summaries: context.previousSummaries, history, feedback: feedback ?? null }) });
-      const editPrompt = editParentId ? `${prompt}\nEDIT THE SUPPLIED SELECTED GENERATED IMAGE, not the initial site photo. ${maskBuffer ? "Change only the transparent mask area. Preserve all opaque/unselected areas, composition and prior design elements as closely as possible." : "Apply the latest whole-image feedback while preserving unrelated elements."} User's edit request: ${feedback}` : prompt;
+      const editPrompt = editParentId ? buildDesignEditPrompt({
+        feedback, prior: direction?.interventions ?? (typeof baseRecord?.note === "string" ? baseRecord.note.slice(0, 6000) : ""), history,
+        summaries: context.previousSummaries, masked: Boolean(maskBuffer),
+      }) : direction ? `${DESIGN_TRANSLATION}\nConfirmed resident-reviewed direction: ${JSON.stringify(direction.interventions)}\nLatest request: ${feedback ?? "Visualize exactly this confirmed direction."}` : await callLLM({ provider: req.body.provider === "gemini" ? "gemini" : "openai", systemText: `Generate a SINGLE image-generation prompt based on this project's dialogue and workspace summaries. Never assume a particular site or scope. Preserve participant-stated preferences; AI options are not participant decisions. ${DESIGN_TRANSLATION}`, userText: JSON.stringify({ material: context.currentMaterial, summaries: context.previousSummaries, history, feedback: feedback ?? null }) });
       let generated;
       if (req.body.provider === "gemini" && !editParentId && !direction) {
         const { GoogleGenerativeAI } = await import("@google/generative-ai");

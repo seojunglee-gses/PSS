@@ -291,9 +291,9 @@ function AuthorizedWorkspace() {
   useEffect(()=>()=>{topicContinuation.current?.abort();topicPreparation.current?.abort();},[topicScope]);
   const [selectedContinuity,setSelectedContinuity]=useState<{scope:string;id:string}|null>(null);
   const continuityTopicId=selectedContinuity?.scope===topicScope?selectedContinuity.id:undefined;
-  const continuityTopics=topicState.scope===topicScope?topicState.topics:[];
+  const continuityTopics=activeStep.id !== "alternatives" && topicState.scope===topicScope?topicState.topics:[];
   useEffect(()=>{
-    if(!user||activeStep.id === "report"||!previousStage(activeStep.id))return;
+    if(!user||activeStep.id === "alternatives"||activeStep.id === "report"||!previousStage(activeStep.id))return;
     const controller=new AbortController();
     void (async()=>{
       try{
@@ -1193,6 +1193,7 @@ const generateConfirmedDesign = async (edit?: { parentImageId: string; mask: str
   if (imageRequestRef.current || sendingRef.current || proposalBusy || lockedStages.alternatives || completedStages.includes("alternatives")) return;
   const generation = chatGenerationRef.current;
   imageRequestRef.current = true;
+  if (edit) setSelectedImage(null);
   setImageOperation(edit ? "edit" : "create"); setIsLoadingAlternatives(true); setErrorMessage(null);
   try {
     let revision = designDirection?.revision;
@@ -1206,7 +1207,7 @@ const generateConfirmedDesign = async (edit?: { parentImageId: string; mask: str
       setEditingDirection(false); setDesignFlow(false);
       const logs: ChatLog[] = [...(chatLogsByStep.alternatives ?? []), {
         stepId: "alternatives", sender: "assistant", provider: activeProvider, label: activeProvider,
-        text: edit ? `부분 수정 요청: ${edit.feedback}\n수정본을 갤러리에 추가했어요. 이전 이미지와 비교해주세요.` : `화면에서 확인한 설계 방향으로 이미지를 만들었어요.\n${designDirection?.interventions.map((item,index) => `${index+1}. ${item.text}`).join("\n") ?? ""}\n갤러리에서 확인하고 마음에 드는 계획안을 선택해주세요.`,
+        text: edit ? `부분 수정 요청: ${edit.feedback}\n이 요청을 반영하도록 만든 수정본을 갤러리에 추가했어요. 실제 변경 내용은 이전 이미지와 비교해 확인해주세요.` : `화면에서 확인한 설계 방향으로 이미지를 만들었어요.\n${designDirection?.interventions.map((item,index) => `${index+1}. ${item.text}`).join("\n") ?? ""}\n갤러리에서 확인하고 마음에 드는 계획안을 선택해주세요.`,
         createdAt: new Date().toISOString(), imageId: image.id, imageUrl: image.imageUrl, imageLabel: image.label, imageNote: image.note,
       }];
       setChatLogsByStep(previous => ({ ...previous, alternatives: logs }));
@@ -1895,7 +1896,7 @@ const handleSend = async (suggestedQuestion?: string) => {
     const context = analysisView === "cases" ? "cases"
       : spatialCategory === 0 ? "facilities" : spatialCategory !== null || spatialResult || geo.result ? "spatial-result" : "spatial";
     const baseGuide = activeStep.id === "data" && defaultGuide ? { ...defaultGuide, suggestedQuestions: dataAnalysisStarterPrompts(locale, context) } : defaultGuide;
-    const topicFallbackAllowed = !previousStage(activeStep.id) || topicState.scope===topicScope && !topicState.error && !topicState.needsPreparation && !continuityTopics.length;
+    const topicFallbackAllowed = activeStep.id === "alternatives" || !previousStage(activeStep.id) || topicState.scope===topicScope && !topicState.error && !topicState.needsPreparation && !continuityTopics.length;
     const guide = continuityTopics.length && baseGuide ? {...baseGuide,suggestedQuestions:continuityTopics.map(topic=>({label:topic.title,prompt:topic.id}))} : topicFallbackAllowed ? baseGuide : undefined;
     const displayedMessages = stepLogs;
     const hasDialogue = stepLogs.some(log => !log.activity);
@@ -1990,9 +1991,9 @@ const handleSend = async (suggestedQuestion?: string) => {
         {activeStep.id === "alternatives" && designFlow && !designDirection && !proposalBusy && <button type="button" className="mb-3 min-h-11 rounded-full border px-4 text-blue-900" onClick={() => setDesignRetry(value => value + 1)}>{t("design.prepareRetry")}</button>}
         {activeStep.id === "alternatives" && designFlow && designDirection && !isStageLocked && <DesignProposal direction={designDirection} busy={proposalBusy || isLoadingAlternatives || isSending} onConfirm={() => void generateConfirmedDesign()} onRevise={() => { setEditingDirection(true); setErrorMessage(null); composerInputRef.current?.focus(); }} />}
         {activeStep.id === "alternatives" && editingDirection && <p role="status" className="mb-3 text-sm text-blue-900">{t("design.reviseGuide")}</p>}
-        {hasLoadedChatLogs&&!(activeStep.id === "alternatives" && designFlow)&&previousStage(activeStep.id)&&topicState.scope!==topicScope&&<p role="status" className="mb-2 text-sm">지난 단계의 이야기를 불러오고 있어요…</p>}
-        {hasLoadedChatLogs&&!(activeStep.id === "alternatives" && designFlow)&&topicState.scope===topicScope&&topicState.error&&<p role="alert" className="mb-2 text-sm text-amber-800">이전 이야기 조회 또는 주제 추출에 실패했어요. 대화가 없다는 뜻은 아니에요. <button type="button" className="underline" onClick={()=>setTopicRetry(n=>n+1)}>다시 불러오기</button></p>}
-        {hasLoadedChatLogs&&!(activeStep.id === "alternatives" && designFlow)&&previousStage(activeStep.id)&&topicState.scope===topicScope&&topicState.needsPreparation&&!continuityTopics.length&&<section aria-label={priorTopicsHeading} className="mb-3 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+        {hasLoadedChatLogs&&activeStep.id !== "alternatives"&&previousStage(activeStep.id)&&topicState.scope!==topicScope&&<p role="status" className="mb-2 text-sm">지난 단계의 이야기를 불러오고 있어요…</p>}
+        {hasLoadedChatLogs&&activeStep.id !== "alternatives"&&topicState.scope===topicScope&&topicState.error&&<p role="alert" className="mb-2 text-sm text-amber-800">이전 이야기 조회 또는 주제 추출에 실패했어요. 대화가 없다는 뜻은 아니에요. <button type="button" className="underline" onClick={()=>setTopicRetry(n=>n+1)}>다시 불러오기</button></p>}
+        {hasLoadedChatLogs&&activeStep.id !== "alternatives"&&previousStage(activeStep.id)&&topicState.scope===topicScope&&topicState.needsPreparation&&!continuityTopics.length&&<section aria-label={priorTopicsHeading} className="mb-3 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
           <h4 className="font-semibold text-blue-950">{priorTopicsHeading}</h4>
           <p role="status" className="text-sm text-slate-600">{topicState.preparationMessage??topicSummaryNotice({status:topicState.status??'missing',reason:topicState.reason})}</p>
           <div className="flex flex-wrap gap-2">
@@ -2001,7 +2002,7 @@ const handleSend = async (suggestedQuestion?: string) => {
             <button type="button" className="min-h-11 rounded-full border px-3 text-sm" onClick={()=>setTopicRetry(value=>value+1)} disabled={Boolean(topicState.preparing)}>다시 불러오기</button>
           </div>
         </section>}
-        {hasLoadedChatLogs && !(activeStep.id === "alternatives" && (designFlow || proposalBusy)) && (!hasDialogue || continuityTopics.length>0) && !hasParticipantDialogue && !continuityTopicId && guide && (
+        {hasLoadedChatLogs && activeStep.id !== "alternatives" && (!hasDialogue || continuityTopics.length>0) && !hasParticipantDialogue && !continuityTopicId && guide && (
           <>
             {continuityTopics.length>0 && <section className="space-y-3" aria-label={priorTopicsHeading}>
               <h4 className="font-semibold text-blue-950">{priorTopicsHeading}</h4>
