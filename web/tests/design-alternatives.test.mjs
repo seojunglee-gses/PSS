@@ -164,7 +164,7 @@ test('edit prompt prioritizes new feedback, translates concerns to targeted chan
  const feedback='이 나무는 누가 관리할 건데. 이 화분들도 지속 가능성이랑 현실성이 좀 부족한 거 같아.';
  const prompt=buildDesignEditPrompt({feedback,prior:[{text:'나무와 화분 추가',origin:'ai'}],history:[{role:'user',content:'조명은 유지해줘'}],summaries:{data:'관리 부담'},masked:true});
  assert.ok(prompt.endsWith(feedback));assert.match(prompt,/latest explicit resident edit request overrides conflicting prior design elements/);
- assert.match(prompt,/reduce or consolidate/);assert.match(prompt,/do not assume a wish to remove all greenery/);
+ assert.match(prompt,/minimum necessary change/);assert.match(prompt,/Do not always default to reducing planting/);assert.match(prompt,/do not assume a wish to remove all greenery/);
  assert.match(prompt,/Change only the transparent mask area/);assert.match(prompt,/never expand the scope/);assert.match(prompt,/Preserve explicitly retained lighting/);
  assert.match(prompt,/조명은 유지해줘/);assert.match(prompt,/管理|관리 부담/);
 });
@@ -226,4 +226,27 @@ test('invalid chat action output is a safe error rather than an image operation 
  const {parseDesignChatReply}=load('lib/design-alternatives.js');
  for(const raw of ['이미지를 만들고 있어요','{"reply":"완료","imageAction":"delete"}','{"imageAction":"edit"}'])assert.throws(()=>parseDesignChatReply(raw),/수정 요청을 확인하지 못/);
  assert.deepEqual(parseDesignChatReply('{"reply":"의견입니다","imageAction":"none"}'),{reply:'의견입니다',imageAction:'none'});
+});
+
+
+test('editing preserves each selected design purpose without treating a concern as permission to erase a theme',()=>{
+ const feedback='화분이 관리하기 어려워요. 조명은 그대로 유지해주세요.';
+ const prompt=buildDesignEditPrompt({feedback,prior:[{text:'그늘 녹지와 쉼터',origin:'participant'}],selectedImageIntent:'이전 수정: 조명을 보강하고 간판의 개성을 유지',history:[],summaries:{data:'그늘을 중요하게 여김'},masked:false});
+ assert.match(prompt,/NOT permission to delete its whole theme or function/);assert.match(prompt,/same generic cleared street/);
+ assert.match(prompt,/explicitly asks to remove an element or abandon a theme, obey that exact scope/);
+ assert.match(prompt,/이전 수정: 조명을 보강하고 간판의 개성을 유지/);assert.ok(prompt.endsWith(feedback));
+});
+test('editing an older selected version keeps that parent intent even when the stored direction differs',async t=>{
+ const f=fixture(t);let sent;
+ const bytes=await sharp({create:{width:64,height:64,channels:4,background:'blue'}}).png().toBuffer();
+ const direction={...proposal(),revision:'latest',confirmedAt:'2026-01-01'};
+ f.records.set(server.designRef('alpha','resident','direction').path,{direction});
+ const parent={imageId:'chosen',userId:'resident',storagePath:'projects/alpha/generated-images/chosen.png',note:'x'.repeat(6500)+' Selected version: climbing shade with retained shop signs',designMetadata:{rootImageId:'root',versionNumber:2}};
+ f.records.set('ppssGeneratedImages_alpha/chosen',structuredClone(parent));
+ t.mock.method(admin,'adminBucket',()=>({file:()=>({getMetadata:async()=>[{size:bytes.length}],download:async()=>[bytes],save:async()=>{}})}));t.mock.method(admin,'buildDownloadUrl',()=> 'https://storage.example/edit.png');
+ t.mock.method(llm,'callLLM',()=>assert.fail('no extra planning call'));
+ t.mock.method(global,'fetch',async(_url,options)=>{sent=options.body.get('prompt');return Response.json({data:[{b64_json:bytes.toString('base64')}]})});
+ const result=await f.call({requestId:'retain-purpose',revision:'latest',parentImageId:'chosen',feedback:'관리하기 쉬운 식재 구조로 바꿔주세요.'});
+ assert.equal(result.code,200);assert.match(sent,/Selected version: climbing shade with retained shop signs/);assert.match(sent,/보행 공간 구분/);assert.equal(result.body.designMetadata.parentImageId,'chosen');
+ assert.deepEqual(f.records.get('ppssGeneratedImages_alpha/chosen'),parent);
 });

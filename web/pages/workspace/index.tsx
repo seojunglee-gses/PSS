@@ -1125,6 +1125,7 @@ function AuthorizedWorkspace() {
 
     if (!payload.downloadUrl) throw new Error(t("image.missingUrl"));
     setLastGeneratedImageId(payload.imageId);
+    setSelectedAlternative(payload.imageId);
     setGeneratedImages(previous => previous.some(image => image.id === payload.imageId) ? previous : [...previous, { id: payload.imageId, label, note, ...lineage, imageUrl: payload.downloadUrl!, createdAt: new Date().toISOString() }]);
     return { id: payload.imageId, label, note, ...lineage, imageUrl: payload.downloadUrl, createdAt: new Date().toISOString() };
   },
