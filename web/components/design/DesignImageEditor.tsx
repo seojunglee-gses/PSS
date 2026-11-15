@@ -1,7 +1,7 @@
 import { useI18n } from "../../lib/i18n";
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { imagePoint } from "../../lib/design-alternatives";
+import { imagePoint, needsDesignEditClarification } from "../../lib/design-alternatives";
 export default function DesignImageEditor({ image, busy, readOnly, onClose, onEdit }: {
   image: { id: string; imageUrl?: string; label: string }; busy: boolean; readOnly?: boolean;
   onClose: () => void; onEdit: (id: string, mask: string, request: string) => Promise<void>;
@@ -37,6 +37,7 @@ export default function DesignImageEditor({ image, busy, readOnly, onClose, onEd
   };
   const submit = async () => {
     const target = canvas.current; if (!target || busy || submitting.current || !request.trim()) return;
+    if (needsDesignEditClarification(request)) { setError(t("design.editClarify")); return; }
     const ctx = target.getContext("2d")!;
     const pixels = ctx.getImageData(0, 0, target.width, target.height).data;
     if (!pixels.some((value, index) => index % 4 === 3 && value > 0)) { setError(t("design.maskEmpty")); return; }
@@ -80,6 +81,7 @@ export default function DesignImageEditor({ image, busy, readOnly, onClose, onEd
         </div>
       </div>
       {!readOnly && <div className="shrink-0 pt-2">
+        <p className="mb-1 px-2 text-xs text-slate-500">{t("design.maskScope")}</p>
         {error && <p role="alert" className="mb-2 text-sm text-red-700">{error}</p>}
         <div className="flex items-center gap-2"><input aria-label={t("design.editRequest")} maxLength={4000} className="min-h-12 min-w-0 flex-1 rounded-full border border-slate-200 px-4 py-3 text-base" value={request} disabled={busy} onChange={event => setRequest(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void submit(); }} placeholder={t("design.editPlaceholder")} />
           <button type="button" title={t("design.maskWarning")} disabled={busy || !selected || !request.trim()} className="min-h-12 shrink-0 rounded-full bg-[var(--primary)] px-4 py-3 font-semibold text-white disabled:opacity-50" onClick={() => void submit()}>{t(busy ? "design.editing" : "design.editAction")}</button></div>
