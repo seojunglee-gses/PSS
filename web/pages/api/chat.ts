@@ -7,6 +7,8 @@ import { loadProjectContext } from "../../lib/project-context-server";
 import { AccessError } from "../../lib/membership/server";
 import { callLLM } from "../../lib/llm";
 import { conversationHistory, contextualQuestion } from "../../lib/chat-history";
+import { adminDb } from "../../lib/firebaseAdmin";
+import { DESIGN_CHAT_ACTION_INSTRUCTIONS, parseDesignChatReply } from "../../lib/design-alternatives";
 
 type ChatRequest = {
   model?: string;
@@ -42,6 +44,14 @@ export default async function handler(
 
   try {
     const context = await loadProjectContext(req, stepId ?? "problem", true, true);
+    let designTarget: { imageId: string; label: unknown; intent: string } | undefined;
+    if (stepId === "alternatives" && req.body.designTargetImageId !== undefined) {
+      const id = req.body.designTargetImageId;
+      if (typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(id)) throw new AccessError(400, "수정할 이미지를 다시 선택해주세요.");
+      const image = (await adminDb().doc(`ppssGeneratedImages_${context.projectId}/${id}`).get()).data();
+      if (!image || image.userId !== context.user.uid) throw new AccessError(403, "내가 생성한 이미지만 수정할 수 있어요.");
+      designTarget = { imageId: id, label: image.label ?? "", intent: typeof image.note === "string" ? image.note.slice(0, 6000) : "" };
+    }
     const marker="\n\nUser question:\n";
     const originalQuestion=stepId==="evaluation"&&message.includes(marker)?message.slice(message.lastIndexOf(marker)+marker.length):message;
     const normalizedProvider =
@@ -69,13 +79,15 @@ export default async function handler(
     const reply = clarification ?? await callLLM({
       provider: normalizedProvider,
       model: resolvedModel,
-      systemText,
-      userText: `${context.continuityContext ? `Selected prior-stage topic context: ${context.continuityContext}\n\n` : ""}Current project/stage material:\n${context.currentMaterial || "No project material available."}\nPrevious-stage summaries:\n${JSON.stringify(context.previousSummaries)}\n\n${earlierMemory ? `Earlier same-stage dialogue memory: ${earlierMemory}\n\n` : ""}${history.length ? `Conversation history: ${JSON.stringify(history)}\n\n` : ""}Stage: ${stepId ?? "unknown"}\nUser: ${message}`,
+      systemText: systemText + (designTarget ? "\n" + DESIGN_CHAT_ACTION_INSTRUCTIONS : ""),
+      userText: `${designTarget ? `Selected generated image (design intent, not verified pixels): ${JSON.stringify(designTarget)}\n\n` : ""}${context.continuityContext ? `Selected prior-stage topic context: ${context.continuityContext}\n\n` : ""}Current project/stage material:\n${context.currentMaterial || "No project material available."}\nPrevious-stage summaries:\n${JSON.stringify(context.previousSummaries)}\n\n${earlierMemory ? `Earlier same-stage dialogue memory: ${earlierMemory}\n\n` : ""}${history.length ? `Conversation history: ${JSON.stringify(history)}\n\n` : ""}Stage: ${stepId ?? "unknown"}\nUser: ${message}`,
     });
+    const designReply = designTarget && !clarification ? parseDesignChatReply(reply) : undefined;
     res.status(200).json({
       provider: normalizedProvider,
       model: resolvedModel,
-      reply,
+      reply: designReply?.reply ?? reply,
+      ...(designReply ? { imageAction: designReply.imageAction } : {}),
     });
   } catch (error) {
     res.status(error instanceof AccessError ? error.status : 500).json({

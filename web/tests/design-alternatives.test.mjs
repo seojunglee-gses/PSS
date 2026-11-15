@@ -201,3 +201,29 @@ test('targeted masked edit requests reach one provider call each with intact mas
  assert.deepEqual(f.records.get('ppssGeneratedImages_alpha/parent'),original);
  for(const [key,value] of Object.entries(f.original))assert.deepEqual(f.records.get(key),value);
 });
+
+test('ordinary chat recognizes resident removal/movement edit requests while keeping discussion and image opt-outs separate',()=>{
+ const {isDesignGenerationRequest}=load('lib/facilitation.js');
+ for(const request of ['화분을 없애주세요','벤치를 오른쪽으로 옮겨주세요','나무를 제거해줘','화분을 빼주세요','벤치를 놓아주세요','조명은 바꾸지 말고 화분만 줄여주세요'])assert.equal(isDesignGenerationRequest(request),true,request);
+ for(const request of ['이미지를 수정하지 말고 설명만 해주세요','Do not edit the image; just explain it','이 나무는 누가 관리하나요?','화분이 너무 많아서 현실성이 부족해요','어떻게 수정하면 좋을까요?','이미지 설명문을 수정해주세요','감사합니다'])assert.equal(isDesignGenerationRequest(request),false,request);
+});
+test('existing Stage 3 chat response can request an edit without another routing LLM; target ownership is checked server-side',async t=>{
+ const f=fixture(t,{'ppssGeneratedImages_alpha/owned':{userId:'resident',label:'선택한 수정본',note:'조명 보강과 화분 배치'}});
+ const chat=load('pages/api/chat.js').default;let calls=0,mode='edit';
+ t.mock.method(llm,'callLLM',async input=>{
+  calls++;assert.match(input.systemText,/client must actually run the edit API first/);assert.match(input.systemText,/Merely raising a concern/);
+  assert.match(input.userText,/조명 보강과 화분 배치/);assert.match(input.userText,/앞서 제안한 대로/);
+  return JSON.stringify({reply:mode==='edit'?'수정 요청을 적용합니다.':'그 방향을 함께 검토할 수 있어요.',imageAction:mode});
+ });
+ const call=async(body={})=>{const res=response();await chat({method:'POST',body:{stepId:'alternatives',message:'앞서 제안한 대로 해주세요.',designTargetImageId:'owned',history:[{role:'assistant',content:'화분만 줄이고 조명은 유지하는 방법이 있어요.'}],...body},headers:{}},res);return res};
+ const edited=await call();assert.equal(edited.code,200);assert.equal(edited.body.imageAction,'edit');assert.equal(calls,1);assert.equal(f.writes.length,0);
+ mode='none';assert.equal((await call()).body.imageAction,'none');assert.equal(calls,2);
+ f.records.set('ppssGeneratedImages_alpha/foreign',{userId:'other',note:'다른 참여자 기록'});
+ assert.equal((await call({designTargetImageId:'foreign'})).code,403);assert.equal((await call({designTargetImageId:'../owned'})).code,400);assert.equal((await call({designTargetImageId:'missing'})).code,403);assert.equal(calls,2);
+ for(const [key,value]of Object.entries(f.original))assert.deepEqual(f.records.get(key),value);
+});
+test('invalid chat action output is a safe error rather than an image operation or a fabricated success',()=>{
+ const {parseDesignChatReply}=load('lib/design-alternatives.js');
+ for(const raw of ['이미지를 만들고 있어요','{"reply":"완료","imageAction":"delete"}','{"imageAction":"edit"}'])assert.throws(()=>parseDesignChatReply(raw),/수정 요청을 확인하지 못/);
+ assert.deepEqual(parseDesignChatReply('{"reply":"의견입니다","imageAction":"none"}'),{reply:'의견입니다',imageAction:'none'});
+});

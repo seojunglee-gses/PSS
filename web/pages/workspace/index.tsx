@@ -1251,6 +1251,7 @@ const handleSend = async (suggestedQuestion?: string) => {
   setErrorMessage(null);
 
   const stepId = activeStep.id;
+  const designTargetImageId = stepId === "alternatives" ? selectedAlternative ?? alternativeImages.at(-1)?.id : undefined;
   const history = conversationHistory((chatLogsByStep[stepId] ?? []).map(log=>stepId==="data"&&geoChat?.time===log.createdAt&&geo.result?.question===geoChat.question?{...log,text:geo.result.reply}:log), stepId);
   const spatialQuestion = stepId === "data" ? spatialConversationQuestion(userMessage,history) : userMessage;
   const sessionQuestion = stepId === "data" ? (clarificationExchange(userMessage,history) ? sourceRoutingQuestion(userMessage,history) : analysisSessionQuestion(userMessage, analysisActivities(dataLogsRef.current, projectId), activeProject?.workspaceContent.data.cases)) : userMessage;
@@ -1340,15 +1341,12 @@ const handleSend = async (suggestedQuestion?: string) => {
       return;
     }
     let finalMessage = userMessage;
-      if (stepId === "alternatives" && isDesignGenerationRequest(userMessage)) {
+    const generateChatImage = async () => {
 
-      imageRequestRef.current = true; setImageOperation("create");
+      imageRequestRef.current = true; setImageOperation(designTargetImageId ? "edit" : "create");
       setIsLoadingAlternatives(true);
       try {
-        const latestPrompt =
-          alternativeImages[alternativeImages.length - 1]?.note;
-
-        const imageRecord = await requestGeneratedImage(userMessage);
+        const imageRecord = await requestGeneratedImage(userMessage, designTargetImageId ? { parentImageId: designTargetImageId } : undefined);
         if (!isCurrentConversation()) return;
 
         if (!imageRecord?.imageUrl) {
@@ -1378,6 +1376,9 @@ const handleSend = async (suggestedQuestion?: string) => {
       } finally {
         if (isCurrentConversation()) { imageRequestRef.current = false; setIsLoadingAlternatives(false); }
       }
+    };
+    if (stepId === "alternatives" && isDesignGenerationRequest(userMessage)) {
+      await generateChatImage();
       return;
     }
       if (stepId === "evaluation") {
@@ -1394,6 +1395,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           model: getChatModelByProvider(activeProvider),
           stepId,
           message: finalMessage,
+          ...(designTargetImageId ? { designTargetImageId } : {}),
           ...(continuityTopicId?{continuityTopicId}:{}),
           history,
         }),
@@ -1402,8 +1404,12 @@ const handleSend = async (suggestedQuestion?: string) => {
         const payload = await response.json().catch(() => ({}));
         throw new Error(payload?.error ?? t("workspace.chatFailed"));
       }
-      const payload = (await response.json()) as { reply: string };
+      const payload = (await response.json()) as { reply: string; imageAction?: "edit" | "none" };
       if (!isCurrentConversation()) return;
+      if (stepId === "alternatives" && designTargetImageId && payload.imageAction === "edit") {
+        await generateChatImage();
+        return;
+      }
       const reply = payload.reply;
      const baseLogs = [...nextUserLogs];
       const nextAssistantLogs: ChatLog[] = [
