@@ -2490,7 +2490,7 @@ const handleSend = async (suggestedQuestion?: string) => {
                         onLoad={event => { const img = event.currentTarget; if (img.parentElement && img.naturalHeight) img.parentElement.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`; }}
                       />
                     )}
-                    <span className="absolute bottom-2 right-2 rounded-lg bg-slate-900/80 px-2 py-1 text-xs text-white">{t("evaluation.enlarge")}</span>
+                    <span aria-hidden="true" className="pointer-events-none absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 text-white"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" focusable="false"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></svg></span>
                   </button>
                   <h4 className="mt-2 line-clamp-2 break-words text-base font-semibold text-blue-950">{image.description?.elements[0]?.text ?? localize(image.label)}</h4>
                   <div className="mt-3 space-y-2 text-xs text-slate-500">
