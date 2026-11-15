@@ -49,6 +49,49 @@ export async function withDesignOperation<T>(context: Context, kind: string, req
 export async function readDesignDirection(context: Context): Promise<DesignDirection | null> {
   return (await designRef(context.projectId, context.user.uid, "direction").get()).data()?.direction ?? null;
 }
+// Read-only enrichment for Stage 3 completion. Never fetch image binaries or re-analyze images.
+export async function designSummaryContext(context: Pick<Context, "projectId" | "user">, savedLogs: unknown) {
+  const db = adminDb();
+  const [currentSnapshot, imageSnapshot] = await Promise.all([
+    designRef(context.projectId, context.user.uid, "direction").get(),
+    db.collection(`ppssGeneratedImages_${context.projectId}`).where("userId", "==", context.user.uid).get(),
+  ]);
+  const images = new Map<string, Record<string, unknown>>();
+  for (const doc of imageSnapshot.docs) {
+    const image = doc.data();
+    if (image.userId !== context.user.uid) continue;
+    const metadata = image.designMetadata ?? {};
+    images.set(image.imageId ?? doc.id, {
+      imageId: image.imageId ?? doc.id, label: image.label, createdAt: image.createdAt,
+      generationOrEditPrompt: image.note, editRequest: metadata.editRequest,
+      parentImageId: metadata.parentImageId, rootImageId: metadata.rootImageId,
+      versionNumber: metadata.versionNumber, directionRevision: metadata.directionRevision,
+      source: "stored-generated-image",
+    });
+  }
+  // Compatibility for old chats whose image notes are not in the generated-image collection.
+  if (Array.isArray(savedLogs)) for (const log of savedLogs) {
+    if (!log || log.stepId !== undefined && log.stepId !== "alternatives" || typeof log.imageNote !== "string" || !log.imageNote.trim()) continue;
+    const id = typeof log.imageId === "string" && log.imageId ? log.imageId : `chat:${images.size}`;
+    const existing = images.get(id);
+    if (existing && !existing.generationOrEditPrompt) {
+      existing.generationOrEditPrompt = log.imageNote;
+      existing.source = "stored-generated-image-and-chat-note";
+    } else if (!existing) images.set(id, { imageId: log.imageId, label: log.imageLabel, createdAt: log.createdAt, generationOrEditPrompt: log.imageNote, source: "saved-chat-image-note" });
+  }
+  const orderedImages = [...images.values()].sort((a, b) => String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")));
+  const current = currentSnapshot.data()?.direction as DesignDirection | undefined;
+  const revisions = [...new Set(orderedImages.map(image => image.directionRevision).filter((id): id is string => typeof id === "string" && Boolean(id)))];
+  const directions = await Promise.all(revisions.map(async revision => {
+    if (current?.revision === revision) return current;
+    return (await designRef(context.projectId, context.user.uid, `revision:${revision}`).get()).data()?.direction as DesignDirection | undefined;
+  }));
+  if (current && !revisions.includes(current.revision)) directions.push(current);
+  const result = { directions: directions.filter((direction): direction is DesignDirection => Boolean(direction)), images: orderedImages, visualInspectionPerformed: false };
+  // Avoid silently dropping initial directions or edits when a history is unusually large.
+  if (JSON.stringify(result).length > 160_000) throw new AccessError(413, "설계 기록이 매우 길어 자동 요약을 만들지 못했어요. 기존 기록은 그대로 보관됩니다.");
+  return result;
+}
 async function previousDialogue(context: Context) {
   const db = adminDb(), result: Record<string, unknown> = {};
   const legacy = (await db.doc(`ppssChatLogs_${context.projectId}/${context.user.uid}`).get()).data();

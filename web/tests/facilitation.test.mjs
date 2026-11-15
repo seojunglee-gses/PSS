@@ -164,7 +164,7 @@ test('all five summary stages retain the JSON contract and natural prose with op
  const prior=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='summary-fixture';t.after(()=>prior===undefined?delete process.env.OPENAI_API_KEY:process.env.OPENAI_API_KEY=prior);
  mock(t,context,'loadProjectContext',async()=>({projectId:'p',user:{uid:'u'},currentMaterial:'시장 옆 골목이 사업 대상지입니다. 통행 규정은 제공되지 않았습니다.',previousSummaries:{problem:'참여자는 퇴근길 휴식과 보행을 중요하게 봄'}}));
  const dialogue=[{sender:'user',text:'시장 옆 골목에서 퇴근 후 쉬고 싶어요.'},{sender:'assistant',text:'공용 카페도 가능성이 될 수 있겠습니다.'},{sender:'user',text:'카페보다는 돈을 쓰지 않아도 머무는 공간을 원해요.'}];
- mock(t,admin,'adminDb',()=>({doc:()=>({get:async()=>({data:()=>({logs:dialogue})})})}));
+ mock(t,admin,'adminDb',()=>({collection:()=>({where:()=>({get:async()=>({docs:[]})})}),doc:()=>({get:async()=>({data:()=>({logs:dialogue})})})}));
  const paragraphs='시장 옆 골목에서 퇴근 후 비용 부담 없이 쉬는 기회를 중요하게 보았다. 카페 가능성을 논의했지만, 참여자는 소비하지 않아도 머물 수 있는 공간을 선호한다고 구체화했다.';
  mock(t,global,'fetch',async(url,options)=>{current=JSON.parse(options.body);const input=JSON.parse(current.input.split('Input JSON: ')[1].split('\n\nReturn JSON')[0]);return Response.json({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({workspaceSummary:{stageSummaries:Object.fromEntries(['problem','data','alternatives','evaluation','report'].map(stage=>[stage,stage===input.currentStage?paragraphs:''])),overallSummary:paragraphs}})}]}]});});
  for(const stage of ['problem','data','alternatives','evaluation','report']){
