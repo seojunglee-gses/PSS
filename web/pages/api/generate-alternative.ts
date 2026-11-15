@@ -6,7 +6,7 @@ import { AccessError } from "../../lib/membership/server";
 import { callLLM } from "../../lib/llm";
 import { conversationHistory } from "../../lib/chat-history";
 import { storeGeneratedImage } from "../../lib/generated-image-server";
-import { buildDesignEditPrompt, needsDesignEditClarification, DESIGN_TRANSLATION } from "../../lib/design-alternatives";
+import { buildInitialDesignPrompt, buildDesignEditPrompt, needsDesignEditClarification, DESIGN_TRANSLATION } from "../../lib/design-alternatives";
 import { confirmDesignDirection, prepareDesignDirection, readDesignDirection, withDesignOperation } from "../../lib/design-alternatives-server";
 import { editDesignImage, readDesignImage, validateDesignMask } from "../../lib/design-image-server";
 export const config = { maxDuration: 300, api: { bodyParser: { sizeLimit: "8mb" } } };
@@ -62,11 +62,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const maskBuffer = mask ? await validateDesignMask(mask, base.width, base.height) : undefined;
       const history = conversationHistory(context.stageHistory.length ? context.stageHistory : req.body.history, "alternatives");
       // A confirmed direction is translated directly. No second LLM can silently change it.
+      const legacyTranslation = !editParentId && !direction ? await callLLM({ provider: req.body.provider === "gemini" ? "gemini" : "openai", systemText: `Generate a SINGLE image-generation prompt based on this project's dialogue and workspace summaries. Never assume a particular site or scope. Preserve participant-stated preferences; AI options are not participant decisions. ${DESIGN_TRANSLATION}`, userText: JSON.stringify({ material: context.currentMaterial, summaries: context.previousSummaries, history, feedback: feedback ?? null }) }) : undefined;
       const editPrompt = editParentId ? buildDesignEditPrompt({
-        feedback, prior: direction?.interventions ?? (typeof baseRecord?.note === "string" ? baseRecord.note.slice(0, 6000) : ""), history,
+        feedback, residentBrief: direction?.residentBrief, prior: direction?.interventions ?? (typeof baseRecord?.note === "string" ? baseRecord.note.slice(0, 6000) : ""), history,
         selectedImageIntent: typeof baseRecord?.note === "string" ? baseRecord.note.slice(-6000) : "",
         summaries: context.previousSummaries, masked: Boolean(maskBuffer),
-      }) : direction ? `${DESIGN_TRANSLATION}\nConfirmed resident-reviewed direction: ${JSON.stringify(direction.interventions)}\nLatest request: ${feedback ?? "Visualize exactly this confirmed direction."}` : await callLLM({ provider: req.body.provider === "gemini" ? "gemini" : "openai", systemText: `Generate a SINGLE image-generation prompt based on this project's dialogue and workspace summaries. Never assume a particular site or scope. Preserve participant-stated preferences; AI options are not participant decisions. ${DESIGN_TRANSLATION}`, userText: JSON.stringify({ material: context.currentMaterial, summaries: context.previousSummaries, history, feedback: feedback ?? null }) });
+      }) : buildInitialDesignPrompt({ direction, legacyTranslation, material: context.currentMaterial, summaries: context.previousSummaries, history, feedback });
       let generated;
       if (req.body.provider === "gemini" && !editParentId && !direction) {
         const { GoogleGenerativeAI } = await import("@google/generative-ai");

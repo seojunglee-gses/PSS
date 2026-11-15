@@ -250,3 +250,67 @@ test('editing an older selected version keeps that parent intent even when the s
  assert.equal(result.code,200);assert.match(sent,/Selected version: climbing shade with retained shop signs/);assert.match(sent,/보행 공간 구분/);assert.equal(result.body.designMetadata.parentImageId,'chosen');
  assert.deepEqual(f.records.get('ppssGeneratedImages_alpha/chosen'),parent);
 });
+
+const residentBrief=(fields={})=>({goals:[],chosenElements:[],recurringConcerns:[],unselectedAiIdeas:[],rejectedElements:[],priorities:[],...fields});
+test('resident brief is optional for old directions and validates bounded, distinct categories without filling missing preferences',()=>{
+ const {parseDesignDirection}=load('lib/design-alternatives.js');
+ assert.equal(parseDesignDirection(JSON.stringify(proposal())).residentBrief,undefined);
+ const brief=residentBrief({goals:['보행 안전'],unselectedAiIdeas:['AI가 제안한 벤치'],rejectedElements:['큰 화단']});
+ const parsed=parseDesignDirection(JSON.stringify({...proposal(),residentBrief:brief}));assert.deepEqual(parsed.residentBrief,brief);assert.deepEqual(parsed.residentBrief.priorities,[]);
+ assert.throws(()=>parseDesignDirection(JSON.stringify({...proposal(),residentBrief:{chosenElements:'not an array'}})),/주민 설계 조건/);
+ assert.throws(()=>parseDesignDirection(JSON.stringify({...proposal(),residentBrief:{priorities:Array(11).fill('추정')}})),/주민 설계 조건/);
+});
+test('initial and edit prompts avoid a facility quota and keep unselected ideas and rejected elements distinct',()=>{
+ const {buildInitialDesignPrompt,RESIDENT_IMAGE_RULES}=load('lib/design-alternatives.js');
+ assert.doesNotMatch(DESIGN_TRANSLATION,/3 to 4/);assert.doesNotMatch(DESIGN_PROPOSAL_INSTRUCTIONS,/combining 3–4/);
+ assert.match(DESIGN_PROPOSAL_INSTRUCTIONS,/A single focused intervention is enough/);assert.match(DESIGN_PROPOSAL_INSTRUCTIONS,/Leave unsupported categories empty/);
+ const direction={...proposal(),revision:'r',residentBrief:residentBrief({goals:['보행 안전'],chosenElements:['진입 안내'],unselectedAiIdeas:['벤치 추가'],rejectedElements:['큰 화단']})};
+ const initial=buildInitialDesignPrompt({direction,material:'현장 조건은 미확인',summaries:{problem:'차량 진입 불편'},history:[]});
+ assert.ok(initial.includes(RESIDENT_IMAGE_RULES));assert.match(initial,/Unselected AI ideas are background only/);
+ const input=JSON.parse(initial.split('RESIDENT DESIGN INPUT:\n')[1]);assert.deepEqual(input.residentBrief,direction.residentBrief);assert.equal(input.projectMaterial,'현장 조건은 미확인');
+ const edit=buildDesignEditPrompt({feedback:'화단은 빼고 안내는 유지해주세요',prior:direction.interventions,residentBrief:direction.residentBrief,history:[],summaries:{},masked:true});
+ assert.ok(edit.includes(RESIDENT_IMAGE_RULES));assert.match(edit,/do not reintroduce rejected or removed facilities/);assert.match(edit,/Change only the transparent mask area/);
+});
+test('A–E resident scenarios reach the real image request with distinct goals/choices/rejections and no extra translation calls',async t=>{
+ const bytes=await sharp({create:{width:64,height:64,channels:4,background:'gray'}}).png().toBuffer();
+ const f=fixture(t,{'ppssSiteImages_alpha/current':{imageId:'site',storagePath:'projects/alpha/site-images/site'}});
+ const profiles=[
+  {id:'A',goal:'보행공간 확보와 차량 진입 관리',elements:['보행통로 구분과 진입 안내'],reject:['요청하지 않은 화단과 벤치'],unselected:['AI가 제안한 가로수']},
+  {id:'B',goal:'녹지와 색채를 통한 골목 경관 개선',elements:['기존 가장자리의 녹지와 상점 색채 유지'],reject:['도로 전체 포장 교체'],unselected:['장식 조명']},
+  {id:'C',goal:'주차 정비와 차량 동선 개선',elements:['주차 구획 정리와 출입 동선 확보'],reject:['통행을 막는 조경 시설'],unselected:['벤치']},
+  {id:'D',goal:'녹지 목적을 유지하면서 관리 부담 줄이기',elements:['관리하기 쉬운 낮은 식재 구조'],reject:['관리 부담이 큰 수목과 화분'],unselected:['화분 추가']},
+  {id:'E',goal:'주차를 유지하면서 보행 그늘과 상점 개성 개선',elements:['주차를 방해하지 않는 보행 가장자리 그늘','기존 간판 개성 유지'],reject:['상가 외관 일괄 정비'],unselected:['벤치와 포장 교체'],priorities:['주차 유지','보행 그늘','상점 개성']},
+ ];
+ let active,calls=0,imageCalls=0;const saved=[];
+ t.mock.method(admin,'adminBucket',()=>({file:()=>({getMetadata:async()=>[{size:bytes.length}],download:async()=>[bytes],save:async()=>{}})}));t.mock.method(admin,'buildDownloadUrl',p=>'https://storage.example/'+p);
+ t.mock.method(llm,'callLLM',async request=>{
+  calls++;const input=JSON.parse(request.userText);assert.match(request.systemText,/Extract residentBrief in this SAME response/);
+  assert.equal(input.dialogue.problem[0].text,active.goal);assert.equal(input.dialogue.data[0].text,`다음 요소는 원하지 않아요: ${active.reject[0]}`);
+  return JSON.stringify({introduction:active.goal,interventions:active.elements.map(text=>({text,origin:'participant',basis:active.goal})),residentBrief:residentBrief({goals:[active.goal],chosenElements:active.elements,recurringConcerns:[active.goal],unselectedAiIdeas:active.unselected,rejectedElements:active.reject,priorities:active.priorities??[]})});
+ });
+ t.mock.method(global,'fetch',async(_url,options)=>{
+  imageCalls++;assert.equal(options.body.get('n'),'1');const prompt=options.body.get('prompt');
+  if(prompt.startsWith('EDIT THE SUPPLIED')){assert.match(prompt,/管理|관리 부담이 큰 수목과 화분/);assert.match(prompt,/do not reintroduce rejected or removed facilities/)}
+  else {
+   const data=JSON.parse(prompt.split('RESIDENT DESIGN INPUT:\n')[1]);saved.push(data);
+   assert.equal(data.residentBrief.goals[0],active.goal);assert.deepEqual(data.residentBrief.chosenElements,active.elements);assert.deepEqual(data.residentBrief.rejectedElements,active.reject);
+   assert.deepEqual(data.direction.interventions.map(item=>item.text),active.elements);
+   assert.deepEqual(data.residentBrief.priorities,active.priorities??[]);
+  }
+  return Response.json({data:[{b64_json:bytes.toString('base64')}]});
+ });
+ const createdByProfile=new Map();
+ for(const profile of profiles){
+  active=profile;f.context.user={uid:'resident-'+profile.id};
+  f.records.set(`users_alpha/${f.context.user.uid}/steps/problem`,{logs:[{sender:'user',text:profile.goal}]});
+  f.records.set(`users_alpha/${f.context.user.uid}/steps/data`,{logs:[{sender:'user',text:`다음 요소는 원하지 않아요: ${profile.reject[0]}`}]});
+  const draft=(await f.call({action:'prepare-proposal',requestId:'prepare'})).body.direction;
+  assert.equal(draft.interventions.length,profile.elements.length);
+  await f.call({action:'confirm-proposal',revision:draft.revision});
+  const image=await f.call({requestId:'create',revision:draft.revision});assert.equal(image.code,200);createdByProfile.set(profile.id,{image:image.body,revision:draft.revision});
+ }
+ assert.equal(calls,5);assert.equal(imageCalls,5);assert.equal(new Set(saved.map(data=>JSON.stringify(data.residentBrief))).size,5);
+ active=profiles[3];f.context.user={uid:'resident-D'};const parent=createdByProfile.get('D');
+ assert.equal((await f.call({requestId:'maintain-edit',revision:parent.revision,parentImageId:parent.image.imageId,feedback:'화분은 제거하고 녹지 목적은 유지해주세요.'})).code,200);
+ assert.equal(calls,5);assert.equal(imageCalls,6);for(const [key,value]of Object.entries(f.original))assert.deepEqual(f.records.get(key),value);
+});
