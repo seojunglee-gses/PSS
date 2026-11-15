@@ -61,7 +61,7 @@ export default function ImageViewer({src,alt,onClose,details}:{src:string;alt:st
     <span aria-live="polite" className="min-w-12 text-center tabular-nums">{Math.round(view.zoom*100)}%</span>
     <button type="button" aria-label={t('image.zoomIn')} disabled={view.zoom>=5} onClick={()=>zoomAt(view.zoom*1.25)}>+</button>
     <button type="button" onClick={()=>apply(fit)}>{t('image.resetZoom')}</button>
-    <button type="button" className="image-viewer-close" onClick={onClose}>{t('image.closeViewer')} ×</button>
+    <button type="button" className="image-viewer-close text-2xl" aria-label={t('image.closeViewer')} onClick={onClose}>×</button>
    </div>
    <p id="image-viewer-help" className="image-viewer-help">{t('image.viewerHelp')}</p>
    <div ref={stage} className="image-viewer-stage" onPointerDown={event=>{
