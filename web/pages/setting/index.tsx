@@ -56,18 +56,21 @@ export default function Setting() {
   const [participants, setParticipants] = useState<{ userId: string; participantId?: string; summary: { completedStages?: string[] } }[]>([]);
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const participantPopover = useRef<HTMLDivElement>(null);
+  const [stageParticipantsOpen, setStageParticipantsOpen] = useState<string | null>(null);
+  const stageParticipantPopover = useRef<HTMLDivElement>(null);
   const [resetParticipant, setResetParticipant] = useState("");
   const [resetStage, setResetStage] = useState("data");
   const [resettingChat, setResettingChat] = useState(false);
   const [chatResetMessage, setChatResetMessage] = useState("");
   useEffect(() => {
-    if (!participantsOpen) return;
-    const outside = (event: PointerEvent) => { if (!participantPopover.current?.contains(event.target as Node)) setParticipantsOpen(false); };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setParticipantsOpen(false); };
+    if (!participantsOpen && !stageParticipantsOpen) return;
+    const close = () => { setParticipantsOpen(false); setStageParticipantsOpen(null); };
+    const outside = (event: PointerEvent) => { if (!participantPopover.current?.contains(event.target as Node) && !stageParticipantPopover.current?.contains(event.target as Node)) close(); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
     document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
-  }, [participantsOpen]);
-  useEffect(() => { setParticipants([]); setParticipantCount(0); setParticipantsOpen(false); setResetParticipant(""); setChatResetMessage(""); }, [projectId, user?.uid]);
+  }, [participantsOpen, stageParticipantsOpen]);
+  useEffect(() => { setParticipants([]); setParticipantCount(0); setParticipantsOpen(false); setStageParticipantsOpen(null); setResetParticipant(""); setChatResetMessage(""); }, [projectId, user?.uid]);
   const resetParticipantChat = async (target: "participant" | "test-admin" = "participant") => {
     if (!user || target === "participant" && !resetParticipant || resettingChat) return;
     const confirmed = window.confirm(target === "test-admin" ? t("setting.testAdminResetConfirm", { email: TEST_ADMIN_EMAIL, stage: t(`step.${resetStage}`) }) : t("setting.chatResetConfirm"));
@@ -502,8 +505,8 @@ export default function Setting() {
                   <p className="mt-2 text-xs text-slate-500">
                     {t("setting.progressHint")}</p>
                 </div>
-                <div ref={participantPopover} className="relative" onPointerEnter={event => { if (event.pointerType === "mouse") setParticipantsOpen(true); }} onPointerLeave={event => { if (event.pointerType === "mouse") setParticipantsOpen(false); }}>
-                  <button type="button" className="min-h-11 rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600" aria-expanded={participantsOpen} aria-controls="participant-id-list" onClick={event => { if (event.detail === 0 || !window.matchMedia("(hover: hover)").matches) setParticipantsOpen(open => !open); }} onKeyDown={event => { if (event.key === "ArrowDown") setParticipantsOpen(true); }}>{t("setting.participants")}{participantCount}</button>
+                <div ref={participantPopover} className="relative" onPointerEnter={event => { if (event.pointerType === "mouse") { setStageParticipantsOpen(null); setParticipantsOpen(true); } }} onPointerLeave={event => { if (event.pointerType === "mouse") setParticipantsOpen(false); }}>
+                  <button type="button" className="min-h-11 rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600" aria-expanded={participantsOpen} aria-controls="participant-id-list" onClick={event => { if (event.detail === 0 || !window.matchMedia("(hover: hover)").matches) { setStageParticipantsOpen(null); setParticipantsOpen(open => !open); } }} onKeyDown={event => { if (event.key === "ArrowDown") { setStageParticipantsOpen(null); setParticipantsOpen(true); } }}>{t("setting.participants")}{participantCount}</button>
                   {participantsOpen && <div id="participant-id-list" role="region" aria-label={t("setting.participantIds")} className="absolute left-0 right-auto top-full z-30 max-h-60 sm:left-auto sm:right-0 w-72 max-w-[calc(100vw-48px)] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-lg" tabIndex={0}>
                     {participants.filter(entry => entry.summary.completedStages?.length).map(entry => <p key={entry.userId} className="break-all py-1">{entry.participantId ?? entry.userId}</p>)}
                     {!participantCount && <p>{t("setting.noParticipants")}</p>}
@@ -536,9 +539,16 @@ export default function Setting() {
                       <p className="font-semibold text-slate-700">
                         {stage.label}
                       </p>
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        {t("setting.completed")}{stageCompletionCounts[stage.id] ?? 0}
-                      </p>
+                      <div ref={stageParticipantsOpen === stage.id ? stageParticipantPopover : undefined} className="relative w-fit" onPointerEnter={event => { if (event.pointerType === "mouse") { setParticipantsOpen(false); setStageParticipantsOpen(stage.id); } }} onPointerLeave={event => { if (event.pointerType === "mouse") setStageParticipantsOpen(open => open === stage.id ? null : open); }}>
+                        <button type="button" className="mt-1 min-h-11 rounded-lg px-2 text-left text-xs text-blue-800 underline decoration-blue-200 underline-offset-4" aria-label={t("setting.stageParticipantIds", { stage: stage.label })} aria-expanded={stageParticipantsOpen === stage.id} aria-controls={`completed-participants-${stage.id}`} onPointerUp={event => { if (event.pointerType !== "mouse") { setParticipantsOpen(false); setStageParticipantsOpen(open => open === stage.id ? null : stage.id); } }} onClick={event => { if (event.detail === 0) { setParticipantsOpen(false); setStageParticipantsOpen(open => open === stage.id ? null : stage.id); } }} onKeyDown={event => { if (event.key === "ArrowDown") { event.preventDefault(); setParticipantsOpen(false); setStageParticipantsOpen(stage.id); } }}>
+                          {t("setting.completed")}{stageCompletionCounts[stage.id] ?? 0}
+                        </button>
+                        {stageParticipantsOpen === stage.id && <div id={`completed-participants-${stage.id}`} role="region" aria-label={t("setting.stageParticipantIds", { stage: stage.label })} tabIndex={0} className="absolute left-0 top-full z-30 max-h-60 w-72 max-w-[calc(100vw-48px)] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-lg">
+                          <p className="mb-2 font-semibold text-slate-700">{t("setting.stageParticipantIds", { stage: stage.label })}</p>
+                          {participants.filter(entry => entry.summary.completedStages?.includes(stage.id)).map(entry => <p key={entry.userId} className="break-all py-1">{entry.participantId ?? entry.userId}</p>)}
+                          {!stageCompletionCounts[stage.id] && <p>{t("setting.noStageParticipants")}</p>}
+                        </div>}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-slate-500">
