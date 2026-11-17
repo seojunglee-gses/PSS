@@ -2589,11 +2589,9 @@ const handleSend = async (suggestedQuestion?: string) => {
                   <p className="text-xs font-semibold uppercase text-slate-400">
                     {t("report.tab.executive")}
                   </p>
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-3 space-y-2 text-sm text-slate-600">
                     {executiveSummary?.stageSummaries.decision
-                      ? renderSummaryLines(
-                          executiveSummary.stageSummaries.decision
-                        )
+                      ? executiveSummary.stageSummaries.decision.split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => <ChatMessageContent key={index} text={paragraph} />)
                       : t("workspace.executiveDecisionHint")}
                   </div>
                 </div>
