@@ -138,3 +138,44 @@ test('description traversal cannot read another participant direction through a 
  const result=await route({query:{projectId:'p',kind:'images'},token:'reader'});
  assert.doesNotMatch(JSON.stringify(result.body),/비공개 방향/);assert.equal(result.body.images[0].description.historyIncomplete,true);
 });
+
+test('Stage 5 synthesis prioritizes participant spatial themes, preserves source differences, and saves a new emphasized summary only',async t=>{
+ const {db,store,put}=fixture(t),firebase=require(`${build}/lib/firebase.js`),executive=require(`${build}/pages/api/admin/executive-summary.js`).default;
+ put('ppssWorkspaceSummaries_p/p1',{completedStages:['problem','data','alternatives','evaluation'],stageSummaries:{problem:'시장 앞 골목에서 차를 피해 걷는 게 불편하다.',data:'그늘이 있는 보행길을 원한다.',alternatives:'보행 가장자리 그늘과 진입 안내를 제안했다.',evaluation:'보행공간이 이어지는 안을 1순위로 선택했다.',report:'확인함. ㅇ'}});
+ put('ppssWorkspaceSummaries_p/p2',{completedStages:['problem','data','alternatives','evaluation'],stageSummaries:{problem:'상점 앞 주차와 배달 접근이 필요하다.',data:'그늘도 필요하지만 주차 축소는 원하지 않는다.',alternatives:'주차 구획을 정리하고 조명은 집 안에 비치지 않게 조정하자.',evaluation:'차량 접근을 유지하는 안을 선호했다.'}});
+ put('ppssExecutiveSummaries_p/old',{stageId:'report',stageSummaries:{decision:'기존 종합 요약 원문'},createdAt:'2026-01-01'});
+ const before=JSON.stringify([...store]);const originalCollection=db.collection;
+ const added=[];db.collection=path=>({...originalCollection(path),add:async data=>{added.push({path,data});return {id:'new-report'}}});
+ mock(t,admin,'verifyAdminRequest',async()=>({uid:'owner-uid',email:'owner@example.com'}));
+ mock(t,firebase,'loadBackgroundKnowledge',async()=>({curatedText:'2018년 초안 문서. 현장 실측 및 소유권 검토 안내.'}));
+ const key=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='fixture';t.after(()=>key===undefined?delete process.env.OPENAI_API_KEY:process.env.OPENAI_API_KEY=key);
+ const conclusion='참여자들은 **보행 안전**과 **일상적인 접근성**을 중요한 요구로 제시했다.\n\n공간개선 아이디어로 **그늘이 이어지는 보행길**과 **주차 구획 정리**가 논의되었다.\n\n다만 **보행공간 확보와 주차 유지**의 우선순위에는 차이가 있었으며, **야간 조명과 주거환경**을 함께 고려하는 의견도 있었다.\n\n이를 연결하면 **걷는 안전과 차량 접근을 함께 고려하는 골목 개선**을 지역의 계획 방향으로 살펴볼 수 있다.';
+ let calls=0;
+ mock(t,global,'fetch',async(url,options)=>{
+  calls++;assert.equal(url,'https://api.openai.com/v1/responses');const request=JSON.parse(options.body);assert.equal(request.model,'gpt-6.1-sol');
+  const system=request.input[0].content,user=request.input[1].content;
+  assert.match(system,/Stage 5 participant-centered synthesis/);assert.match(system,/Apply these accuracy rules silently/);
+  assert.match(system,/4–5 paragraphs/);assert.match(system,/2–4 short, meaningful phrases/);assert.match(system,/last paragraph must emphasize/);
+  assert.match(system,/A concrete, important minority need/);assert.match(system,/rankings into positive judgments or consensus/);
+  assert.match(system,/Do not routinely discuss silence/);assert.match(system,/Each stageSummary entry groups ONE participant/);
+  assert.match(user,/up to 5 grounded Korean keywords/);
+  const input=JSON.parse(user.split('Input JSON: ')[1].split('\n\nReturn JSON')[0]);assert.equal(input.participants,2);assert.equal(input.stageSummary.length,2);
+  assert.match(input.stageSummary[0],/시장 앞 골목/);assert.match(input.stageSummary[0],/확인함\. ㅇ/);assert.match(input.stageSummary[1],/집 안에 비치지/);
+  assert.doesNotMatch(user,/summary-admin|summary-system|summary-owner|legacy admin/);
+  return Response.json({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({keywords:['보행 안전','주차 접근성','그늘','주거환경'],conclusion})}]}]});
+ });
+ const result={};await executive({method:'POST',headers:{authorization:'Bearer manager'},body:{projectId:'p',stageId:'report'}},{status(code){result.status=code;return this},json(body){result.body=body}});
+ assert.equal(result.status,200);assert.equal(calls,1);assert.equal(result.body.stageSummaries.decision,conclusion);assert.equal(result.body.keywords.length,4);
+ assert.equal(added.length,1);assert.equal(added[0].path,'ppssExecutiveSummaries_p');assert.equal(added[0].data.stageId,'report');
+ for(const stage of ['problemDefinition','dataAnalysis','designAlternatives','designEvaluation'])assert.equal(result.body.stageSummaries[stage],'');
+ assert.equal(JSON.stringify([...store]),before,'all source records and existing summaries remain unchanged');
+});
+test('Stage 1–4 executive-summary prompts retain their existing rules without Stage 5 style changes',async t=>{
+ const {db,store}=fixture(t),firebase=require(`${build}/lib/firebase.js`),executive=require(`${build}/pages/api/admin/executive-summary.js`).default;
+ const {evidenceAttributionRules}=require(`${build}/lib/facilitation.js`);const before=JSON.stringify([...store]);
+ mock(t,admin,'verifyAdminRequest',async()=>({uid:'owner-uid',email:'owner@example.com'}));mock(t,firebase,'loadBackgroundKnowledge',async()=>null);
+ const key=process.env.OPENAI_API_KEY;process.env.OPENAI_API_KEY='fixture';t.after(()=>key===undefined?delete process.env.OPENAI_API_KEY:process.env.OPENAI_API_KEY=key);
+ let calls=0;mock(t,global,'fetch',async(_url,options)=>{calls++;const request=JSON.parse(options.body);assert.ok(request.input[0].content.endsWith(evidenceAttributionRules));assert.doesNotMatch(request.input[0].content,/Stage 5 participant-centered|4–5 paragraphs|2–4 short, meaningful/);assert.match(request.input[1].content,/Return exactly 5 keywords/);return Response.json({error:{message:'synthetic stop before saving'}},{status:503})});
+ for(const stage of ['problem','data','alternatives','evaluation']){const result={};await executive({method:'POST',headers:{authorization:'Bearer manager'},body:{projectId:'p',stageId:stage}},{status(code){result.status=code;return this},json(body){result.body=body}});assert.equal(result.status,500)}
+ assert.equal(calls,4);assert.equal(JSON.stringify([...store]),before);
+});
