@@ -26,7 +26,19 @@ export function completeTopRanks(rankings: Record<string, number>, imageIds: str
 export function rankHeatmap(images: { id: string; label: string }[], results: { rankings: Record<string, number> }[]) {
   return images.map(image => ({ ...image, counts: TOP_RANKS.map(rank => results.filter(result => result.rankings?.[image.id] === rank).length) }));
 }
-export const HEATMAP_COLORS = ["#edf4fc", "#d4e4f5", "#accbe8", "#78a9d6", "#306fad"];
+export const HEATMAP_COLORS = ["#f1f5f9", "#d4e4f5", "#accbe8", "#78a9d6", "#306fad"];
 export function heatmapLevel(count: number, maximum: number) {
   return count <= 0 || maximum <= 0 ? 0 : Math.max(1, Math.min(4, Math.ceil(count / maximum * 4)));
+}
+
+export type RankRow = ReturnType<typeof rankHeatmap>[number];
+/** Read-only report projection: no weighted score or tie-breaking winner. */
+export function evaluationReport(images: { id: string; label: string }[], results: { rankings: Record<string, number> }[]) {
+  const rows = rankHeatmap(images, results);
+  const maximumFirst = Math.max(0, ...rows.map(row => row.counts[0]));
+  const winners = maximumFirst > 0 ? rows.filter(row => row.counts[0] === maximumFirst) : [];
+  const distribution = rows.filter(row => row.counts.some(Boolean)).sort((a,b) =>
+    b.counts[0]-a.counts[0] || b.counts[1]-a.counts[1] || b.counts[2]-a.counts[2]);
+  const maximumTotal = Math.max(0, ...rows.map(row => row.counts.reduce((sum,count) => sum+count,0)));
+  return { rows, winners, distribution, maximumTotal };
 }

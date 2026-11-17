@@ -1,10 +1,10 @@
 import { useI18n } from "../../lib/i18n";
-import { TOP_RANKS, HEATMAP_COLORS, heatmapLevel, rankHeatmap } from "../../lib/evaluation-ranks";
-export default function RankingHeatmap({ images, results, onPreview }: {
-  images: { id: string; label: string }[]; results: { rankings: Record<string, number> }[]; onPreview: (id: string) => void;
+import { TOP_RANKS, HEATMAP_COLORS, heatmapLevel, rankHeatmap, type RankRow } from "../../lib/evaluation-ranks";
+export default function RankingHeatmap({ images = [], results = [], rows: suppliedRows, onPreview }: {
+  images?: { id: string; label: string }[]; results?: { rankings: Record<string, number> }[]; rows?: RankRow[]; onPreview: (id: string) => void;
 }) {
   const { t, localize } = useI18n();
-  const rows = rankHeatmap(images, results);
+  const rows = suppliedRows ?? rankHeatmap(images, results);
   const maximum = Math.max(0, ...rows.flatMap(row => row.counts));
   return <section aria-label={t("evaluation.heatmap")} className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold text-slate-900">{t("evaluation.heatmap")}</h4><span className="text-xs text-slate-500">{t("evaluation.heatmapUnit")}</span></div>
