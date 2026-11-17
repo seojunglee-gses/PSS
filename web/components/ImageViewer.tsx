@@ -9,7 +9,7 @@ const fit:View = {zoom:1,x:0,y:0};
 const distance = (a:Point,b:Point) => Math.hypot(a.x-b.x,a.y-b.y);
 const midpoint = (a:Point,b:Point) => ({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
 
-export default function ImageViewer({src,alt,onClose,details}:{src:string;alt:string;onClose:()=>void;details?:ReactNode}) {
+export default function ImageViewer({src,alt,onClose,details,title,onNavigate}:{src:string;alt:string;onClose:()=>void;details?:ReactNode;title?:string;onNavigate?:(delta:number)=>void}) {
  const {t}=useI18n();
  const dialog=useRef<HTMLDialogElement>(null),stage=useRef<HTMLDivElement>(null),image=useRef<HTMLImageElement>(null);
  const [view,setView]=useState<View>(fit),viewRef=useRef<View>(fit);
@@ -49,14 +49,21 @@ export default function ImageViewer({src,alt,onClose,details}:{src:string;alt:st
    if(focused?.isConnected)focused.focus({preventScroll:true});
   };
  },[apply,zoomAt]);
+ useEffect(()=>{pointers.current.clear();gesture.current=null;apply(fit);},[src,apply]);
  const begin=()=>{
   const points=[...pointers.current.values()];
   gesture.current=points.length?{view:{...viewRef.current},center:points.length>1?midpoint(points[0],points[1]):points[0],distance:points.length>1?distance(points[0],points[1]):0}:null;
  };
  const end=(event:PointerEvent<HTMLDivElement>)=>{pointers.current.delete(event.pointerId);begin();};
- return createPortal(<dialog ref={dialog} className="image-viewer" aria-label={t('image.viewer')} aria-describedby="image-viewer-help" onCancel={event=>{event.preventDefault();onClose();}}>
+ return createPortal(<dialog ref={dialog} className="image-viewer" aria-label={t('image.viewer')} aria-describedby="image-viewer-help" onKeyDown={event=>{
+  if(onNavigate && (event.key==='ArrowLeft'||event.key==='ArrowRight')) {
+   event.preventDefault();onNavigate(event.key==='ArrowLeft'?-1:1);
+  }
+ }} onCancel={event=>{event.preventDefault();onClose();}}>
   <div className="image-viewer-layout">
    <div className="image-viewer-toolbar">
+    {title && <h3 className="mr-auto break-words font-semibold">{title}</h3>}
+    {onNavigate && <><button type="button" aria-label={t('evaluation.previousImage')} onClick={()=>onNavigate(-1)}>←</button><button type="button" aria-label={t('evaluation.nextImage')} onClick={()=>onNavigate(1)}>→</button></>}
     <button type="button" aria-label={t('image.zoomOut')} disabled={view.zoom<=1} onClick={()=>zoomAt(view.zoom/1.25)}>−</button>
     <span aria-live="polite" className="min-w-12 text-center tabular-nums">{Math.round(view.zoom*100)}%</span>
     <button type="button" aria-label={t('image.zoomIn')} disabled={view.zoom>=5} onClick={()=>zoomAt(view.zoom*1.25)}>+</button>

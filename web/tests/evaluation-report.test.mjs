@@ -40,3 +40,32 @@ test('legacy design extraction returns only source text and preserves speaker at
  assert.equal(readableDesignText('PHOTO-BASED URBAN DESIGN VISUALIZATION'),undefined);
  assert.deepEqual(legacyDesignElements('whole internal paragraph'),[]);
 });
+
+test('report keeps all positive first-choice ties, ignores average ranks and never selects a zero-vote winner',()=>{
+ const images=['a','b','c','d','zero'].map(id=>({id,label:id}));
+ const results=[{rankings:{a:1,b:2,c:3}},{rankings:{d:1,a:2,b:3}},{rankings:{a:1,d:2,c:3}},{rankings:{d:1,b:2}},{rankings:{a:1}},{rankings:{d:1}}];
+ const before=structuredClone({images,results});const report=ranks.evaluationReport(images,results);
+ assert.deepEqual(report.winners.map(row=>row.id),['a','d']);assert.deepEqual(report.winners.map(row=>row.counts[0]),[3,3]);
+ assert.deepEqual(report.distribution.map(row=>row.id),['a','d','b','c']);assert.equal(report.maximumTotal,4);assert.equal(report.rows.length,5);
+ assert.deepEqual({images,results},before);
+ assert.deepEqual(ranks.evaluationReport(images,[]).winners,[]);
+ assert.deepEqual(ranks.evaluationReport(images,[{rankings:{a:2,b:3}}]).winners,[]);
+ assert.equal(ranks.evaluationReport(images,[{rankings:{a:1}}]).winners.length,1);
+ assert.deepEqual(ranks.evaluationReport([],[]),{rows:[],winners:[],distribution:[],maximumTotal:0});
+});
+
+test('report bars sort by 1/2/3 counts on one scale; heatmap retains zero-vote plans',t=>{
+ const React=require('react'),{renderToStaticMarkup}=require('react-dom/server'),i18n=load('lib/i18n.js');
+ const old=i18n.useI18n;i18n.useI18n=()=>({t:(key,values)=>i18n.translate('ko',key,values),localize:value=>value});t.after(()=>i18n.useI18n=old);
+ const Results=load('components/evaluation/EvaluationResults.js').default;
+ const images=['A','B','C','Zero'].map(id=>({id,label:'계획안 '+id,imageUrl:'/test.png'}));
+ const results=[{rankings:{A:1,B:2,C:3}},{rankings:{A:2,B:1}},{rankings:{B:2}}];
+ const html=renderToStaticMarkup(React.createElement(Results,{images,results,onPreview:()=>{}}));
+ assert.match(html,/공동 1위 · 2개 계획안/);assert.match(html,/1순위 1표/);
+ const chart=html.split('aria-label="계획안별 순위 선택 분포"')[1].split('aria-label="계획안별 순위 선택 히트맵"')[0];
+ assert.ok(chart.indexOf('계획안 B')<chart.indexOf('계획안 A'));assert.ok(chart.indexOf('계획안 A')<chart.indexOf('계획안 C'));
+ assert.match(chart,/width:66\.666/);assert.match(chart,/width:33\.333/);assert.doesNotMatch(chart,/계획안 Zero/);
+ assert.match(html,/계획안 Zero, 1순위: 0회 선택/);assert.doesNotMatch(html,/conic-gradient/);
+ const empty=renderToStaticMarkup(React.createElement(Results,{images,results:[],onPreview:()=>{}}));
+ assert.match(empty,/아직 1순위 선택이 없습니다/);assert.match(empty,/아직 순위 선택 결과가 없습니다/);assert.doesNotMatch(empty,/<img/);
+});

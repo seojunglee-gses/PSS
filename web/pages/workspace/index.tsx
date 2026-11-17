@@ -1,4 +1,4 @@
-import RankingHeatmap from "../../components/evaluation/RankingHeatmap";
+import EvaluationResults from "../../components/evaluation/EvaluationResults";
 import { TOP_RANKS, selectTopRank, topRankSelection, completeTopRanks } from "../../lib/evaluation-ranks";
 import ImageGenerationPlaceholder from "../../components/design/ImageGenerationPlaceholder";
 import DesignImageEditor from "../../components/design/DesignImageEditor";
@@ -89,15 +89,6 @@ const steps = [
 ];
 
 const providerStorageKeyBase = "ppss-active-provider";
-const pieColors = [
-  "#2563eb",
-  "#38bdf8",
-  "#a855f7",
-  "#f97316",
-  "#10b981",
-  "#facc15",
-  "#f43f5e",
-];
 
 type ChatLog = {
   stepId: string;
@@ -546,17 +537,6 @@ function AuthorizedWorkspace() {
     {}
   );
 
-  const roleByUserId = useMemo(() => {
-    const map = new Map<string, string>();
-    evaluationResults.forEach((result) => {
-      if (result.userId && result.role) {
-        const normalized = normalizeRoleId(result.role);
-        map.set(result.userId, normalized ? t(roleLabelKeys[normalized]) : result.role);
-      }
-    });
-    return map;
-  }, [evaluationResults, t]);
-
   const buildImageGenerationInput = useCallback(() => {
   const MAX_MESSAGES = 6;
 
@@ -935,7 +915,6 @@ function AuthorizedWorkspace() {
 
   const rankingOptions = TOP_RANKS.slice(0, Math.min(3, evaluationImages.length)).map(String);
   // Keep the existing pie's historical rank distribution, including past ranks above 3.
-  const statisticsRankOptions = useMemo(() => evaluationImages.length ? evaluationImages.map((_,index) => String(index+1)) : ["1"], [evaluationImages]);
 
   const progressValue = useMemo(() => {
     const index = steps.findIndex((step) => step.id === activeStep.id);
@@ -998,19 +977,6 @@ function AuthorizedWorkspace() {
       setActiveUserTabs((prev) => ({ ...prev, [activeReportTab]: 0 }));
     }
   }, [activeReportTab, activeUserTabs, roleGroups]);
-
-  const getParticipantRoleLabel = useCallback(
-    (image?: DesignImage) => {
-      if (!image) {
-        return t("workspace.participant");
-      }
-      if (image.userId && roleByUserId.has(image.userId)) {
-        return roleByUserId.get(image.userId) ?? t("workspace.participant");
-      }
-      return localize(image.submittedBy ?? t("workspace.participant"));
-    },
-    [roleByUserId, t, localize]
-  );
 
   const buildEvaluationContext = useCallback(() => {
     const summariesText = Object.entries(savedSummaries)
@@ -1657,83 +1623,6 @@ const handleSend = async (suggestedQuestion?: string) => {
     const list = messageListRef.current;
     if (list && list.clientHeight && followLatestRef.current) list.scrollTop = list.scrollHeight;
   }, [chatLogs, activeStep.id, isSending, hasLoadedChatLogs]);
-
-  const aggregatedResults = useMemo(() => {
-    if (!evaluationResults.length) {
-      return evaluationImages.map((image) => ({
-        id: image.id,
-        label: image.label,
-        average: 0,
-        topChoice: 0,
-        voteCount: 0,
-        submittedBy: image.submittedBy,
-      }));
-    }
-    return evaluationImages.map((image) => {
-      const scores = evaluationResults
-        .map((result) => result.rankings?.[image.id])
-        .filter((value): value is number => typeof value === "number" && value > 0);
-      const average = scores.length
-        ? scores.reduce((sum, value) => sum + value, 0) / scores.length
-        : 0;
-      const topChoice = scores.filter((value) => value === 1).length;
-      return {
-        id: image.id,
-        label: image.label,
-        average,
-        topChoice,
-        voteCount: scores.length,
-        submittedBy: image.submittedBy,
-      };
-    });
-  }, [evaluationResults, evaluationImages]);
-
-  const topPreference = useMemo(() => {
-    const ranked = aggregatedResults.filter((result) => result.voteCount > 0);
-    if (!ranked.length) {
-      return evaluationImages[0];
-    }
-    const best = [...ranked].sort((a, b) => {
-      if (b.topChoice !== a.topChoice) {
-        return b.topChoice - a.topChoice;
-      }
-      return a.average - b.average;
-    })[0];
-    return evaluationImages.find((image) => image.id === best.id);
-  }, [aggregatedResults, evaluationImages]);
-
-  const topPreferenceRankTotals = useMemo(() => {
-    if (!topPreference) {
-      return [];
-    }
-    return statisticsRankOptions.map((rankLabel) => {
-      const rank = Number(rankLabel);
-      const value = evaluationResults.filter(
-        (result) => result.rankings?.[topPreference.id] === rank
-      ).length;
-      return { rank, value };
-    });
-  }, [evaluationResults, statisticsRankOptions, topPreference]);
-
-  const pieGradient = useMemo(() => {
-    const total = topPreferenceRankTotals.reduce(
-      (sum, item) => sum + item.value,
-      0
-    );
-    if (!total) {
-      return "conic-gradient(#e2e8f0 0deg 360deg)";
-    }
-    let current = 0;
-    const segments = topPreferenceRankTotals.map((item, index) => {
-      const start = current;
-      const slice = (item.value / total) * 360;
-      current += slice;
-      return `${pieColors[index % pieColors.length]} ${start.toFixed(
-        2
-      )}deg ${current.toFixed(2)}deg`;
-    });
-    return `conic-gradient(${segments.join(", ")})`;
-  }, [topPreferenceRankTotals]);
 
   const activeRoleEntries = roleGroups[activeReportTab] ?? [];
   const activeUserIndex = activeUserTabs[activeReportTab] ?? 0;
@@ -2670,61 +2559,7 @@ const handleSend = async (suggestedQuestion?: string) => {
           <div className="workspace-report-results h-full overflow-y-auto rounded-3xl border border-[var(--border)] bg-white p-4 shadow-sm sm:p-6">
             <h3 className="text-lg font-semibold">{t("evaluation.resultsPanel")}</h3>
 
-            <div className="mt-6 space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  {t("workspace.topPreference")}
-                </p>
-                <div className="mt-3 h-56 overflow-hidden rounded-xl bg-gradient-to-br from-blue-100 via-white to-slate-100">
-                  {topPreference?.imageUrl && (
-                    <img
-                      src={topPreference.imageUrl}
-                      alt={localize(topPreference.label)}
-                      className="h-full w-full object-contain"
-                    />
-                  )}
-                </div>
-                <p className="mt-3 text-sm font-semibold text-slate-700">
-                  {localize(topPreference?.label ?? t("workspace.topConcept"))}
-                </p>
-                <p className="mt-1 text-xs text-slate-400">
-                  {localize(topPreference?.label ?? t("workspace.design"))} ·{" "}
-                  {getParticipantRoleLabel(topPreference)}
-                </p>
-
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-semibold uppercase text-slate-400">
-                  {t("workspace.topChoiceShare")}
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-4">
-                  <div
-                    className="h-32 w-32 rounded-full border border-slate-200"
-                    style={{ background: pieGradient }}
-                  />
-                  <div className="space-y-2 text-xs text-slate-600">
-                  {topPreferenceRankTotals.map((item, index) => (
-                    <div key={item.rank} className="flex items-center gap-2">
-                      <span
-                        className="h-2 w-2 rounded-full"
-                        style={{
-                          backgroundColor:
-                            pieColors[index % pieColors.length],
-                        }}
-                      />
-                        <span className="font-semibold text-slate-700">
-                          {t("workspace.rank")} {item.rank}
-                        </span>
-                        <span className="ml-auto text-slate-500">
-                          {item.value} {t("workspace.votes")}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <RankingHeatmap images={evaluationImages} results={evaluationResults} onPreview={setSelectedImage} />
-            </div>
+            <EvaluationResults images={evaluationImages} results={evaluationResults} onPreview={setSelectedImage} />
           </div>
         </WorkspacePanels>
       )}
@@ -2767,7 +2602,17 @@ const handleSend = async (suggestedQuestion?: string) => {
         {selectedImageItem.description?.historyIncomplete && <p className="text-sm text-slate-300">{t("evaluation.partialHistory")}</p>}
         {(!selectedImageItem.description || selectedImageItem.description.status !== "ready") && <p>{t(selectedImageItem.description?.status === "error" ? "evaluation.descriptionFailed" : "evaluation.descriptionMissing")}</p>}
       </div>} />}
-      {selectedImage && activeStep.id !== "alternatives" && activeStep.id !== "evaluation" && (
+      {selectedImage && activeStep.id === "report" && selectedImageItem?.imageUrl && <ImageViewer
+        src={selectedImageItem.imageUrl} alt={localize(selectedImageItem.label)} title={localize(selectedImageItem.label)}
+        onClose={() => setSelectedImage(null)}
+        onNavigate={evaluationImages.filter(image => image.imageUrl).length > 1 ? delta => {
+          const images = evaluationImages.filter(image => image.imageUrl);
+          const index = images.findIndex(image => image.id === selectedImage);
+          setSelectedImage(images[(index + delta + images.length) % images.length].id);
+        } : undefined}
+      />}
+
+      {selectedImage && activeStep.id !== "alternatives" && activeStep.id !== "evaluation" && activeStep.id !== "report" && (
         <div
           className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 px-4"
           onClick={() => setSelectedImage(null)}
