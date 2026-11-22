@@ -14,6 +14,7 @@ import { useI18n } from "../../lib/i18n";
 import { useProject } from "../../lib/projects";
 import { canManageProject, TEST_ADMIN_EMAIL } from "../../lib/rbac";
 import { projectRequest } from "../../lib/membership/client";
+import ParticipantExport from "../../components/admin/ParticipantExport";
 import SpatialDatasetManager from "../../components/spatial/SpatialDatasetManager";
 
 const providers = ["ChatGPT", "Gemini", "DeepSeek"] as const;
@@ -496,6 +497,7 @@ export default function Setting() {
             {t("setting.admin.desc")}
           </p>
           <div className="mt-6 grid gap-6">
+            {user && <ParticipantExport key={`export-${projectId}-${user.uid}`} projectId={projectId} user={user} />}
             {activeProject?.projectId === projectId && <SpatialDatasetManager key={`${projectId}-${user?.uid}`} projectId={projectId} />}
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-600">
               <div className="flex flex-wrap items-start justify-between gap-3">
